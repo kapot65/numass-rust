@@ -1,0 +1,17 @@
+syntax = "proto2";
+
+
+message MLinkEvent {
+  required int32 lenght = 1;
+  required int32 subtype = 2;
+  required int32 deviceId = 3;
+  required int32 fragmentOffset = 4;
+  required int32 fragmentId = 5;
+  required int32 deviceSerial = 6;
+  required int32 eventNumber = 7;
+  required int32 sec = 8;
+  required int32 nSec = 9;
+  required int32 lowCh = 10;
+  required int32 hiCh = 11;
+  repeated int32 frame = 12;
+}

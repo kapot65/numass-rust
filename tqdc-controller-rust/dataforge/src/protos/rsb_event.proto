@@ -1,0 +1,34 @@
+// origin - https://github.com/kapot65/python-df-parser/blob/master/dfparser/configs/rsb_event.proto
+syntax = "proto3";
+
+package Rsh;
+
+message Point {
+  message Channel {
+    message Block {
+        // Необработанное событие
+        message Frame {
+            uint64 time = 1; // время первого бина в наносекундах
+                             // от начала блока
+            bytes data = 2; // массив кадра события в формате int16
+                            // ед. измерения - каналы, C-order
+        }
+        // Обработанные события. Содержат только время и амплитуду сигналов.
+        // Для экономии места при сериализации амплитуды и времена лежат в
+        // разных массивах. Амплитуда и время имеющие одинаковые индесы
+        // соответствуют одному событию
+        message Events {
+            repeated uint64 times = 1; //время в наносекундах от начала блока
+            repeated uint64 amplitudes = 2; //амплитуда события в каналах
+        }
+        uint64 time = 1; // время начала блока в наносекундах с начала эпохи
+        repeated Frame frames = 2; // массив необработанных событий
+        Events events = 3; // массив обработанных событий
+        uint64 length = 4; // размер блока в наносекундах
+        uint64 bin_size = 5;  // размер бина в наносекундах
+    }
+    uint64 id = 1; // номер канала
+    repeated Block blocks = 2; // набранные блоки
+  }
+  repeated Channel channels = 1; // массиив событий по каналам
+}

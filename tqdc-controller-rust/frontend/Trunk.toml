@@ -1,0 +1,8 @@
+[build]
+target = "index.html"
+dist = "../dist"
+
+[[proxy]]
+# backend = "http://[::1]:8081/api/"
+backend = "http://localhost:8082/channel"
+ws = true

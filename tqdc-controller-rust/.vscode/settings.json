@@ -1,0 +1,8 @@
+{
+    "rust-analyzer.cargo.target": "wasm32-unknown-unknown",
+    "rust-analyzer.checkOnSave.command": "clippy",
+    "rust-analyzer.cargoRunner": null,
+    "emmet.includeLanguages": {
+        "rust": "html"
+    }
+}
