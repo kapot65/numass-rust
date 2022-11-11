@@ -60,15 +60,7 @@ impl MlinkMessage {
 
     pub fn new_ctrl_req(seq: u16, src: u16, dst: u16, regs: Vec<CtrlReg>) -> MlinkMessage {
 
-        let size =  regs.iter().map(|r| {
-            match r {
-                CtrlReg::Read16 { address: _, value: _ } => 1,
-                CtrlReg::Write16 { address: _, value: _ } => 1,
-                CtrlReg::Read32 { address: _, value: _ } => 2,
-                CtrlReg::Write32 { address: _, value: _ } => 2,
-            }
-        }).reduce(|s1, s2| s1 + s2).unwrap();
-
+        let size =  MlinkMessage::calculate_regs_len(&regs);
         MlinkMessage::CtrlReq { header: MLinkHeader {
                 type_ : MessageType::CtrlReq,
                 sync: MessageSync::MlFrameSync,
@@ -80,11 +72,18 @@ impl MlinkMessage {
         }
     }
 
-    fn read_word(data: &[u8], offset: usize) -> (bool, u16, u16) {
-        let word = u32::from_le_bytes(data[offset..offset+4].try_into().unwrap());
-
-        ((word >> 31) == 1, ((word >> 16) & 0x7FFF) as u16, (word & 0xFFFF) as u16)
+    pub fn new_ctrl_acq(seq: u16, src: u16, dst: u16, regs: Vec<CtrlReg>) -> MlinkMessage {
         
+        let size =  MlinkMessage::calculate_regs_len(&regs);
+        MlinkMessage::CtrlAck { header: MLinkHeader {
+                type_ : MessageType::CtrlAck,
+                sync: MessageSync::MlFrameSync,
+                seq,
+                len: 3 + size + 1,
+                src,
+                dst,
+            }, regs
+        }
     }
 
     pub fn from_datagram(data: &[u8]) -> MlinkMessage {
@@ -94,56 +93,35 @@ impl MlinkMessage {
 
         match header.type_ {
             MessageType::Stream => {
+                if header.len == 5 {
+                    MlinkMessage::StreamAcq { 
+                        header, 
+                        offset: u16::from_le_bytes(data[16..18].try_into().unwrap()), 
+                        id: u16::from_le_bytes(data[18..20].try_into().unwrap())
+                    }
+                } else {
+                    let mut offset = 12;
+                    let mut frames = vec![];
 
-                let mut offset = 12;
-                let mut frames = vec![];
+                    while offset < data.len() - 4 {
+                        let frame = MLinkEventHeader::from_bytes(&data[offset..]);
+                        offset += (frame.length + 8) as usize;
+                        frames.push(frame);
+                    }
 
-                while offset < data.len() - 4 {
-                    let frame = MLinkEventHeader::from_bytes(&data[offset..]);
-                    offset += (frame.length + 8) as usize;
-                    frames.push(frame);
+                    MlinkMessage::StreamReq { header, frames }
                 }
-
-                MlinkMessage::StreamReq { header, frames }
             }
 
             MessageType::CtrlAck => {
-
-                let mut offset = 12;
-
-                let mut regs = vec![];
-                while offset < data.len() - 4 {
-
-                    let (r1, a1, v1) = MlinkMessage::read_word(data, offset);
-                    offset += 4;
-
-                    if let Some(address) = is_reg32(a1){
-                        assert!(data.len() - 8 >= offset);
-                        
-                        let (r2, a2, v2) = MlinkMessage::read_word(data, offset);
-                        offset += 4;
-
-                        assert!(r1 == r2 && a1 == a2 - 1);
-                        if r1 {
-                            regs.push(CtrlReg::Read32 { address, value: (v2 as u32) << 16 | (v1 as u32) })
-                        } else {
-                            regs.push(CtrlReg::Write32 { address, value: (v2 as u32) << 16 | (v1 as u32) })
-                        }
-                    } else if let Some(address) = is_reg16(a1) {
-                        if r1 {
-                            regs.push(CtrlReg::Read16 { address, value: v1 })
-                        } else {
-                            regs.push(CtrlReg::Read16 { address, value: v1 })
-                        }
-                    } else {
-                        panic!("unknown register 0x{}", a1)
-                    }
-                }
-
-                MlinkMessage::CtrlAck { header, regs} 
+                let regs = MlinkMessage::extract_regs(&data);
+                MlinkMessage::CtrlAck { header, regs } 
             }
 
-            MessageType::CtrlReq => todo!(),
+            MessageType::CtrlReq => {
+                let regs = MlinkMessage::extract_regs(&data);
+                MlinkMessage::CtrlReq { header, regs } 
+            },
         }
     }  
 
@@ -176,42 +154,76 @@ impl MlinkMessage {
                 let mut buffer = Vec::with_capacity((header.len * 4).into());
                 
                 MlinkMessage::write_header(header, &mut buffer);
-
-                for reg in regs {
-                    match reg {
-                        CtrlReg::Read16 { address, value: _ } => {
-                            let word: u32 = 0x80000000 | ((*address as u32 & 0x7FFF) << 16);
-                            buffer.extend_from_slice(&word.to_le_bytes());
-                        }
-
-                        CtrlReg::Write16 { address, value} => {
-                            let word: u32 = 0x00000000 | ((*address as u32 & 0x7FFF) << 16) | (*value as u32);
-                            buffer.extend_from_slice(&word.to_le_bytes());
-                        }
-
-                        CtrlReg::Read32 { address, value: _ } => {
-                            let word1: u32 = 0x80000000 | ((*address as u32 & 0x7FFF) << 16);
-                            let word2: u32 = 0x80000000 | (((*address as u32 + 1) as u32 & 0x7FFF) << 16);
-                            buffer.extend_from_slice(&word1.to_le_bytes());
-                            buffer.extend_from_slice(&word2.to_le_bytes());
-                        }
-
-                        CtrlReg::Write32 { address, value} => {
-                            let word1: u32 = 0x00000000 | ((*address as u32 & 0x7FFF) << 16) | (*value & 0xFFFF);
-                            let word2: u32 = 0x00000000 | (((*address as u32 + 1) as u32 & 0x7FFF) << 16) | (*value >> 16);
-                            buffer.extend_from_slice(&word1.to_le_bytes());
-                            buffer.extend_from_slice(&word2.to_le_bytes());
-                        }
-                    }
-                }
-
+                MlinkMessage::write_regs(regs, &mut buffer);
                 MlinkMessage::write_crc(&mut buffer);
 
                 buffer
             }
 
-            MlinkMessage::CtrlAck { header: _, regs: _ } => todo!()
+            MlinkMessage::CtrlAck { header, regs } => {
+
+                let mut buffer = Vec::with_capacity((header.len * 4).into());
+                
+                MlinkMessage::write_header(header, &mut buffer);
+                MlinkMessage::write_regs(regs, &mut buffer);
+                MlinkMessage::write_crc(&mut buffer);
+
+                buffer
+            }
         }
+    }
+
+    fn read_word(data: &[u8], offset: usize) -> (bool, u16, u16) {
+        let word = u32::from_le_bytes(data[offset..offset+4].try_into().unwrap());
+
+        ((word >> 31) == 1, ((word >> 16) & 0x7FFF) as u16, (word & 0xFFFF) as u16)
+        
+    }
+
+    fn calculate_regs_len(regs: &Vec<CtrlReg>) -> u16 {
+        regs.iter().map(|r| {
+            match r {
+                CtrlReg::Read16 { address: _, value: _ } => 1,
+                CtrlReg::Write16 { address: _, value: _ } => 1,
+                CtrlReg::Read32 { address: _, value: _ } => 2,
+                CtrlReg::Write32 { address: _, value: _ } => 2,
+            }
+        }).reduce(|s1, s2| s1 + s2).unwrap()
+    }
+
+    fn extract_regs(data: &[u8]) -> Vec<CtrlReg> {
+        let mut offset = 12;
+
+        let mut regs = vec![];
+        while offset < data.len() - 4 {
+
+            let (r1, a1, v1) = MlinkMessage::read_word(data, offset);
+            offset += 4;
+
+            if let Some(address) = is_reg32(a1){
+                assert!(data.len() - 8 >= offset);
+                
+                let (r2, a2, v2) = MlinkMessage::read_word(data, offset);
+                offset += 4;
+
+                assert!(r1 == r2 && a1 == a2 - 1);
+                if r1 {
+                    regs.push(CtrlReg::Read32 { address, value: (v2 as u32) << 16 | (v1 as u32) })
+                } else {
+                    regs.push(CtrlReg::Write32 { address, value: (v2 as u32) << 16 | (v1 as u32) })
+                }
+            } else if let Some(address) = is_reg16(a1) {
+                if r1 {
+                    regs.push(CtrlReg::Read16 { address, value: v1 })
+                } else {
+                    regs.push(CtrlReg::Write16 { address, value: v1 })
+                }
+            } else {
+                panic!("unknown register 0x{}", a1)
+            }
+        }
+
+        regs
     }
 
     fn write_header(header: &MLinkHeader, buffer: &mut Vec<u8>) {
@@ -231,6 +243,36 @@ impl MlinkMessage {
         buffer.extend_from_slice(&header.len.to_le_bytes());
         buffer.extend_from_slice(&header.src.to_le_bytes());
         buffer.extend_from_slice(&header.dst.to_le_bytes());
+    }
+
+    fn write_regs(regs: &Vec<CtrlReg>, buffer: &mut Vec<u8>) {
+        for reg in regs {
+            match reg {
+                CtrlReg::Read16 { address, value } => {
+                    let word: u32 = 0x80000000 | ((*address as u32 & 0x7FFF) << 16) | (*value as u32);
+                    buffer.extend_from_slice(&word.to_le_bytes());
+                }
+
+                CtrlReg::Write16 { address, value} => {
+                    let word: u32 = 0x00000000 | ((*address as u32 & 0x7FFF) << 16) | (*value as u32);
+                    buffer.extend_from_slice(&word.to_le_bytes());
+                }
+
+                CtrlReg::Read32 { address, value } => {
+                    let word1: u32 = 0x80000000 | ((*address as u32 & 0x7FFF) << 16) | (*value & 0xFFFF);
+                    let word2: u32 = 0x80000000 | (((*address as u32 + 1) as u32 & 0x7FFF) << 16) | (*value >> 16);
+                    buffer.extend_from_slice(&word1.to_le_bytes());
+                    buffer.extend_from_slice(&word2.to_le_bytes());
+                }
+
+                CtrlReg::Write32 { address, value} => {
+                    let word1: u32 = 0x00000000 | ((*address as u32 & 0x7FFF) << 16) | (*value & 0xFFFF);
+                    let word2: u32 = 0x00000000 | (((*address as u32 + 1) as u32 & 0x7FFF) << 16) | (*value >> 16);
+                    buffer.extend_from_slice(&word1.to_le_bytes());
+                    buffer.extend_from_slice(&word2.to_le_bytes());
+                }
+            }
+        }
     }
 
     fn write_crc(buffer: &mut Vec<u8>) {
@@ -330,14 +372,13 @@ pub struct MLinkEventHeader {
 }
 
 fn valid_channel_id(id: &u16) -> bool {
-    match  id {
+    match id {
         4096 => true,
         4352 => true,
         4608 => true,
         4864 => true,
         5120 => true,
         5376 => true,
-        5632 => true,
         5632 => true,
         5888 => true,
         6144 => true,
@@ -434,9 +475,23 @@ impl MLinkEventHeader {
 
 #[cfg(test)]
 mod tests {
+
+    use super::*;
+
     #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
+    fn parse_stream_req() {
+        
+        let offset = 0x0001;
+        let id = 0x0002;
+
+        let packet = MlinkMessage::to_datagram(&MlinkMessage::new_stream_acq(
+            0x0000, 
+            0x0101, 
+            0x0001, 
+            offset, id
+        ));
+
+        let parsed = MlinkMessage::from_datagram(&packet);
+        println!("{:?}", parsed)
     }
 }

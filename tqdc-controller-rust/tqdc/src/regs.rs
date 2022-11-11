@@ -1,7 +1,7 @@
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-#[derive(EnumIter, Debug)]
+#[derive(EnumIter, Debug, Clone, Copy)]
 pub enum Register16 { // TODO: implement registers in rust enum way
     DeviceId = 0x0042,
     DeviceCtrl = 0x0040,
@@ -11,7 +11,7 @@ pub enum Register16 { // TODO: implement registers in rust enum way
     
 }
 
-#[derive(EnumIter, Debug)]
+#[derive(EnumIter, Debug, Clone, Copy)]
 pub enum Register32 {
     TimeLimit = 0x0068, // time limit in mulliseconds
     RunMode = 0x0060, // ? 1 - time, 0 - frames(?)
@@ -20,24 +20,26 @@ pub enum Register32 {
     HitCountCh16 = 0x069E
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum RunMode {
     Time = 0x0001,
     Frames = 0x0000
 }
 
-#[derive(EnumIter, Debug)]
+#[derive(EnumIter, Debug, Clone, Copy)]
 pub enum RunState {
     Finished = 0x0002,
     InRun = 0x0001,
     Stopped = 0x0000
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum DeviceCtrl {
     Run = 0x8000,
     Stop = 0x0000
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum TriggerCSR {
     Exec = 0x0000, // ? find usages
     CountReset = 0x0001,

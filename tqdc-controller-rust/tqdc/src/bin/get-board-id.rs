@@ -1,8 +1,9 @@
 use tokio::io;
+use tqdc::config::{HOST_IP, CONTROL_HOST_PORT, BOARD_IP, CONTROL_PORT};
 use std::net::SocketAddrV4;
 use tokio::net::UdpSocket;
 
-use tqdc::regs::{Register16, Register32};
+use tqdc::regs::{Register16, Register32, RunState};
 use tqdc::mlink::{MlinkMessage, CtrlReg};
 
 #[tokio::main]
@@ -20,8 +21,10 @@ async fn main() -> io::Result<()> {
         ]
     );
 
-    let sock = UdpSocket::bind("0.0.0.0:33300").await?;
-    let to_addr = "10.0.0.5:33300".parse::<SocketAddrV4>().unwrap();
+    // HOST_IP, CONTROL_HOST_PORT
+
+    let sock = UdpSocket::bind(format!("{HOST_IP}:{CONTROL_HOST_PORT}")).await?;
+    let to_addr = format!("{BOARD_IP}:{CONTROL_PORT}").parse::<SocketAddrV4>().unwrap();
 
     sock.send_to(&MlinkMessage::to_datagram(&msg), to_addr).await?;
 

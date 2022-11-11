@@ -6,7 +6,7 @@ use std::{fmt::Debug, time::SystemTime};
 use std::vec;
 
 use serde::{Serialize, Deserialize};
-use time::{OffsetDateTime, UtcOffset};
+use time::{OffsetDateTime};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -157,7 +157,7 @@ pub async fn extract_df_message(stream: & mut (impl AsyncReadExt + std::marker::
             meta_type => panic!("MetaType::{meta_type:?} handling is not implemented")
         };
 
-        let data = if(data_len != 0) {
+        let data = if data_len != 0 {
             let mut data_bytes = vec![0u8; data_len as usize];
             stream.read_exact(&mut data_bytes[..]).await.unwrap();
             Some(data_bytes)

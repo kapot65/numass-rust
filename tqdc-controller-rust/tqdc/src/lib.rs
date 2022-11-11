@@ -1,27 +1,20 @@
 pub mod mlink;
 pub mod regs;
-
+pub mod config;
 
 use {mlink::{MlinkMessage, CtrlReg}, regs::{RunState, as_run_state}};
 use mlink::MLinkEventHeader;
 use tokio::io;
-use std::{net::SocketAddrV4, collections::{HashMap, VecDeque}, vec};
+use std::{net::SocketAddrV4, vec};
 use tokio::net::UdpSocket;
 use tokio::time::{sleep, Duration};
 use regs::{Register16, Register32, RunMode, DeviceCtrl, TriggerCSR};
 
-use dataforge::{protos::rsb_event::{self, Point}, DFMessage};
-use tokio::io::AsyncWriteExt;
-
-// TODO: move to config
-pub const HOST_IP: &str = "0.0.0.0";
-pub const BOARD_IP: &str = "10.0.0.5";
-pub const CONTROL_PORT: u16 = 33300;
-pub const STREAM_PORT: u16 = 33301;
+use config::{HOST_IP, CONTROL_PORT, STREAM_PORT, BOARD_IP, CONTROL_HOST_PORT, STREAM_HOST_PORT};
 
 
 async fn start_acquisition(millis: u32) -> io::Result<()> {
-    let sock = UdpSocket::bind(format!("{HOST_IP}:{CONTROL_PORT}")).await?;
+    let sock = UdpSocket::bind(format!("{HOST_IP}:{CONTROL_HOST_PORT}")).await?;
     let to_addr =  format!("{BOARD_IP}:{CONTROL_PORT}").parse::<SocketAddrV4>().unwrap();
 
     sock.send_to(&MlinkMessage::to_datagram(&MlinkMessage::new_ctrl_req(
@@ -57,16 +50,16 @@ async fn start_acquisition(millis: u32) -> io::Result<()> {
     )), to_addr).await?;
 
     let mut buf = [0; 4096 * 10];
-    let (len, _) = sock.recv_from(&mut buf).await?;
-    let acq = MlinkMessage::from_datagram(&buf[..len]);
-    
+    sock.recv_from(&mut buf).await?;
+    // let (len, _) = sock.recv_from(&mut buf).await?;
+    // let acq = MlinkMessage::from_datagram(&buf[..len]);
     // TODO: add correctness checking
 
     Ok(())
 }
 
 async fn check_run_state() -> io::Result<RunState> {
-    let sock = UdpSocket::bind(format!("{HOST_IP}:{CONTROL_PORT}")).await?;
+    let sock = UdpSocket::bind(format!("{HOST_IP}:{CONTROL_HOST_PORT}")).await?;
     let to_addr = format!("{BOARD_IP}:{CONTROL_PORT}").parse::<SocketAddrV4>().unwrap();
 
     sock.send_to(&MlinkMessage::to_datagram(&MlinkMessage::new_ctrl_req(
@@ -86,7 +79,7 @@ async fn check_run_state() -> io::Result<RunState> {
     let acq = MlinkMessage::from_datagram(&buf[..len]);
 
     match acq {
-        MlinkMessage::CtrlAck { header, regs } => {
+        MlinkMessage::CtrlAck { header: _, regs } => {
             if regs.len() != 1 { panic!("excepted CtrlAck message with single Read16(RunState) command, found: {:?}", regs) }
             match &regs[0] {
                 CtrlReg::Read16 { address, value } => {
@@ -103,7 +96,7 @@ async fn check_run_state() -> io::Result<RunState> {
 }
 
 async fn stop_acquisition() -> io::Result<()> {
-    let sock = UdpSocket::bind(format!("{HOST_IP}:{CONTROL_PORT}")).await?;
+    let sock = UdpSocket::bind(format!("{HOST_IP}:{CONTROL_HOST_PORT}")).await?;
     let to_addr = format!("{BOARD_IP}:{CONTROL_PORT}").parse::<SocketAddrV4>().unwrap();
 
     sock.send_to(&MlinkMessage::to_datagram(&MlinkMessage::new_ctrl_req(
@@ -119,21 +112,20 @@ async fn stop_acquisition() -> io::Result<()> {
     )), to_addr).await?;
     
     let mut buf = [0; 4096 * 10];
-    let (len, _) = sock.recv_from(&mut buf).await?;
-
-    let acq = MlinkMessage::from_datagram(&buf[..len]);
-
+    sock.recv_from(&mut buf).await?;
+    // let (len, _) = sock.recv_from(&mut buf).await?;
+    // let acq = MlinkMessage::from_datagram(&buf[..len]);
     // TODO: add correctness checking
 
     Ok(())
 }
 
 
-async fn gather_frames(acquisition_time_ms: u32) -> io::Result<Vec<MLinkEventHeader>> {
+async fn gather_frames() -> io::Result<Vec<MLinkEventHeader>> {
 
     let mut events = Vec::new();
 
-    let stream_socket = UdpSocket::bind(format!("{HOST_IP}:{STREAM_PORT}")).await?;
+    let stream_socket = UdpSocket::bind(format!("{HOST_IP}:{STREAM_HOST_PORT}")).await?;
     let stream_addr = format!("{BOARD_IP}:{STREAM_PORT}").parse::<SocketAddrV4>().unwrap();
 
     stream_socket.send_to(&MlinkMessage::to_datagram(&MlinkMessage::new_stream_acq(
@@ -200,7 +192,7 @@ pub async fn acquire_point(acquisition_time_s: u32) -> io::Result<Vec<MLinkEvent
         start_acquisition(acquisition_time_ms).await.unwrap();
     });
     
-    let events = gather_frames(acquisition_time_ms).await?;
+    let events = gather_frames().await?;
 
     stop_acquisition().await?;
 
