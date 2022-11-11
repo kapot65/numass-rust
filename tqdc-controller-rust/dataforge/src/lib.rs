@@ -110,6 +110,7 @@ impl TryFrom<u32> for MetaType {
 
 const DF01_OPEN_SCOPE: [u8; 2] = [35, 33]; // = #!
 const DF01_CLOSE_SCOPE: [u8; 4] = [33, 35, 13, 10]; // = !#\r\n
+const DF01_METADATA_ENDING: [u8; 2] = [13, 10]; 
 
 // TODO extract general DF Envelope parsing from Detector-Specific logic
 // TODO handle errors
@@ -184,27 +185,45 @@ pub async fn push_df_message(
     stream: & mut (impl AsyncWriteExt + std::marker::Unpin), 
     meta: DFMeta, data: Option<Vec<u8>>) {
 
-        let meta_vec =  serde_json::to_vec_pretty(&meta).unwrap();
+        let meta_vec =  {
+            let mut json = serde_json::to_vec_pretty(&meta).unwrap();
+            json.extend(DF01_METADATA_ENDING);
+            json
+        };
+        
 
-        stream.write(&DF01_OPEN_SCOPE).await.unwrap();
-        stream.write_u32(0x00014000).await.unwrap();
-        stream.write_u32(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32).await.unwrap();
-        stream.write_u32(MetaType::Json as u32).await.unwrap();
-        stream.write_u32(meta_vec.len() as u32).await.unwrap();
-        stream.write_u32(0x00000000).await.unwrap();
+        let capacity = {
+            let capacity = 30 + meta_vec.len();
+            if let Some(data) = &data {
+                capacity + data.len()
+            } else {
+                capacity
+            }
+        };
+
+        let mut buffer = Vec::with_capacity(capacity);
+
+
+        buffer.write(&DF01_OPEN_SCOPE).await.unwrap();
+        buffer.write_u32(0x00014000).await.unwrap();
+        buffer.write_u32(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32).await.unwrap();
+        buffer.write_u32(MetaType::Json as u32).await.unwrap();
+        buffer.write_u32(meta_vec.len() as u32).await.unwrap();
+        buffer.write_u32(0x00000000).await.unwrap();
         if let Some(bytes) = &data {
-            stream.write_u32(bytes.len() as u32).await.unwrap();
+            buffer.write_u32(bytes.len() as u32).await.unwrap();
         } else {
-            stream.write_u32(0 as u32).await.unwrap();
+            buffer.write_u32(0 as u32).await.unwrap();
         }
-        stream.write(&DF01_CLOSE_SCOPE).await.unwrap();
+        buffer.write(&DF01_CLOSE_SCOPE).await.unwrap();
 
 
-        stream.write(&meta_vec[..]).await.unwrap();
+        buffer.extend(meta_vec);
         if let Some(bytes) = data {
-            stream.write(&bytes[..]).await.unwrap();
+            buffer.write(&bytes[..]).await.unwrap();
         }
 
+        stream.write_all(&buffer[..]).await.unwrap();
         stream.flush().await.unwrap();
 
 }

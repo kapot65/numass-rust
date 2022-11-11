@@ -10,4 +10,6 @@ tqdc = {path = "../tqdc"}
 dataforge = {path = "../dataforge"}
 time = "0.3.17"
 tokio = { version = "1.21.2", features = ["full"] }
+
+tokio-timerfd = "0.2.0"
 protobuf = "3.2.0"

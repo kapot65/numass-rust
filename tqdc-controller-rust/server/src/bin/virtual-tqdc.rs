@@ -8,6 +8,7 @@ use tokio::io;
 use tokio::io::AsyncReadExt;
 use tokio::sync::{Mutex, watch};
 use tokio::net::UdpSocket;
+use tokio_timerfd::sleep;
 
 use tqdc::regs::{Register16, Register32, DeviceCtrl};
 use tqdc::mlink::{MlinkMessage, CtrlReg};
@@ -119,7 +120,7 @@ async fn handle_stream_port(
 
             tokio::time::timeout(Duration::from_millis(time_limit as u64), async {
                 loop {
-                    tokio::time::sleep(Duration::from_micros(20)).await;
+                    sleep(Duration::from_micros(10)).await.unwrap();
                     tx.send_to(&contents[..size], to_addr).await.unwrap();
                 }
             }).await.unwrap_err();     
