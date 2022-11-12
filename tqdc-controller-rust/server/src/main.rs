@@ -1,9 +1,10 @@
 use dataforge::{extract_df_message, DFMeta, push_df_message, protos::rsb_event};
-use time::OffsetDateTime;
-use tokio::io::AsyncWriteExt;
+use chrono::Utc;
+use tokio::task::JoinHandle;
+use tokio::{io::AsyncWriteExt, sync::Mutex};
 use tokio::net::TcpListener;
 use protobuf::Message;
-use std::collections::{VecDeque, HashMap};
+use std::collections::{HashMap};
 use tqdc::mlink::MLinkEventHeader;
 
 async fn events_to_point(events: Vec<MLinkEventHeader>) -> tokio::io::Result<rsb_event::Point> {
@@ -60,13 +61,24 @@ async fn events_to_point(events: Vec<MLinkEventHeader>) -> tokio::io::Result<rsb
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind("127.0.0.1:8080").await?;
 
+    let current_connection: Mutex<Option<JoinHandle<_>>> = Mutex::new(None);
+
     loop {
         let (mut socket, _) = listener.accept().await?;
 
-        tokio::spawn(async move {
+        let mut current_connection_lock = current_connection.lock().await;
+        if let Some(runner) = &*current_connection_lock {
+            println!("new connection. aborting previous one.");
+            runner.abort();
+        }
+
+        *current_connection_lock = Some(tokio::spawn(async move {
             // In a loop, read data from the socket and write the data back.
             loop {
-                let msg = extract_df_message(&mut socket).await;
+                let msg = extract_df_message(&mut socket).await.unwrap();
+
+                println!("{msg:?}");
+
                 match msg.meta {
                     DFMeta::Command(command) => {
                         match command {
@@ -74,13 +86,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 push_df_message(&mut socket, DFMeta::Reply(dataforge::Reply::Init {
                                     status: dataforge::ReplyStatus::Ok,
                                     reseted: false
-                                }), None).await;
+                                }), None).await.unwrap();
                             }
                             dataforge::Command::AcquirePoint { split: _, acquisition_time, external_meta } => {
 
-                                let start_time = OffsetDateTime::now_utc();
+                                let start_time = Utc::now().naive_local();
                                 let events = tqdc::acquire_point(acquisition_time as u32).await.unwrap();
-                                let end_time = OffsetDateTime::now_utc();
+                                let end_time = Utc::now().naive_local();
 
                                 let point = events_to_point(events).await.unwrap();
                                 
@@ -98,7 +110,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     buf
                                 });
 
-                                push_df_message(&mut socket,  meta, data.clone()).await; // ! not working in release without clone!
+                                push_df_message(&mut socket,  meta, data).await.unwrap();
                             }
                         }
                     }
@@ -108,6 +120,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }  
             }
-        });
+        }));
     }
 }

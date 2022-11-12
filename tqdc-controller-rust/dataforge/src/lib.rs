@@ -1,12 +1,14 @@
 
 pub mod protos;
 
+use serde_with::{serde_as, DisplayFromStr, PickFirst};
+
 use std::time::UNIX_EPOCH;
 use std::{fmt::Debug, time::SystemTime};
 use std::vec;
 
+use chrono::NaiveDateTime;
 use serde::{Serialize, Deserialize};
-use time::{OffsetDateTime};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -62,7 +64,8 @@ pub enum ReplyStatus {
     Ok
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize, )]
 #[serde(tag = "reply_type")]
 pub enum Reply {
 
@@ -78,11 +81,12 @@ pub enum Reply {
     },
     #[serde(rename="aquired_point")]
     AcquirePoint {
+        #[serde_as(as = "PickFirst<(_, DisplayFromStr)>")]
         acquisition_time: f32,
-        #[serde(with = "time::serde::iso8601")]
-        start_time: OffsetDateTime,
-        #[serde(with = "time::serde::iso8601")]
-        end_time: OffsetDateTime,
+        // #[serde(with = "chrono::serde::ts_seconds")]
+        start_time: NaiveDateTime,
+        // #[serde(with = "chrono::serde::ts_seconds")]
+        end_time: NaiveDateTime,
         external_meta: Option<serde_json::Value>,
         // split: bool,
         status: ReplyStatus,
@@ -112,40 +116,41 @@ const DF01_OPEN_SCOPE: [u8; 2] = [35, 33]; // = #!
 const DF01_CLOSE_SCOPE: [u8; 4] = [33, 35, 13, 10]; // = !#\r\n
 const DF01_METADATA_ENDING: [u8; 2] = [13, 10]; 
 
+
 // TODO extract general DF Envelope parsing from Detector-Specific logic
 // TODO handle errors
-pub async fn extract_df_message(stream: & mut (impl AsyncReadExt + std::marker::Unpin)) -> DFMessage {
+pub async fn extract_df_message(stream: & mut (impl AsyncReadExt + std::marker::Unpin)) -> tokio::io::Result<DFMessage> {
 
     let header_open_scope = {
         let mut header_open_scope = [0, 0];
-        stream.read_exact(&mut header_open_scope).await.unwrap();
+        stream.read_exact(&mut header_open_scope).await?;
         header_open_scope
     };
     
     if header_open_scope == DF01_OPEN_SCOPE {
         
-        let header_type = stream.read_u32().await.unwrap();
+        let header_type = stream.read_u32().await?;
         assert!(header_type == 0x14000);
 
-        let _time = stream.read_u32().await.unwrap();
+        let _time = stream.read_u32().await?;
 
-        let meta_type = stream.read_u32().await.unwrap();
-        let meta_len = stream.read_u32().await.unwrap();
+        let meta_type = stream.read_u32().await?;
+        let meta_len = stream.read_u32().await?;
 
 
-        let _data_type = stream.read_u32().await.unwrap();
-        let data_len = stream.read_u32().await.unwrap();
+        let _data_type = stream.read_u32().await?;
+        let data_len = stream.read_u32().await?;
 
         let header_close_scope = {
             let mut header_close_scope = [0, 0, 0, 0];
-            stream.read_exact(&mut header_close_scope).await.unwrap();
+            stream.read_exact(&mut header_close_scope).await?;
             header_close_scope
         };
         assert!(header_close_scope == DF01_CLOSE_SCOPE);
 
         let meta_bytes = {
             let mut meta_bytes = vec![0u8; meta_len as usize];
-            stream.read_exact(&mut meta_bytes[..]).await.unwrap();
+            stream.read_exact(&mut meta_bytes[..]).await?;
             meta_bytes
         };
 
@@ -160,13 +165,13 @@ pub async fn extract_df_message(stream: & mut (impl AsyncReadExt + std::marker::
 
         let data = if data_len != 0 {
             let mut data_bytes = vec![0u8; data_len as usize];
-            stream.read_exact(&mut data_bytes[..]).await.unwrap();
+            stream.read_exact(&mut data_bytes[..]).await?;
             Some(data_bytes)
         } else {
             None
         };
 
-        DFMessage { meta, data }
+        Ok(DFMessage { meta, data })
     } else {
         // elif header_type == b"#~DF02":
         //     header['type'] = header_type[2:6]
@@ -183,7 +188,7 @@ pub async fn extract_df_message(stream: & mut (impl AsyncReadExt + std::marker::
 
 pub async fn push_df_message(
     stream: & mut (impl AsyncWriteExt + std::marker::Unpin), 
-    meta: DFMeta, data: Option<Vec<u8>>) {
+    meta: DFMeta, data: Option<Vec<u8>>) -> tokio::io::Result<()> {
 
         let meta_vec =  {
             let mut json = serde_json::to_vec_pretty(&meta).unwrap();
@@ -204,26 +209,57 @@ pub async fn push_df_message(
         let mut buffer = Vec::with_capacity(capacity);
 
 
-        buffer.write(&DF01_OPEN_SCOPE).await.unwrap();
-        buffer.write_u32(0x00014000).await.unwrap();
-        buffer.write_u32(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32).await.unwrap();
-        buffer.write_u32(MetaType::Json as u32).await.unwrap();
-        buffer.write_u32(meta_vec.len() as u32).await.unwrap();
-        buffer.write_u32(0x00000000).await.unwrap();
+        buffer.write(&DF01_OPEN_SCOPE).await?;
+        buffer.write_u32(0x00014000).await?;
+        buffer.write_u32(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32).await?;
+        buffer.write_u32(MetaType::Json as u32).await?;
+        buffer.write_u32(meta_vec.len() as u32).await?;
+        buffer.write_u32(0x00000000).await?;
         if let Some(bytes) = &data {
-            buffer.write_u32(bytes.len() as u32).await.unwrap();
+            buffer.write_u32(bytes.len() as u32).await?;
         } else {
-            buffer.write_u32(0 as u32).await.unwrap();
+            buffer.write_u32(0 as u32).await?;
         }
-        buffer.write(&DF01_CLOSE_SCOPE).await.unwrap();
+        buffer.write(&DF01_CLOSE_SCOPE).await?;
 
 
+        // TODO: make extend without copy (concat?)
         buffer.extend(meta_vec);
         if let Some(bytes) = data {
-            buffer.write(&bytes[..]).await.unwrap();
+            buffer.extend(bytes);
         }
 
-        stream.write_all(&buffer[..]).await.unwrap();
-        stream.flush().await.unwrap();
+        stream.write_all(&buffer[..]).await?;
+        stream.flush().await?;
 
+        Ok(())
+}
+
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[tokio::test]
+    async fn parse_2021_file() {
+
+        let mut file = tokio::fs::File::open(
+            "../test-data/points/p0(30s)(HV1=14000).df"
+        ).await.unwrap();
+
+        let msg = extract_df_message(&mut file).await.unwrap();
+        println!("{:?}", msg.meta)
+    }
+    
+    #[tokio::test]
+    async fn parse_2022_file() {
+
+        let mut file = tokio::fs::File::open(
+            "../test-data/points/p-2022-11-12.df"
+        ).await.unwrap();
+
+        let msg = extract_df_message(&mut file).await.unwrap();
+        println!("{:?}", msg.meta)
+    }
 }
