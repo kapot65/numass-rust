@@ -1,7 +1,6 @@
-pub mod protos;
-pub mod graph;
 pub mod agent;
 pub mod graph_view;
+pub mod simple_sub;
 
 use gloo_net::http::Request;
 use wasm_bindgen_futures::spawn_local;

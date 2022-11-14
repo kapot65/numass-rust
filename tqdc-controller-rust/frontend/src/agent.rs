@@ -16,6 +16,9 @@ impl Agent for EventBus {
     type Output = Vec<FrameChannel>;
 
     fn create(link: AgentLink<Self>) -> Self {
+
+        tracing::info!("creating dispatcher");
+
         Self {
             link,
             subscribers: HashSet::new(),
