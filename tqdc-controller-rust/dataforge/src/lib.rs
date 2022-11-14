@@ -256,7 +256,7 @@ mod tests {
     async fn parse_2022_file() {
 
         let mut file = tokio::fs::File::open(
-            "../test-data/points/p-2022-11-12.df"
+            "../test-data/points/p-2022-11-14-real-5v.df"
         ).await.unwrap();
 
         let msg = extract_df_message(&mut file).await.unwrap();
