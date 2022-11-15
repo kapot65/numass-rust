@@ -7,7 +7,7 @@ use crate::regs::{Register32, Register16, is_reg16, is_reg32};
 pub enum MlinkMessage {
     StreamReq {
         header: MLinkHeader, 
-        frames: Vec<MLinkEventHeader>
+        frames: Vec<MStreamFragment>
     },
     StreamAcq {
         header: MLinkHeader,
@@ -104,7 +104,7 @@ impl MlinkMessage {
                     let mut frames = vec![];
 
                     while offset < data.len() - 4 {
-                        let frame = MLinkEventHeader::from_bytes(&data[offset..]);
+                        let frame = MStreamFragment::from_bytes(&data[offset..]);
                         offset += (frame.length + 8) as usize;
                         frames.push(frame);
                     }
@@ -345,19 +345,15 @@ impl MLinkHeader {
 }
 
 #[derive(Debug)]
-pub struct MlinkEventChannel {
-    pub full_length: u16, // ! full lenght in u16 words!!
-    pub id: u16,
-    pub param: u16,
-    pub bins_length: u16,
-    pub bins: Vec<i16>
+pub struct ADCDataBlock {
+    pub channel_number: u8,
+    pub waveform: Vec<i16>
 }
 
-
 #[derive(Debug)]
-pub struct MLinkEventHeader {
+pub struct MStreamFragment {
     pub length: u16, // ! actual frame length is = lenght + 8
-    pub subtype: u8,
+    pub subtype_and_flags: u8,
     pub device_id: u8,
     pub fragment_offset: u16,
     pub fragment_id: u16,
@@ -366,35 +362,11 @@ pub struct MLinkEventHeader {
     pub user_defined_bits: u8,
     pub tai_sec: u32,
     pub tai_nano_sec: u32,
-    pub low_ch: u32,
-    pub hi_ch: u32,
-    pub channels: Vec<MlinkEventChannel>
+    pub channels: Vec<ADCDataBlock>
 }
 
-fn valid_channel_id(id: &u16) -> bool {
-    match id {
-        4096 => true,
-        4352 => true,
-        4608 => true,
-        4864 => true,
-        5120 => true,
-        5376 => true,
-        5632 => true,
-        5888 => true,
-        6144 => true,
-        6400 => true,
-        6656 => true,
-        6912 => true,
-        7168 => true,
-        7424 => true,
-        7680 => true,
-        7936 => true,
-        _ => false
-    }
-}
-
-impl MLinkEventHeader {
-    fn from_bytes(bytes: &[u8]) -> MLinkEventHeader {
+impl MStreamFragment {
+    fn from_bytes(bytes: &[u8]) -> MStreamFragment {
         assert!(
             bytes.len() >= 32, 
             "buffer size ({}) < 32 bytes needed for header", 
@@ -402,74 +374,82 @@ impl MLinkEventHeader {
         );
 
         // TODO: add bytes len checking
-        let length = u16::from_le_bytes(bytes[..2].try_into().unwrap());
+        // M-Stream Header
+        // Word #1 
+        let length = u16::from_le_bytes(bytes[..2].try_into().unwrap()); // 15:0
+        let subtype_and_flags = u8::from_le_bytes(bytes[2..3].try_into().unwrap()); // 23:16
+        // TODO add subtype and flags parsing
+        assert!(subtype_and_flags == 128, "unexpected subtype and flags byte: {subtype_and_flags}");
+        let device_id = u8::from_le_bytes(bytes[3..4].try_into().unwrap()); // 31:24
 
-        let fragment_offset = u16::from_le_bytes(bytes[4..6].try_into().unwrap());
+        // Word #2
+        let fragment_offset = u16::from_le_bytes(bytes[4..6].try_into().unwrap()); // 15:0
+        assert!(fragment_offset == 0, "splitted packets (offset = {fragment_offset}) is not supported");
+        let fragment_id = u16::from_le_bytes(bytes[6..8].try_into().unwrap()); //31:16
 
-        assert!(
-            fragment_offset == 0, 
-            "parsing multi-packet steams (fragment offset != 0) is not implemented! (offset = {})",
-            fragment_offset
-        );
-        
+        // Word #3
+        let device_serial = u32::from_le_bytes(bytes[8..12].try_into().unwrap()); // 31:0
+
+        // Word #4
+        let event_number = u24::new(u32::from_le_bytes(bytes[12..16].try_into().unwrap()) & 0x00FFFFFF);
+        let user_defined_bits = u8::from_le_bytes(bytes[15..16].try_into().unwrap());
+
+        let tai_sec = u32::from_le_bytes(bytes[16..20].try_into().unwrap());
+        let tai_nano_sec = u32::from_le_bytes(bytes[20..24].try_into().unwrap()); // ! 1:0 - flag
+
+
+        // M-Stream Subtype 0
+        let mut offset = 24 as usize;
         let mut channels = vec![];
 
+        while offset < (length + 8) as usize {
+            let data_payload_length = u16::from_le_bytes(bytes[offset..offset+2].try_into().unwrap()); // 15:0
+            // let adc_data_block_specific = {
+            //     let combined = u8::from_le_bytes(bytes[offset+2..offset+3].try_into().unwrap()); // 23:16
+            //     combined & 0b11 // 16..18
+            // };
+            
+            let (data_type, channel_number) = {
+                let combined = u8::from_le_bytes(bytes[offset+3..offset+4].try_into().unwrap());
+                (combined >> 4, combined & 0b1111)
+            };
 
-        let mut offset = 52 as usize;
-
-
-        let channel_id = u16::from_le_bytes(bytes[offset+2..offset+4].try_into().unwrap());
-
-        if valid_channel_id(&channel_id) {
-            while offset < (length + 8) as usize {
-
-                let full_length = u16::from_le_bytes(bytes[offset..offset+2].try_into().unwrap());
-
-                let id = u16::from_le_bytes(bytes[offset+2..offset+4].try_into().unwrap());
-                let param = u16::from_le_bytes(bytes[offset+4..offset+6].try_into().unwrap());
-                let bins_length = u16::from_le_bytes(bytes[offset+6..offset+8].try_into().unwrap());
-
-                let bins_number = (bins_length / 2) as usize;
-                let mut bins = Vec::with_capacity(bins_number);
-                for n in 0..bins_number {
-
-                    bins.push(i16::from_le_bytes(
-                        bytes[offset + 8 + (n * 2)..offset + 8 + ((n+1) * 2)]
-                        .try_into().unwrap()));
+            match data_type {
+                0 => {
+                    // TODO add TDC event parsing
                 }
+                1 => {
+                    // let adc_timestamp = u16::from_le_bytes(bytes[offset+4..offset+6].try_into().unwrap());
+                    let adc_data_length = u16::from_le_bytes(bytes[offset+6..offset+8].try_into().unwrap());
 
-                channels.push(MlinkEventChannel {
-                    full_length,
-                    id,
-                    param,
-                    bins_length,
-                    bins
-                });
 
-                offset += (full_length + 4) as usize;
+                    let bins_number = (adc_data_length / 2) as usize;
+                    let mut waveform = Vec::with_capacity(bins_number);
+                    for n in 0..bins_number {
+                        waveform.push(i16::from_le_bytes(
+                            bytes[offset + 8 + (n * 2)..offset + 8 + ((n+1) * 2)]
+                            .try_into().unwrap()));
+                    }
+                    channels.push(ADCDataBlock { channel_number, waveform });
+                }
+                other => panic!("unexpected MStream Data Block format {other}")
             }
-        } else {
-            // TODO: return broken channel data
-            // eprintln!("catch invalid channel id ({}), skipping packet", channel_id)
+            offset += data_payload_length as usize + 4;
         }
 
-        return MLinkEventHeader {
-            length: u16::from_le_bytes(bytes[..2].try_into().unwrap()),
-            subtype: u8::from_le_bytes(bytes[2..3].try_into().unwrap()),
-            device_id: u8::from_le_bytes(bytes[3..4].try_into().unwrap()),
+        return MStreamFragment {
+            length,
+            subtype_and_flags,
+            device_id,
             fragment_offset,
-            fragment_id: u16::from_le_bytes(bytes[6..8].try_into().unwrap()),
-            device_serial: u32::from_le_bytes(bytes[8..12].try_into().unwrap()),
-            event_number: u24::new(u32::from_le_bytes(bytes[12..16].try_into().unwrap()) & 0x00FFFFFF),
-            user_defined_bits: u8::from_le_bytes(bytes[15..16].try_into().unwrap()),
-            tai_sec: u32::from_le_bytes(bytes[16..20].try_into().unwrap()),
-            tai_nano_sec: u32::from_le_bytes(bytes[20..24].try_into().unwrap()),
-            low_ch: u32::from_le_bytes(bytes[24..28].try_into().unwrap()),
-            hi_ch: u32::from_le_bytes(bytes[28..32].try_into().unwrap()),
+            fragment_id,
+            device_serial,
+            event_number,
+            user_defined_bits,
+            tai_sec,
+            tai_nano_sec,
             channels
         };
-
-        // # +20 bytes (???)
     }
 }
 
@@ -477,6 +457,28 @@ impl MLinkEventHeader {
 mod tests {
 
     use super::*;
+    use tokio::io::{AsyncReadExt};
+
+    #[tokio::test]
+    async fn parse_mstream_data_samples() -> tokio::io::Result<()> {
+
+        let mut file = tokio::fs::File::open(
+            // "./test-data/frames/0l.bin"
+            // "./test-data/frames/subs-overflow.bin"
+            // "./test-data/frames/trash-3.bin"
+            "../test-data/frames/0l-cropped-2.bin"
+            // "./test-data/frames/408ns-7ch.bin"
+        ).await?;
+    
+        let mut contents = [0u8; 2048];
+        let size = file.read(&mut contents).await?;
+    
+        let message = MlinkMessage::from_datagram(&contents[..size]);
+        
+        println!("{message:?}");
+
+        Ok(())
+    }
 
     #[test]
     fn parse_stream_req() {

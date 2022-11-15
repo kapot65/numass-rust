@@ -1,11 +1,10 @@
 use dataforge::protos::rsb_event;
 use tokio::io::AsyncWriteExt;
 use std::collections::HashMap;
-use tqdc::mlink::MLinkEventHeader;
+use tqdc::mlink::MStreamFragment;
 
-pub async fn events_to_point(events: Vec<MLinkEventHeader>) -> tokio::io::Result<rsb_event::Point> {
+pub async fn events_to_point(events: Vec<MStreamFragment>) -> tokio::io::Result<rsb_event::Point> {
 
-    // HashMap<u16, Vec<rsb_event::point::channel::block::Frame>>
     let mut frames_per_channel = HashMap::new();
     let mut begin_time: Option<u128> = None;
 
@@ -18,12 +17,12 @@ pub async fn events_to_point(events: Vec<MLinkEventHeader>) -> tokio::io::Result
             let mut frame = rsb_event::point::channel::block::Frame::new();
             frame.time = (tai_nsec - *begin) as u64;
 
-            frame.data = Vec::with_capacity(channel.bins.capacity());
-            for bin in channel.bins {
+            frame.data = Vec::with_capacity(channel.waveform.capacity());
+            for bin in channel.waveform {
                 frame.data.write_i16_le(bin).await?;
             }
 
-            frames_per_channel.entry(channel.id).or_insert(vec![]).push(
+            frames_per_channel.entry(channel.channel_number).or_insert(vec![]).push(
                 frame
             );
         }

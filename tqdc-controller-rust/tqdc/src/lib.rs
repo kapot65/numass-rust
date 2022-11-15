@@ -3,7 +3,7 @@ pub mod regs;
 pub mod config;
 
 use {mlink::{MlinkMessage, CtrlReg}, regs::{RunState, as_run_state}};
-use mlink::MLinkEventHeader;
+use mlink::MStreamFragment;
 use tokio::io;
 use std::{net::SocketAddrV4, vec};
 use tokio::net::UdpSocket;
@@ -121,7 +121,7 @@ async fn stop_acquisition() -> io::Result<()> {
 }
 
 
-async fn gather_frames() -> io::Result<Vec<MLinkEventHeader>> {
+async fn gather_frames() -> io::Result<Vec<MStreamFragment>> {
 
     let mut events = Vec::new();
 
@@ -183,7 +183,7 @@ async fn gather_frames() -> io::Result<Vec<MLinkEventHeader>> {
     Ok(events)
 }
 
-pub async fn acquire_point(acquisition_time_s: u32) -> io::Result<Vec<MLinkEventHeader>> {
+pub async fn acquire_point(acquisition_time_s: u32) -> io::Result<Vec<MStreamFragment>> {
 
     let acquisition_time_ms = acquisition_time_s * 1000;
 
