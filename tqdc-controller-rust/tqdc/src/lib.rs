@@ -5,11 +5,13 @@ pub mod config;
 use {mlink::{MlinkMessage, CtrlReg}, regs::{RunState, as_run_state}};
 use mlink::MStreamFragment;
 use tokio::io;
+use tokio::io::AsyncReadExt;
 use std::{net::SocketAddrV4, vec};
 use tokio::net::UdpSocket;
 use tokio::time::{sleep, Duration};
 use regs::{Register16, Register32, RunMode, DeviceCtrl, TriggerCSR};
 
+use serde_json::{Value, json};
 use config::{HOST_IP, CONTROL_PORT, STREAM_PORT, BOARD_IP, CONTROL_HOST_PORT, STREAM_HOST_PORT};
 
 
@@ -197,4 +199,62 @@ pub async fn acquire_point(acquisition_time_s: u32) -> io::Result<Vec<MStreamFra
     stop_acquisition().await?;
 
     Ok(events)
+}
+
+pub async fn get_tqdc_configuration() -> Value {
+
+    // TODO: Remove hardcode
+    let mut file = tokio::fs::File::open(
+        "/home/chernov/.config/AFI Electronics/TQDC2/TQDC2_default.ini").await.unwrap();
+    let mut str = String::new();
+    file.read_to_string(&mut str).await.unwrap();
+
+
+    let mut lines = str.lines();
+
+    let current_device_flag = "current_device_";
+
+    let device_id = if let Some(current_device_line) = lines.find(|l| l.contains(current_device_flag)) {
+        let pos = current_device_line.find(current_device_flag).unwrap();
+        String::from(&current_device_line[pos+current_device_flag.len()..pos+current_device_flag.len()+9])  
+    } else {
+        panic!()
+    };
+
+    let prefix = format!("default\\default\\known_setups\\device_{device_id}\\");
+    let config_lines = lines.filter(|line| {line.starts_with(&prefix)}).map(|line| {
+        String::from(&line[prefix.len()..])
+    }).collect::<Vec<_>>();
+
+
+    let mut config = json!({});
+    
+    for config_line in config_lines {
+
+        let (path, value) = {
+            let splitted = config_line.split('=').collect::<Vec<_>>();
+            (String::from(splitted[0]), String::from(splitted[1]))
+        };
+
+        let mut entry = config.as_object_mut().unwrap();
+        let keys = path.split('\\').map(|s| {String::from(s)}).collect::<Vec<_>>();
+        for key in keys[..keys.len() - 1].iter() {
+            entry = entry.entry(key).or_insert(json!({})).as_object_mut().unwrap()
+        }
+
+        entry.insert(keys.last().unwrap().clone(), serde_json::Value::String(value));
+    }
+
+    config
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn parse_config() {
+        let conf = get_tqdc_configuration().await;
+        println!("{}", serde_json::to_string_pretty(&conf).unwrap())
+    }
 }

@@ -43,6 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let start_time = Utc::now().naive_local();
                                 let events = tqdc::acquire_point(acquisition_time as u32).await.unwrap();
                                 let end_time = Utc::now().naive_local();
+                                let config = Some(tqdc::get_tqdc_configuration().await);
 
                                 let point = events_to_point(events).await.unwrap();
                                 
@@ -51,6 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     start_time, 
                                     end_time, 
                                     external_meta, 
+                                    config,
                                     status: dataforge::ReplyStatus::Ok 
                                 });
 

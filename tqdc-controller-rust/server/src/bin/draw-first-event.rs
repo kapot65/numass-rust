@@ -1,7 +1,6 @@
 use plotly::{Plot, Scatter};
 use dataforge::protos::rsb_event;
 use protobuf::Message;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[tokio::main]
 async fn main() {

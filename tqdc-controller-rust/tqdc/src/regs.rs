@@ -7,8 +7,13 @@ pub enum Register16 { // TODO: implement registers in rust enum way
     DeviceCtrl = 0x0040,
     RunState = 0x0061,
     TriggerCSR = 0x0100,
-    SelfTriggerDelay = 0x0108
-    
+    SelfTriggerDelay = 0x0108,
+    SelfTriggerMask = 0x107,
+    AdcChannelEnabledMask = 0x304,
+    AdcGainControlMask = 0x306,
+    AdcMode = 0x305,
+    Dac1Ctrl = 0x4200,
+    Dac2Ctrl = 0x4201,
 }
 
 #[derive(EnumIter, Debug, Clone, Copy)]
@@ -17,7 +22,17 @@ pub enum Register32 {
     RunMode = 0x0060, // ? 1 - time, 0 - frames(?)
     TriggerTimerPeriod = 0x0102,
     TriggerEventNumLoad = 0x0104,
-    HitCountCh16 = 0x069E
+    HitCountCh16 = 0x069E,
+    TdcChannelEnable1 = 0x200,
+    TdcChannelEnable2 = 0x202,
+    TdcTrigWinSetup = 0x226,
+}
+
+
+#[derive(Debug, Clone, Copy)]
+pub enum AdcMode {
+    Norm = 0x0001,
+    Baseline = 0x0002
 }
 
 #[derive(Debug, Clone, Copy)]

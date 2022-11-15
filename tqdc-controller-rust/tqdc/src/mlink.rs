@@ -399,7 +399,7 @@ impl MStreamFragment {
 
 
         // M-Stream Subtype 0
-        let mut offset = 24 as usize;
+        let mut offset = 24;
         let mut channels = vec![];
 
         while offset < (length + 8) as usize {
@@ -437,7 +437,7 @@ impl MStreamFragment {
             offset += data_payload_length as usize + 4;
         }
 
-        return MStreamFragment {
+        MStreamFragment {
             length,
             subtype_and_flags,
             device_id,
@@ -449,7 +449,7 @@ impl MStreamFragment {
             tai_sec,
             tai_nano_sec,
             channels
-        };
+        }
     }
 }
 

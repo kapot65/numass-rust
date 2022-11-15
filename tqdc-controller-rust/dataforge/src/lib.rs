@@ -88,6 +88,7 @@ pub enum Reply {
         // #[serde(with = "chrono::serde::ts_seconds")]
         end_time: NaiveDateTime,
         external_meta: Option<serde_json::Value>,
+        config: Option<serde_json::Value>,
         // split: bool,
         status: ReplyStatus,
     }
@@ -209,7 +210,7 @@ pub async fn push_df_message(
         let mut buffer = Vec::with_capacity(capacity);
 
 
-        buffer.write(&DF01_OPEN_SCOPE).await?;
+        assert!(buffer.write(&DF01_OPEN_SCOPE).await? == 2);
         buffer.write_u32(0x00014000).await?;
         buffer.write_u32(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32).await?;
         buffer.write_u32(MetaType::Json as u32).await?;
@@ -218,10 +219,9 @@ pub async fn push_df_message(
         if let Some(bytes) = &data {
             buffer.write_u32(bytes.len() as u32).await?;
         } else {
-            buffer.write_u32(0 as u32).await?;
+            buffer.write_u32(0).await?;
         }
-        buffer.write(&DF01_CLOSE_SCOPE).await?;
-
+        assert!(buffer.write(&DF01_CLOSE_SCOPE).await? == 4);
 
         // TODO: make extend without copy (concat?)
         buffer.extend(meta_vec);
