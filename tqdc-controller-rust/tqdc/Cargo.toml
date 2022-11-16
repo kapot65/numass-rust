@@ -4,19 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-futures = "0.3.25"
-futures-util = "0.3.25"
-common = {path = "../common"}
-dataforge = {path = "../dataforge"}
-protobuf = "3.2.0"
-
-serde = "1.0.147"
 serde_json = "1.0.87"
-bendy = { version = "0.4.0-beta.2", features = ["std", "serde"] }
-
 tokio = { version = "1.21.2", features = ["full"] }
-
 strum = { version = "0.24.1", features = ["derive"] }
 strum_macros = "0.24.3"
-
 ux = "0.1.5"
+
+[dev-dependencies]
+home = "0.5.4"

@@ -1,6 +1,8 @@
 target-trunk/
 /dist/
 
+/test-data/points/*kHz*
+
 # --- VSCODE ---
 .vscode/*
 !.vscode/settings.json

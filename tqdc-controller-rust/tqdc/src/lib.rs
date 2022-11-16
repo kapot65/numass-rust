@@ -6,14 +6,13 @@ use {mlink::{MlinkMessage, CtrlReg}, regs::{RunState, as_run_state}};
 use mlink::MStreamFragment;
 use tokio::io;
 use tokio::io::AsyncReadExt;
-use std::{net::SocketAddrV4, vec};
+use std::{net::SocketAddrV4, vec, path::PathBuf};
 use tokio::net::UdpSocket;
 use tokio::time::{sleep, Duration};
 use regs::{Register16, Register32, RunMode, DeviceCtrl, TriggerCSR};
 
 use serde_json::{Value, json};
 use config::{HOST_IP, CONTROL_PORT, STREAM_PORT, BOARD_IP, CONTROL_HOST_PORT, STREAM_HOST_PORT};
-
 
 async fn start_acquisition(millis: u32) -> io::Result<()> {
     let sock = UdpSocket::bind(format!("{HOST_IP}:{CONTROL_HOST_PORT}")).await?;
@@ -122,7 +121,6 @@ async fn stop_acquisition() -> io::Result<()> {
     Ok(())
 }
 
-
 async fn gather_frames() -> io::Result<Vec<MStreamFragment>> {
 
     let mut events = Vec::new();
@@ -201,11 +199,10 @@ pub async fn acquire_point(acquisition_time_s: u32) -> io::Result<Vec<MStreamFra
     Ok(events)
 }
 
-pub async fn get_tqdc_configuration() -> Value {
+pub async fn get_tqdc_configuration(path_to_config: &PathBuf) -> Value {
 
-    // TODO: Remove hardcode
-    let mut file = tokio::fs::File::open(
-        "/home/chernov/.config/AFI Electronics/TQDC2/TQDC2_default.ini").await.unwrap();
+    let mut file = tokio::fs::File::open(path_to_config).await
+        .expect("cant open configuation file");
     let mut str = String::new();
     file.read_to_string(&mut str).await.unwrap();
 
@@ -242,7 +239,19 @@ pub async fn get_tqdc_configuration() -> Value {
             entry = entry.entry(key).or_insert(json!({})).as_object_mut().unwrap()
         }
 
-        entry.insert(keys.last().unwrap().clone(), serde_json::Value::String(value));
+
+        if value.eq("null") {
+            entry.insert(keys.last().unwrap().clone(), serde_json::Value::Null);
+        } else if let Ok(value) = value.parse::<bool>() {
+            entry.insert(keys.last().unwrap().clone(), serde_json::Value::Bool(value));
+        } else if let Ok(value) = value.parse::<i64>() {
+            entry.insert(keys.last().unwrap().clone(), json!(value));
+        } else if let Ok(value) = value.parse::<f32>() {
+            entry.insert(keys.last().unwrap().clone(), json!(value));
+        } else {
+            entry.insert(keys.last().unwrap().clone(), serde_json::Value::String(value));
+        }
+        
     }
 
     config
@@ -254,7 +263,12 @@ mod tests {
 
     #[tokio::test]
     async fn parse_config() {
-        let conf = get_tqdc_configuration().await;
+        let path_to_config =  if let Some(home) = home::home_dir() {
+            home.join::<PathBuf>(".config/AFI Electronics/TQDC2/TQDC2_default.ini".into())
+        } else {
+            panic!("can't obtain home directory")
+        };
+        let conf = get_tqdc_configuration(&path_to_config).await;
         println!("{}", serde_json::to_string_pretty(&conf).unwrap())
     }
 }

@@ -3,7 +3,7 @@ use tqdc::config::{HOST_IP, CONTROL_HOST_PORT, BOARD_IP, CONTROL_PORT};
 use std::net::SocketAddrV4;
 use tokio::net::UdpSocket;
 
-use tqdc::regs::{Register16, Register32, RunState};
+use tqdc::regs::Register16;
 use tqdc::mlink::{MlinkMessage, CtrlReg};
 
 #[tokio::main]
