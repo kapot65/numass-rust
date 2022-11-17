@@ -1,7 +1,0 @@
-[build]
-target = "index.html"
-dist = "../dist"
-
-[[proxy]]
-backend = "ws://localhost:8081/api/"
-ws = true

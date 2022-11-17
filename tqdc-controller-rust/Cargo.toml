@@ -1,9 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
-  "common",
   "tqdc",
   "dataforge",
   "server",
-  "frontend"
+  "viewers"
 ]
