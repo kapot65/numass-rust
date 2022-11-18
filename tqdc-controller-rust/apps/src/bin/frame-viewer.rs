@@ -1,21 +1,46 @@
-use eframe::egui;
 use std::sync::Arc;
-use std::net::UdpSocket;
+use std::net::{UdpSocket, SocketAddr};
 
-use egui::mutex::Mutex;
-use egui::plot::{Plot, Line};
+use eframe::egui;
+use eframe::egui::mutex::Mutex;
+use eframe::egui::plot::{Plot, Line};
+use clap::Parser;
+
 use tqdc::mlink::MlinkMessage;
+use apps::defaults::{HOST_IP, BOARD_IP, STREAM_PORT, HOST_STREAM_PORT};
+
+/// Read TQDC register that contains id (programm does not have timeout)
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+   #[arg(long, default_value_t = HOST_IP)]
+   host_ip: std::net::IpAddr,
+
+   #[arg(long, default_value_t = HOST_STREAM_PORT)]
+   host_stream_port: u16,
+
+   #[arg(long, default_value_t = BOARD_IP)]
+   tqdc_ip: std::net::IpAddr,
+
+   #[arg(long, default_value_t = STREAM_PORT)]
+   tqdc_stream_port: u16,
+}
 
 fn main() {
+
+    let args = Args::parse();
+
     let native_options = eframe::NativeOptions::default();
 
     let v = Arc::new(Mutex::new(vec![]));
     let v2 = Arc::clone(&v);
 
     std::thread::spawn(move || {
+
+            let bind_address = SocketAddr::new(args.host_ip, args.host_stream_port);
+            let tqdc_address = SocketAddr::new(args.tqdc_ip, args.tqdc_stream_port);
         
-            let sock = UdpSocket::bind("0.0.0.0:33301").unwrap();
-            let to_addr = "10.0.0.5:33301";
+            let sock = UdpSocket::bind(bind_address).unwrap();
 
             sock.send_to(&MlinkMessage::to_datagram(&MlinkMessage::new_stream_acq(
                 0x0000, 
@@ -23,8 +48,7 @@ fn main() {
                 0x0001, 
                 0xFFFF, 
                 0xFFFF
-            )), to_addr).unwrap();
-
+            )), tqdc_address).unwrap();
 
             loop {
                 let mut buf = [0; 4096 * 10];
@@ -74,19 +98,22 @@ struct MyEguiApp {
 impl eframe::App for MyEguiApp {
    fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
 
-       ctx.request_repaint_after(std::time::Duration::from_millis(50));
+       ctx.request_repaint_after(
+        std::time::Duration::from_millis(50));
        egui::CentralPanel::default().show(ctx, |ui| {
             //    ui.heading(format!("{:?}", *lock));
 
-           let channels = {
+            let channels = {
                 let lock = self.value.lock();
                 lock.clone()
-           };
-           
-           let lines =  channels.iter().map(|(_, waveform)| {
+            };
+
+            let lines =  channels.iter().map(|(ch_num, waveform)| {
                 Line::new(
-                    waveform.iter().enumerate().map(|(x, y)| [x as f64, *y as f64]).collect::<Vec<_>>())
-           });
+                    waveform.iter().enumerate().map(|(x, y)| [x as f64, *y as f64]).collect::<Vec<_>>()).name(
+                        format!("{ch_num}")
+                    )
+            });
 
             Plot::new("Test Plot").show(ui, |plot_ui| {
                 lines.for_each(|line| {

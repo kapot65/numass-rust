@@ -1,22 +1,20 @@
 pub mod mlink;
 pub mod regs;
-pub mod config;
 
-use {mlink::{MlinkMessage, CtrlReg}, regs::{RunState, as_run_state}};
-use mlink::MStreamFragment;
+use std::net::{IpAddr, SocketAddr};
+use std::{vec, path::PathBuf};
+
 use tokio::io;
 use tokio::io::AsyncReadExt;
-use std::{net::SocketAddrV4, vec, path::PathBuf};
 use tokio::net::UdpSocket;
 use tokio::time::{sleep, Duration};
-use regs::{Register16, Register32, RunMode, DeviceCtrl, TriggerCSR};
-
 use serde_json::{Value, json};
-use config::{HOST_IP, CONTROL_PORT, STREAM_PORT, BOARD_IP, CONTROL_HOST_PORT, STREAM_HOST_PORT};
 
-async fn start_acquisition(millis: u32) -> io::Result<()> {
-    let sock = UdpSocket::bind(format!("{HOST_IP}:{CONTROL_HOST_PORT}")).await?;
-    let to_addr =  format!("{BOARD_IP}:{CONTROL_PORT}").parse::<SocketAddrV4>().unwrap();
+use regs::{Register16, Register32, RunMode, DeviceCtrl, TriggerCSR, RunState, as_run_state};
+use mlink::{MlinkMessage, CtrlReg, MStreamFragment};
+
+async fn start_acquisition(millis: u32, host_control_addr: SocketAddr, tqdc_contol_addr: SocketAddr) -> io::Result<()> {
+    let sock = UdpSocket::bind(host_control_addr).await?;
 
     sock.send_to(&MlinkMessage::to_datagram(&MlinkMessage::new_ctrl_req(
         0x0000, 
@@ -48,7 +46,7 @@ async fn start_acquisition(millis: u32) -> io::Result<()> {
                 value: DeviceCtrl::Run as u16
             }
         ]
-    )), to_addr).await?;
+    )), tqdc_contol_addr).await?;
 
     let mut buf = [0; 4096 * 10];
     sock.recv_from(&mut buf).await?;
@@ -59,9 +57,8 @@ async fn start_acquisition(millis: u32) -> io::Result<()> {
     Ok(())
 }
 
-async fn check_run_state() -> io::Result<RunState> {
-    let sock = UdpSocket::bind(format!("{HOST_IP}:{CONTROL_HOST_PORT}")).await?;
-    let to_addr = format!("{BOARD_IP}:{CONTROL_PORT}").parse::<SocketAddrV4>().unwrap();
+async fn check_run_state(host_control_addr: SocketAddr, tqdc_contol_addr: SocketAddr) -> io::Result<RunState> {
+    let sock = UdpSocket::bind(host_control_addr).await?;
 
     sock.send_to(&MlinkMessage::to_datagram(&MlinkMessage::new_ctrl_req(
         0x0000, 
@@ -73,7 +70,7 @@ async fn check_run_state() -> io::Result<RunState> {
                 value: 0x0000
             }
         ]
-    )), to_addr).await?;
+    )), tqdc_contol_addr).await?;
 
     let mut buf = [0; 4096 * 10];
     let (len, _) = sock.recv_from(&mut buf).await?;
@@ -96,9 +93,8 @@ async fn check_run_state() -> io::Result<RunState> {
     }
 }
 
-async fn stop_acquisition() -> io::Result<()> {
-    let sock = UdpSocket::bind(format!("{HOST_IP}:{CONTROL_HOST_PORT}")).await?;
-    let to_addr = format!("{BOARD_IP}:{CONTROL_PORT}").parse::<SocketAddrV4>().unwrap();
+async fn stop_acquisition(host_control_addr: SocketAddr, tqdc_contol_addr: SocketAddr) -> io::Result<()> {
+    let sock = UdpSocket::bind(host_control_addr).await?;
 
     sock.send_to(&MlinkMessage::to_datagram(&MlinkMessage::new_ctrl_req(
         0x0000, 
@@ -110,7 +106,7 @@ async fn stop_acquisition() -> io::Result<()> {
                 value: DeviceCtrl::Stop as u16
             }
         ]
-    )), to_addr).await?;
+    )), tqdc_contol_addr).await?;
     
     let mut buf = [0; 4096 * 10];
     sock.recv_from(&mut buf).await?;
@@ -121,12 +117,15 @@ async fn stop_acquisition() -> io::Result<()> {
     Ok(())
 }
 
-async fn gather_frames() -> io::Result<Vec<MStreamFragment>> {
+async fn gather_frames(
+    host_control_addr: SocketAddr, 
+    tqdc_contol_addr: SocketAddr, 
+    host_stream_addr: SocketAddr, 
+    tqdc_stream_addr: SocketAddr
+) -> io::Result<Vec<MStreamFragment>> {
 
     let mut events = Vec::new();
-
-    let stream_socket = UdpSocket::bind(format!("{HOST_IP}:{STREAM_HOST_PORT}")).await?;
-    let stream_addr = format!("{BOARD_IP}:{STREAM_PORT}").parse::<SocketAddrV4>().unwrap();
+    let stream_socket = UdpSocket::bind(host_stream_addr).await?;
 
     stream_socket.send_to(&MlinkMessage::to_datagram(&MlinkMessage::new_stream_acq(
         0x0000, 
@@ -134,7 +133,7 @@ async fn gather_frames() -> io::Result<Vec<MStreamFragment>> {
         0x0001, 
         0xFFFF, 
         0xFFFF
-    )), stream_addr).await?;
+    )), tqdc_stream_addr).await?;
 
 
     loop {
@@ -157,7 +156,7 @@ async fn gather_frames() -> io::Result<Vec<MStreamFragment>> {
                                 0x0001, 
                                 frame.fragment_offset, 
                                 frame.fragment_id, 
-                            )), stream_addr).await?;
+                            )), tqdc_stream_addr).await?;
 
                             events.extend(frames);
 
@@ -169,7 +168,10 @@ async fn gather_frames() -> io::Result<Vec<MStreamFragment>> {
                 }
             }
             Err(_) => {
-                let state = check_run_state().await.unwrap();
+                let state = check_run_state(
+                    host_control_addr, 
+                    tqdc_contol_addr
+                ).await.unwrap();
 
                 match state {
                     RunState::Finished => break,
@@ -183,18 +185,48 @@ async fn gather_frames() -> io::Result<Vec<MStreamFragment>> {
     Ok(events)
 }
 
-pub async fn acquire_point(acquisition_time_s: u32) -> io::Result<Vec<MStreamFragment>> {
+pub async fn acquire_point(
+    acquisition_time_s: u32, 
+    host_ip: IpAddr,
+    host_control_port: u16,
+    host_stream_port: u16,
+    tqdc_ip: IpAddr,
+    tqdc_control_port: u16,
+    tqdc_stream_port: u16
+) -> io::Result<Vec<MStreamFragment>> {
 
     let acquisition_time_ms = acquisition_time_s * 1000;
 
-    tokio::spawn(async move{
-        sleep(Duration::from_millis(200)).await;
-        start_acquisition(acquisition_time_ms).await.unwrap();
-    });
     
-    let events = gather_frames().await?;
+    let host_control_address = SocketAddr::new(host_ip, host_control_port);
+    let host_stream_address = SocketAddr::new(host_ip, host_stream_port);
 
-    stop_acquisition().await?;
+    let tqdc_control_address = SocketAddr::new(tqdc_ip, tqdc_control_port);
+    let tqdc_stream_address = SocketAddr::new(tqdc_ip, tqdc_stream_port);
+
+
+    {
+        tokio::spawn(async move{
+            sleep(Duration::from_millis(200)).await;
+            start_acquisition(
+                acquisition_time_ms, 
+                host_control_address,
+                tqdc_control_address
+            ).await.unwrap();
+        });
+    }
+    
+    let events = gather_frames(
+        host_control_address,
+        tqdc_control_address,
+        host_stream_address,
+        tqdc_stream_address
+    ).await?;
+
+    stop_acquisition(
+        host_control_address, 
+        tqdc_control_address
+    ).await?;
 
     Ok(events)
 }
@@ -251,7 +283,6 @@ pub async fn get_tqdc_configuration(path_to_config: &PathBuf) -> Value {
         } else {
             entry.insert(keys.last().unwrap().clone(), serde_json::Value::String(value));
         }
-        
     }
 
     config

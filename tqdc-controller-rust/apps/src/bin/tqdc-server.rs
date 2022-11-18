@@ -1,17 +1,54 @@
-use dataforge::{extract_df_message, DFMeta, push_df_message};
+use std::net::SocketAddr;
+
 use chrono::Utc;
+use clap::Parser;
+use protobuf::Message;
 use tokio::task::JoinHandle;
 use tokio::sync::Mutex;
 use tokio::net::TcpListener;
-use protobuf::Message;
-
 use fs2::FileExt;
-use server::events_to_point;
+
+use dataforge::{extract_df_message, DFMeta, push_df_message};
+use apps::events_to_point;
+
+use apps::defaults::{
+    HOST_IP, HOST_CONTROL_PORT, HOST_STREAM_PORT, 
+    BOARD_IP, CONTROL_PORT, STREAM_PORT
+};
+
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+   #[arg(long, default_value_t = HOST_IP)]
+   host_ip: std::net::IpAddr,
+
+   #[arg(long, default_value_t = 8080)]
+   host_dataforge_port: u16,
+
+   #[arg(long, default_value_t = HOST_CONTROL_PORT)]
+   host_control_port: u16,
+
+   #[arg(long, default_value_t = HOST_STREAM_PORT)]
+   host_stream_port: u16,
+
+   #[arg(long, default_value_t = BOARD_IP)]
+   tqdc_ip: std::net::IpAddr,
+
+   #[arg(long, default_value_t = CONTROL_PORT)]
+   tqdc_control_port: u16,
+
+   #[arg(long, default_value_t = STREAM_PORT)]
+   tqdc_stream_port: u16,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
-    let listener = TcpListener::bind("127.0.0.1:8080").await?;
+    let args = Args::parse();
+
+    let listener = TcpListener::bind(SocketAddr::new(
+        args.host_ip, args.host_dataforge_port)).await?;
 
     let current_connection: Mutex<Option<JoinHandle<_>>> = Mutex::new(None);
 
@@ -27,7 +64,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         *current_connection_lock = Some(tokio::spawn(async move {
             let home = home::home_dir().expect("can't obtain home directory");
 
-            // In a loop, read data from the socket and write the data back.
             loop {
                 let msg = extract_df_message(&mut socket).await.unwrap();
 
@@ -49,7 +85,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 lockfile.lock_exclusive().unwrap();
 
                                 let start_time = Utc::now().naive_local();
-                                let events = tqdc::acquire_point(acquisition_time as u32).await.unwrap();
+                                let events = tqdc::acquire_point(
+                                    acquisition_time as u32,
+                                    args.host_ip, args.host_control_port, args.host_stream_port,
+                                    args.tqdc_ip, args.tqdc_control_port, args.tqdc_stream_port
+                                ).await.unwrap();
                                 let end_time = Utc::now().naive_local();
                                 let config = Some(tqdc::get_tqdc_configuration(
                                     &home.join::<std::path::PathBuf>(".config/AFI Electronics/TQDC2/TQDC2_default.ini".into())
@@ -83,7 +123,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     DFMeta::Reply(_) => {
                         todo!()
                     }
-                }  
+                }
             }
         }));
     }

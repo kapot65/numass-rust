@@ -3,6 +3,5 @@ resolver = "2"
 members = [
   "tqdc",
   "dataforge",
-  "server",
-  "viewers"
+  "apps",
 ]

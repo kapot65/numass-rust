@@ -19,7 +19,7 @@ pub enum Register16 { // TODO: implement registers in rust enum way
 #[derive(EnumIter, Debug, Clone, Copy)]
 pub enum Register32 {
     TimeLimit = 0x0068, // time limit in mulliseconds
-    RunMode = 0x0060, // ? 1 - time, 0 - frames(?)
+    RunMode = 0x0060,
     TriggerTimerPeriod = 0x0102,
     TriggerEventNumLoad = 0x0104,
     HitCountCh16 = 0x069E,

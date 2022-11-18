@@ -1,5 +1,5 @@
 [package]
-name = "viewers"
+name = "apps"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,5 +7,17 @@ edition = "2021"
 
 [dependencies]
 tqdc = {path = "../tqdc"}
+dataforge = {path = "../dataforge"}
+
 tokio = { version = "1.21.2", features = ["full"] }
+tokio-timerfd = "0.2.0"
+protobuf = "3.2.0"
+chrono = "0.4.23"
+home = "0.5.4"
+fs2 = "0.4.3"
+plotly = "0.8.3"
+
 eframe = "0.19.0"
+clap = { version = "4.0.26", features = ["derive"] }
+
+
