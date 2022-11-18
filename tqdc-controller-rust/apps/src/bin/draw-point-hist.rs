@@ -3,17 +3,22 @@ use plotly::Plot;
 use dataforge::protos::rsb_event;
 use protobuf::Message;
 
-const MIN: i32 = -128;
-const MAX: i32 = 1024;
-const BINS: usize = 64;
-
-
+/// Draws Acquisition point histogramm.
 #[derive(Parser, Debug)]
-#[clap(name = "draw-point-hist-server", about = "Draws dataforge point.")]
+#[clap(author, version, about, long_about = None)]
 struct Opt {
     /// Path to point file
     #[clap()]
-    filepath: String
+    filepath: String,
+
+    #[clap(long, default_value_t = 0)]
+    min: i32,
+
+    #[clap(long, default_value_t = 400)]
+    max: i32,
+
+    #[clap(long, default_value_t = 400)]
+    bins: usize
 }
 
 #[tokio::main]
@@ -48,14 +53,14 @@ async fn main() {
             })
         }).collect::<Vec<_>>();
 
-        let step = (MAX - MIN) as f32 / BINS as f32;
-        let bins_x = (0..BINS).map(|idx| {
-            MIN as f32 + step * (idx as f32) + step / 2.0
+        let step = (opt.max - opt.min) as f32 / opt.bins as f32;
+        let bins_x = (0..opt.bins).map(|idx| {
+            opt.min as f32 + step * (idx as f32) + step / 2.0
         }).collect::<Vec<f32>>();
-        let mut bins = vec!(0; BINS as usize);
+        let mut bins = vec!(0; opt.bins as usize);
         for amplitude in amplitudes {
-            let idx = (amplitude as i32 - MIN) as f32 / step;
-            if idx >= 0.0 && idx < BINS as f32 {
+            let idx = (amplitude as i32 - opt.min) as f32 / step;
+            if idx >= 0.0 && idx < opt.bins as f32 {
                 bins[idx as usize] += 1;
             }
         };
