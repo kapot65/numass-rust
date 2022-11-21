@@ -8,6 +8,9 @@ use tokio::sync::Mutex;
 use tokio::net::TcpListener;
 use fs2::FileExt;
 
+use serde_json::Value;
+use eyre::{Result, ContextCompat};
+
 use dataforge::{extract_df_message, DFMeta, push_df_message};
 use apps::events_to_point;
 
@@ -17,7 +20,7 @@ use apps::defaults::{
 };
 
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone, Copy)]
 #[command(author, version, about, long_about = None)]
 struct Args {
    #[arg(long, default_value_t = HOST_IP)]
@@ -42,6 +45,49 @@ struct Args {
    tqdc_stream_port: u16,
 }
 
+async fn acquire_point(acquisition_time: f32, external_meta: Option<Value>, args: Args) -> Result<(DFMeta, Option<Vec<u8>>)> {
+
+    let home = home::home_dir().wrap_err_with(|| {"unable to get home directory"})?;
+
+    let lockfile_path = home.join::<std::path::PathBuf>(".config/AFI Electronics/TQDC2/lock".into());
+    let lockfile = std::fs::OpenOptions::new().read(true).write(true).create(true).open(&lockfile_path)?;
+    lockfile.lock_exclusive()?;
+
+    let start_time = Utc::now().naive_local();
+    let events = tqdc::acquire_point(
+        acquisition_time as u32,
+        args.host_ip, args.host_control_port, args.host_stream_port,
+        args.tqdc_ip, args.tqdc_control_port, args.tqdc_stream_port
+    ).await?;
+    let end_time = Utc::now().naive_local();
+    let config = Some(tqdc::get_tqdc_configuration(
+        &home.join::<std::path::PathBuf>(".config/AFI Electronics/TQDC2/TQDC2_default.ini".into())
+    ).await);
+
+    let point = events_to_point(events).await?;
+    
+    let meta = DFMeta::Reply(dataforge::Reply::AcquirePoint { 
+        acquisition_time, 
+        start_time, 
+        end_time, 
+        external_meta, 
+        config,
+        status: dataforge::ReplyStatus::Ok 
+    });
+
+    let data = Some({
+        let mut buf = vec![];
+        point.write_to_vec(&mut buf)?;
+        buf
+    });
+
+    lockfile.unlock()?;
+    std::fs::remove_file(lockfile_path)?;
+
+    Ok((meta, data))
+}
+
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
@@ -49,6 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let listener = TcpListener::bind(SocketAddr::new(
         args.host_ip, args.host_dataforge_port)).await?;
+    println!("tqdc-server works on {}:{}", args.host_ip, args.host_dataforge_port);
 
     let current_connection: Mutex<Option<JoinHandle<_>>> = Mutex::new(None);
 
@@ -62,10 +109,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         *current_connection_lock = Some(tokio::spawn(async move {
-            let home = home::home_dir().expect("can't obtain home directory");
 
             loop {
-                let msg = extract_df_message(&mut socket).await.unwrap();
+                let msg = extract_df_message(&mut socket).await
+                    .expect("catch IO error on receiving DF message");
 
                 println!("{msg:?}");
 
@@ -76,52 +123,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 push_df_message(&mut socket, DFMeta::Reply(dataforge::Reply::Init {
                                     status: dataforge::ReplyStatus::Ok,
                                     reseted: false
-                                }), None).await.unwrap();
+                                }), None).await.expect("catch IO error on sending DF message");
                             }
                             dataforge::Command::AcquirePoint { split: _, acquisition_time, external_meta } => {
-
-                                let lockfile_path = home.join::<std::path::PathBuf>(".config/AFI Electronics/TQDC2/lock".into());
-                                let lockfile = std::fs::OpenOptions::new().read(true).write(true).create(true).open(&lockfile_path).unwrap();
-                                lockfile.lock_exclusive().unwrap();
-
-                                let start_time = Utc::now().naive_local();
-                                let events = tqdc::acquire_point(
-                                    acquisition_time as u32,
-                                    args.host_ip, args.host_control_port, args.host_stream_port,
-                                    args.tqdc_ip, args.tqdc_control_port, args.tqdc_stream_port
-                                ).await.unwrap();
-                                let end_time = Utc::now().naive_local();
-                                let config = Some(tqdc::get_tqdc_configuration(
-                                    &home.join::<std::path::PathBuf>(".config/AFI Electronics/TQDC2/TQDC2_default.ini".into())
-                                ).await);
-
-                                let point = events_to_point(events).await.unwrap();
-                                
-                                let meta = DFMeta::Reply(dataforge::Reply::AcquirePoint { 
-                                    acquisition_time, 
-                                    start_time, 
-                                    end_time, 
-                                    external_meta, 
-                                    config,
-                                    status: dataforge::ReplyStatus::Ok 
-                                });
-
-                                let data = Some({
-                                    let mut buf = vec![];
-                                    point.write_to_vec(&mut buf).unwrap();
-                                    buf
-                                });
-
-                                push_df_message(&mut socket,  meta, data).await.unwrap();
-
-                                lockfile.unlock().unwrap();
-                                std::fs::remove_file(lockfile_path).unwrap();
+                                match acquire_point(acquisition_time, external_meta, args).await {
+                                    Ok((meta, data)) => {
+                                        push_df_message(&mut socket,  meta, data).await
+                                            .expect("catch IO error on sending DF message");
+                                    }
+                                    Err(error) => {
+                                        push_df_message(&mut socket, DFMeta::Reply(dataforge::Reply::Error { 
+                                            error_code: dataforge::ErrorType::AlgoritmError, 
+                                            description: error.to_string()
+                                        }), None).await
+                                        .expect("catch IO error on sending DF message");
+                                    }
+                                }
                             }
                         }
                     }
 
                     DFMeta::Reply(_) => {
-                        todo!()
+                        push_df_message(&mut socket, DFMeta::Reply(dataforge::Reply::Error { 
+                            error_code: dataforge::ErrorType::UnknownMessageError, 
+                            description: "tqdc-server doesn't handles replies".to_string()
+                        }), None).await
+                        .expect("catch IO error on sending DF message");
                     }
                 }
             }

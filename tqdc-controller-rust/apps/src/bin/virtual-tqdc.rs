@@ -12,7 +12,7 @@ use tokio_timerfd::sleep;
 
 use tqdc::regs::{Register16, Register32, DeviceCtrl};
 use tqdc::mlink::{MlinkMessage, CtrlReg};
-use tqdc::config::{BOARD_IP, CONTROL_PORT, STREAM_PORT};
+use apps::defaults::{BOARD_IP, CONTROL_PORT, STREAM_PORT};
 
 async fn handle_control_port(
     regs16: Arc<Mutex<HashMap<u16, u16>>>,

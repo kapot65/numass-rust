@@ -31,7 +31,7 @@ struct Args {
 }
 
 #[tokio::main]
-async fn main() -> tokio::io::Result<()> {
+async fn main() -> eyre::Result<()> {
 
     let args = Args::parse();
 

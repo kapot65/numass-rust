@@ -9,9 +9,11 @@ use std::vec;
 
 use chrono::NaiveDateTime;
 use serde::{Serialize, Deserialize};
+use serde_repr::{Serialize_repr, Deserialize_repr};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize_repr, Deserialize_repr)]
+#[repr(u32)]
 pub enum ErrorType // TODO rename
 {
     ClientNoError = 0,

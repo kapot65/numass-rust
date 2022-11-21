@@ -4,16 +4,17 @@ pub mod regs;
 use std::net::{IpAddr, SocketAddr};
 use std::{vec, path::PathBuf};
 
-use tokio::io;
+use eyre::{Result, Report, ContextCompat};
+
 use tokio::io::AsyncReadExt;
 use tokio::net::UdpSocket;
-use tokio::time::{sleep, Duration};
+use tokio::time::{self, sleep, Duration};
 use serde_json::{Value, json};
 
 use regs::{Register16, Register32, RunMode, DeviceCtrl, TriggerCSR, RunState, as_run_state};
 use mlink::{MlinkMessage, CtrlReg, MStreamFragment};
 
-async fn start_acquisition(millis: u32, host_control_addr: SocketAddr, tqdc_contol_addr: SocketAddr) -> io::Result<()> {
+async fn start_acquisition(millis: u32, host_control_addr: SocketAddr, tqdc_contol_addr: SocketAddr) -> Result<()> {
     let sock = UdpSocket::bind(host_control_addr).await?;
 
     sock.send_to(&MlinkMessage::to_datagram(&MlinkMessage::new_ctrl_req(
@@ -48,16 +49,22 @@ async fn start_acquisition(millis: u32, host_control_addr: SocketAddr, tqdc_cont
         ]
     )), tqdc_contol_addr).await?;
 
-    let mut buf = [0; 4096 * 10];
-    sock.recv_from(&mut buf).await?;
-    // let (len, _) = sock.recv_from(&mut buf).await?;
-    // let acq = MlinkMessage::from_datagram(&buf[..len]);
-    // TODO: add correctness checking
+    let mut buf = [0; 1536];
 
-    Ok(())
+    match time::timeout(Duration::from_millis(100), sock.recv_from(&mut buf)).await {
+        Ok(res) => { match res {
+                Ok((_, _)) => {Ok(())}
+                Err(err) => Err(err.into())
+            }
+        }
+        Err(_) => {
+            Err(Report::msg("(start_acquisition) - acq timeout"))
+        }
+    }
 }
 
-async fn check_run_state(host_control_addr: SocketAddr, tqdc_contol_addr: SocketAddr) -> io::Result<RunState> {
+async fn check_run_state(host_control_addr: SocketAddr, tqdc_contol_addr: SocketAddr) -> Result<RunState> {
+    
     let sock = UdpSocket::bind(host_control_addr).await?;
 
     sock.send_to(&MlinkMessage::to_datagram(&MlinkMessage::new_ctrl_req(
@@ -72,28 +79,46 @@ async fn check_run_state(host_control_addr: SocketAddr, tqdc_contol_addr: Socket
         ]
     )), tqdc_contol_addr).await?;
 
-    let mut buf = [0; 4096 * 10];
-    let (len, _) = sock.recv_from(&mut buf).await?;
-    let acq = MlinkMessage::from_datagram(&buf[..len]);
+    let mut buf = [0; 1536 * 10];
 
-    match acq {
-        MlinkMessage::CtrlAck { header: _, regs } => {
-            if regs.len() != 1 { panic!("excepted CtrlAck message with single Read16(RunState) command, found: {:?}", regs) }
-            match &regs[0] {
-                CtrlReg::Read16 { address, value } => {
-                    match address {
-                        Register16::RunState => Ok(as_run_state(*value).unwrap()),
-                        _ => panic!("excepted CtrlAck message with single Read16(RunState) command, found: {:?}", address)
+    match time::timeout(Duration::from_millis(100), sock.recv_from(&mut buf)).await {
+        Ok(res) => { match res {
+                Ok((len, _)) => {
+                    let acq = MlinkMessage::from_datagram(&buf[..len]);
+                    match acq {
+                        MlinkMessage::CtrlAck { header: _, regs } => {
+                            if regs.len() != 1 { 
+                                Err(Report::msg(format!(
+                                    "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {:?}", regs)))
+                            } else {
+                                match &regs[0] {
+                                    CtrlReg::Read16 { address, value } => {
+                                        match address {
+                                            Register16::RunState => Ok(as_run_state(*value).wrap_err_with(|| {"as_run_state failed"})?),
+                                            _ => Err(Report::msg(format!(
+                                                "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {:?}", address)))
+                                        }
+                                    }
+                                    other => Err(Report::msg(format!(
+                                        "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {:?}", other)))
+                                }
+                            }
+                        }
+                        other => Err(Report::msg(format!(
+                            "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {:?}", other)))
                     }
                 }
-                other => panic!("excepted CtrlAck message with single Read16(RunState) command, found: {:?}", other)
+                Err(err) => Err(err.into())
             }
         }
-        other => panic!("excepted CtrlAck message with single Read16(RunState) command, found: {:?}", other)
+        Err(_) => {
+            Err(Report::msg("(check_run_state) - acq timeout"))
+        }
     }
+    
 }
 
-async fn stop_acquisition(host_control_addr: SocketAddr, tqdc_contol_addr: SocketAddr) -> io::Result<()> {
+async fn stop_acquisition(host_control_addr: SocketAddr, tqdc_contol_addr: SocketAddr) -> Result<()> {
     let sock = UdpSocket::bind(host_control_addr).await?;
 
     sock.send_to(&MlinkMessage::to_datagram(&MlinkMessage::new_ctrl_req(
@@ -109,12 +134,16 @@ async fn stop_acquisition(host_control_addr: SocketAddr, tqdc_contol_addr: Socke
     )), tqdc_contol_addr).await?;
     
     let mut buf = [0; 4096 * 10];
-    sock.recv_from(&mut buf).await?;
-    // let (len, _) = sock.recv_from(&mut buf).await?;
-    // let acq = MlinkMessage::from_datagram(&buf[..len]);
-    // TODO: add correctness checking
-
-    Ok(())
+    match time::timeout(Duration::from_millis(100), sock.recv_from(&mut buf)).await {
+        Ok(res) => { match res {
+                Ok((_, _)) => {Ok(())}
+                Err(err) => Err(err.into())
+            }
+        }
+        Err(_) => {
+            Err(Report::msg("(stop_acquisition) - acq timeout"))
+        }
+    }
 }
 
 async fn gather_frames(
@@ -122,7 +151,7 @@ async fn gather_frames(
     tqdc_contol_addr: SocketAddr, 
     host_stream_addr: SocketAddr, 
     tqdc_stream_addr: SocketAddr
-) -> io::Result<Vec<MStreamFragment>> {
+) -> Result<Vec<MStreamFragment>> {
 
     let mut events = Vec::new();
     let stream_socket = UdpSocket::bind(host_stream_addr).await?;
@@ -161,22 +190,22 @@ async fn gather_frames(
                             events.extend(frames);
 
                         } else {
-                            panic!("no frames in package!")
+                            Err(Report::msg("(gather_frames) - incoming stream packet has no frames"))?
                         }
                     }
-                    _ => panic!("unimplemented!!")
+                    _ => Err(Report::msg("(gather_frames) - incoming packet is not STREAM type"))?
                 }
             }
             Err(_) => {
                 let state = check_run_state(
                     host_control_addr, 
                     tqdc_contol_addr
-                ).await.unwrap();
+                ).await?;
 
                 match state {
                     RunState::Finished => break,
                     RunState::InRun => {}
-                    RunState::Stopped => panic!("TODO: add panic")
+                    RunState::Stopped => Err(Report::msg("run state = Stopped"))?
                 }
             }
         }
@@ -193,7 +222,7 @@ pub async fn acquire_point(
     tqdc_ip: IpAddr,
     tqdc_control_port: u16,
     tqdc_stream_port: u16
-) -> io::Result<Vec<MStreamFragment>> {
+) -> Result<Vec<MStreamFragment>> {
 
     let acquisition_time_ms = acquisition_time_s * 1000;
 
@@ -204,24 +233,21 @@ pub async fn acquire_point(
     let tqdc_control_address = SocketAddr::new(tqdc_ip, tqdc_control_port);
     let tqdc_stream_address = SocketAddr::new(tqdc_ip, tqdc_stream_port);
 
-
-    {
-        tokio::spawn(async move{
-            sleep(Duration::from_millis(200)).await;
-            start_acquisition(
-                acquisition_time_ms, 
-                host_control_address,
-                tqdc_control_address
-            ).await.unwrap();
-        });
-    }
-    
-    let events = gather_frames(
+    let gather_loop = tokio::spawn(gather_frames(
         host_control_address,
         tqdc_control_address,
         host_stream_address,
         tqdc_stream_address
+    ));
+
+    sleep(Duration::from_millis(100)).await;
+    start_acquisition(
+        acquisition_time_ms, 
+        host_control_address,
+        tqdc_control_address
     ).await?;
+
+    let events = (gather_loop.await?)?;
 
     stop_acquisition(
         host_control_address, 
@@ -231,6 +257,7 @@ pub async fn acquire_point(
     Ok(events)
 }
 
+// TODO: add error handling
 pub async fn get_tqdc_configuration(path_to_config: &PathBuf) -> Value {
 
     let mut file = tokio::fs::File::open(path_to_config).await
