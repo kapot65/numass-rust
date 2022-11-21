@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::collections::HashMap;
 use std::net::{UdpSocket, SocketAddr};
 
 use eframe::egui;
@@ -94,21 +95,26 @@ struct MyEguiApp {
     value: Arc<Mutex<Vec<(u8, Vec<i16>)>>>
 }
 
-
 impl eframe::App for MyEguiApp {
    fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
 
-       ctx.request_repaint_after(
-        std::time::Duration::from_millis(50));
+       ctx.request_repaint_after(std::time::Duration::from_millis(1000/60));
+
+       let channels = {
+            let lock = self.value.lock();
+            let mut channels_map = HashMap::new();
+            for (ch_num, waveform) in lock.clone() {
+                channels_map.insert(ch_num, waveform);
+            }
+            channels_map
+        };
+
        egui::CentralPanel::default().show(ctx, |ui| {
-            //    ui.heading(format!("{:?}", *lock));
 
-            let channels = {
-                let lock = self.value.lock();
-                lock.clone()
-            };
+            let mut sorted = channels.iter().collect::<Vec<_>>();
+            sorted.sort_by_key(|k| k.0);
 
-            let lines =  channels.iter().map(|(ch_num, waveform)| {
+            let lines = sorted.iter().map(|(ch_num, waveform)| {
                 Line::new(
                     waveform.iter().enumerate().map(|(x, y)| [x as f64, *y as f64]).collect::<Vec<_>>()).name(
                         format!("{ch_num}")
