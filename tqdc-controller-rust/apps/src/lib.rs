@@ -1,9 +1,61 @@
 pub mod defaults;
 
-use dataforge::protos::rsb_event;
+use dataforge::protos::rsb_event::{self, Point};
 use tokio::io::AsyncWriteExt;
 use std::collections::HashMap;
 use tqdc::mlink::MStreamFragment;
+
+#[derive(Debug, Clone)]
+pub struct PointHistogramm {
+    pub x: Vec<f32>,
+    pub channels: HashMap<u8, Vec<f32>>
+}
+
+pub async fn point_to_histogramm(point: &Point, range: (i32, i32), bins: usize) -> PointHistogramm {
+
+    let (max, min) = range;
+
+    let step = (max - min) as f32 / bins as f32;
+    let mut histogram = PointHistogramm {
+        x: (0..bins).map(|idx| {
+            min as f32 + step * (idx as f32) + step / 2.0
+        }).collect::<Vec<f32>>(),
+        channels: HashMap::new()
+    };
+
+    for channel in &point.channels {
+
+        let amplitudes = channel.blocks.iter().flat_map(|block| {
+            block.frames.iter().map(|frame| {
+                let waveform_len = frame.data.len() / 2;
+
+                let waveform = (0..waveform_len).map(|idx| {
+                    i16::from_le_bytes(frame.data[idx*2..idx*2+2].try_into().unwrap())
+                });
+
+                let first = waveform.clone().take(4).sum::<i16>() / 4;
+
+                let waveform_normed = waveform.map(|ampl| {
+                    ampl - first
+                });
+
+                waveform_normed.max().unwrap()
+            })
+        }).collect::<Vec<_>>();
+
+        let mut y = vec!(0.0; bins as usize);
+        for amplitude in amplitudes {
+            let idx = (amplitude as i32 - min) as f32 / step;
+            if idx >= 0.0 && idx < bins as f32 {
+                y[idx as usize] += 1.0;
+            }
+        };
+
+        histogram.channels.insert(channel.id as u8, y);
+    };
+
+    histogram
+}
 
 pub async fn events_to_point(events: Vec<MStreamFragment>) -> tokio::io::Result<rsb_event::Point> {
 
