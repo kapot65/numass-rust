@@ -44,7 +44,15 @@ pub enum DFMeta {
     #[serde(rename="command")]
     Command(Command),
     #[serde(rename="reply")]
-    Reply(Reply)
+    Reply(Reply),
+    #[serde(rename="info_file")]
+    InfoFile {
+
+    },
+    #[serde(rename="voltage")]
+    Voltage {
+
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -85,9 +93,7 @@ pub enum Reply {
     AcquirePoint {
         #[serde_as(as = "PickFirst<(_, DisplayFromStr)>")]
         acquisition_time: f32,
-        // #[serde(with = "chrono::serde::ts_seconds")]
         start_time: NaiveDateTime,
-        // #[serde(with = "chrono::serde::ts_seconds")]
         end_time: NaiveDateTime,
         external_meta: Option<serde_json::Value>,
         config: Option<serde_json::Value>,
