@@ -1,13 +1,13 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use std::net::{UdpSocket, SocketAddr};
 
 use eframe::egui;
-use eframe::egui::mutex::Mutex;
-use eframe::egui::plot::{Plot, Line};
+use eframe::egui::plot::{Plot, Line, Legend};
 use clap::Parser;
 
 use tqdc::mlink::MlinkMessage;
+use apps::PointHistogramm;
 use apps::defaults::{HOST_IP, BOARD_IP, STREAM_PORT, HOST_STREAM_PORT};
 
 /// Read TQDC register that contains id (programm does not have timeout)
@@ -31,10 +31,23 @@ fn main() {
 
     let args = Args::parse();
 
-    let native_options = eframe::NativeOptions::default();
+    let (min, max) = (0, 400);
+    let bins = 400;
+    
+    let step = (max - min) as f32 / bins as f32;
 
-    let v = Arc::new(Mutex::new(vec![]));
-    let v2 = Arc::clone(&v);
+
+    let histogram_bg = Arc::new(Mutex::new(PointHistogramm {
+        x: (0..bins).map(|idx| {
+            min as f32 + step * (idx as f32) + step / 2.0
+        }).collect::<Vec<f32>>(),
+        channels: HashMap::new()
+    }));
+    let histogram = Arc::clone(&histogram_bg);
+
+    
+    let waveforms_bg = Arc::new(Mutex::new(vec![]));
+    let waveforms = Arc::clone(&waveforms_bg);
 
     std::thread::spawn(move || {
 
@@ -70,12 +83,31 @@ fn main() {
 
                             let channels = frames.iter().flat_map(|fragment| {
                                 fragment.channels.iter().map(|channel| {
-                                    (channel.channel_number, channel.waveform.clone())
+
+                                    let first = channel.waveform.iter().take(4).sum::<i16>() / 4;
+                                    (
+                                        channel.channel_number, 
+                                        channel.waveform.iter().map(|v| (v - first) / 4).collect::<Vec<_>>()
+                                    )
                                 })
                             }).collect::<Vec<_>>();
 
-                            let mut lock = v.lock();
-                            *lock = channels;
+                            {
+                                let mut hist_lock = histogram_bg.lock().unwrap();
+                                for (ch_num, waveform) in &channels {
+                                    let amplitude = *waveform.iter().max().unwrap();
+                                    if amplitude > min && amplitude < max {
+                                        let y = hist_lock.channels.entry(*ch_num).or_insert_with(|| vec![0.0; bins]);
+                                        let bin = ((amplitude - min) as f32 / step) as usize;
+                                        y[bin] += 1.0;
+                                    } 
+                                }
+                            }
+
+                            {
+                                let mut waveform_lock = waveforms_bg.lock().unwrap();
+                                *waveform_lock = channels;
+                            }
 
                         } else {
                             panic!("no frames in package!")
@@ -86,13 +118,16 @@ fn main() {
             }
     });
 
+    let native_options = eframe::NativeOptions::default();
     eframe::run_native("My egui App", native_options, Box::new(|_| Box::new(MyEguiApp {
-        value: v2
+        waveforms,
+        histogram
     })));
 }
 
 struct MyEguiApp {
-    value: Arc<Mutex<Vec<(u8, Vec<i16>)>>>
+    waveforms: Arc<Mutex<Vec<(u8, Vec<i16>)>>>,
+    histogram: Arc<Mutex<PointHistogramm>>
 }
 
 impl eframe::App for MyEguiApp {
@@ -100,10 +135,12 @@ impl eframe::App for MyEguiApp {
 
        ctx.request_repaint_after(std::time::Duration::from_millis(1000/60));
 
+    //    println!("{:?}", ctx.used_size());
+
        let channels = {
-            let lock = self.value.lock();
+            let lock = self.waveforms.lock();
             let mut channels_map = HashMap::new();
-            for (ch_num, waveform) in lock.clone() {
+            for (ch_num, waveform) in lock.unwrap().clone() {
                 channels_map.insert(ch_num, waveform);
             }
             channels_map
@@ -117,15 +154,39 @@ impl eframe::App for MyEguiApp {
             let lines = sorted.iter().map(|(ch_num, waveform)| {
                 Line::new(
                     waveform.iter().enumerate().map(|(x, y)| [x as f64, *y as f64]).collect::<Vec<_>>()).name(
-                        format!("{ch_num}")
-                    )
+                        format!("ch #{ch_num}")
+                )
             });
 
-            Plot::new("Test Plot").show(ui, |plot_ui| {
-                lines.for_each(|line| {
-                    plot_ui.line(line)
-                })
-            });
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
+                ui.vertical(|ui| {
+                    ui.set_width(500.0);
+                    Plot::new("waveforms").legend(Legend { 
+                        text_style: egui::TextStyle::Body, 
+                        background_alpha: 1.0, position: egui::plot::Corner::RightTop 
+                    }).show(ui, |plot_ui| {
+                        lines.for_each(|line| {
+                            plot_ui.line(line)
+                        })
+                    });
+                });
+                ui.vertical(|ui| {
+                    Plot::new("hists").legend(Legend { 
+                        text_style: egui::TextStyle::Body, 
+                        background_alpha: 1.0, position: egui::plot::Corner::RightTop 
+                        }).show(ui, |plot_ui| {
+                            let hist = self.histogram.lock().unwrap().clone();
+                            let mut channels = Vec::from_iter(hist.channels.iter());
+                            channels.sort_by_key(|(ch_num, _)| **ch_num);
+                            for (ch_num, y) in channels {
+                                plot_ui.line(Line::new(
+                                y.iter().enumerate().map(|(x, y)| [hist.x[x] as f64, *y as f64]).collect::<Vec<_>>()).name(
+                                    format!("ch #{ch_num}")
+                                ));
+                            }
+                        });
+                });
+            })
        });
    }
 }

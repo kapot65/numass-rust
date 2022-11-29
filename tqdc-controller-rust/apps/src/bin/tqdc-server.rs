@@ -143,10 +143,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
 
-                    DFMeta::Reply(_) => {
+                    _ => {
                         push_df_message(&mut socket, DFMeta::Reply(dataforge::Reply::Error { 
                             error_code: dataforge::ErrorType::UnknownMessageError, 
-                            description: "tqdc-server doesn't handles replies".to_string()
+                            description: "tqdc-server doesn't handles anything but commands".to_string()
                         }), None).await
                         .expect("catch IO error on sending DF message");
                     }
