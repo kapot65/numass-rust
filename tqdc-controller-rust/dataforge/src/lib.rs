@@ -12,7 +12,7 @@ use serde::{Serialize, Deserialize};
 use serde_repr::{Serialize_repr, Deserialize_repr};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-#[derive(Debug, Serialize_repr, Deserialize_repr)]
+#[derive(Debug, Serialize_repr, Deserialize_repr, Clone)]
 #[repr(u32)]
 pub enum ErrorType // TODO rename
 {
@@ -38,7 +38,7 @@ pub struct DFMessage {
     pub data: Option<Vec<u8>>
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type")]
 pub enum DFMeta {
     #[serde(rename="command")]
@@ -55,7 +55,7 @@ pub enum DFMeta {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "command_type")]
 pub enum Command {
     #[serde(rename="init")]
@@ -68,14 +68,14 @@ pub enum Command {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum ReplyStatus {
     #[serde(rename="ok")]
     Ok
 }
 
 #[serde_as]
-#[derive(Debug, Serialize, Deserialize, )]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "reply_type")]
 pub enum Reply {
 

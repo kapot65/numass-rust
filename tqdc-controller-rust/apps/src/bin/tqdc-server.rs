@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
+use std::path::PathBuf;
 
-use chrono::Utc;
+use chrono::{Utc, Local};
 use clap::Parser;
 use protobuf::Message;
 use tokio::task::JoinHandle;
@@ -20,7 +21,7 @@ use apps::defaults::{
 };
 
 
-#[derive(Parser, Debug, Clone, Copy)]
+#[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 struct Args {
    #[arg(long, default_value_t = HOST_IP)]
@@ -43,6 +44,9 @@ struct Args {
 
    #[arg(long, default_value_t = STREAM_PORT)]
    tqdc_stream_port: u16,
+
+   #[arg(long)]
+   backup_folder: Option<PathBuf>,
 }
 
 async fn acquire_point(acquisition_time: f32, external_meta: Option<Value>, args: Args) -> Result<(DFMeta, Option<Vec<u8>>)> {
@@ -108,9 +112,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             runner.abort();
         }
 
+        let args = args.to_owned();
         *current_connection_lock = Some(tokio::spawn(async move {
 
             loop {
+
+                let args = args.to_owned();
                 let msg = extract_df_message(&mut socket).await
                     .expect("catch IO error on receiving DF message");
 
@@ -126,10 +133,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }), None).await.expect("catch IO error on sending DF message");
                             }
                             dataforge::Command::AcquirePoint { split: _, acquisition_time, external_meta } => {
-                                match acquire_point(acquisition_time, external_meta, args).await {
+                                match acquire_point(acquisition_time, external_meta, args.clone()).await {
                                     Ok((meta, data)) => {
+
+                                        if let Some(backup_folder) = args.backup_folder {
+                                            let now = Local::now().naive_local();
+                                            let filename = now.format("%Y-%m-%d-%H-%M-%S.df").to_string();
+                                            let mut point_file = tokio::fs::File::create(backup_folder.join(filename))
+                                                .await.expect("catch IO error on sending DF message");
+                                            dataforge::push_df_message(&mut point_file, meta.clone(), data.clone())
+                                                .await.expect("catch IO error on sending DF message");
+                                        }
+
                                         push_df_message(&mut socket,  meta, data).await
                                             .expect("catch IO error on sending DF message");
+
                                     }
                                     Err(error) => {
                                         push_df_message(&mut socket, DFMeta::Reply(dataforge::Reply::Error { 
