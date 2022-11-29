@@ -13,8 +13,8 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Opt {
-    #[clap()]
-    filepath: Option<PathBuf>,
+    #[clap(long)]
+    directory: Option<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -293,7 +293,7 @@ async fn main() {
         options,
         Box::new(|_cc| {
             Box::new(MyApp {
-                root: opt.filepath.map(expand_dir),
+                root: opt.directory.map(expand_dir),
                 state,
                 background_pipe: rx
             })
