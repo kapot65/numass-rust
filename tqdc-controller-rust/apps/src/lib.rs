@@ -8,20 +8,52 @@ use tqdc::mlink::MStreamFragment;
 #[derive(Debug, Clone)]
 pub struct PointHistogramm {
     pub x: Vec<f32>,
-    pub channels: HashMap<u8, Vec<f32>>
+    pub channels: HashMap<u8, Vec<f32>>,
+    pub step: f32,
+    bins: usize,
+    range: (i32, i32)
+}
+
+impl PointHistogramm {
+    pub fn new(range: (i32, i32), bins: usize) -> Self {
+        let (min, max) = range;
+        let step = (max - min) as f32 / bins as f32;
+        PointHistogramm {
+            x: (0..bins).map(|idx| {
+                min as f32 + step * (idx as f32) + step / 2.0
+            }).collect::<Vec<f32>>(),
+            step,
+            range,
+            bins,
+            channels: HashMap::new()
+        }
+    }
+
+    pub fn add(&mut self, ch_num: u8, amplitude: i16) {
+        let amplitude = amplitude as i32;
+        let (min, max) = self.range;
+        if amplitude > min && amplitude < max {
+            let y = self.channels.entry(ch_num).or_insert_with(|| vec![0.0; self.bins]);
+            let bin = ((amplitude - min) as f32 / self.step) as usize;
+            y[bin] += 1.0;
+        }
+    }
+
+    pub fn add_batch(&mut self, ch_num: u8, amplitudes: Vec<i16>) {
+        let (min, _) = self.range;
+        let y = self.channels.entry(ch_num).or_insert_with(|| vec![0.0; self.bins]);
+        for amplitude in amplitudes {
+            let idx = (amplitude as i32 - min) as f32 / self.step;
+            if idx >= 0.0 && idx < self.bins as f32 {
+                y[idx as usize] += 1.0;
+            }
+        };
+    }
 }
 
 pub async fn point_to_histogramm(point: &Point, range: (i32, i32), bins: usize) -> PointHistogramm {
 
-    let (max, min) = range;
-
-    let step = (max - min) as f32 / bins as f32;
-    let mut histogram = PointHistogramm {
-        x: (0..bins).map(|idx| {
-            min as f32 + step * (idx as f32) + step / 2.0
-        }).collect::<Vec<f32>>(),
-        channels: HashMap::new()
-    };
+    let mut histogram = PointHistogramm::new(range, bins);
 
     for channel in &point.channels {
 
@@ -43,15 +75,7 @@ pub async fn point_to_histogramm(point: &Point, range: (i32, i32), bins: usize) 
             })
         }).collect::<Vec<_>>();
 
-        let mut y = vec!(0.0; bins as usize);
-        for amplitude in amplitudes {
-            let idx = (amplitude as i32 - min) as f32 / step;
-            if idx >= 0.0 && idx < bins as f32 {
-                y[idx as usize] += 1.0;
-            }
-        };
-
-        histogram.channels.insert(channel.id as u8, y);
+        histogram.add_batch(channel.id as u8, amplitudes);
     };
 
     histogram
@@ -59,7 +83,7 @@ pub async fn point_to_histogramm(point: &Point, range: (i32, i32), bins: usize) 
 
 pub async fn events_to_point(events: Vec<MStreamFragment>) -> tokio::io::Result<rsb_event::Point> {
 
-    let mut frames_per_channel = HashMap::new();
+    let mut frames_per_channel: HashMap<u8, Vec<rsb_event::point::channel::block::Frame>> = HashMap::new();
     let mut begin_time: Option<u128> = None;
 
     for frame in events {
@@ -76,7 +100,7 @@ pub async fn events_to_point(events: Vec<MStreamFragment>) -> tokio::io::Result<
                 frame.data.write_i16_le(bin / 4).await?;
             }
 
-            frames_per_channel.entry(channel.channel_number).or_insert(vec![]).push(
+            frames_per_channel.entry(channel.channel_number).or_default().push(
                 frame
             );
         }

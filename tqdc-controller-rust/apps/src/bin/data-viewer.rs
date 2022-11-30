@@ -1,7 +1,7 @@
 use std::time::SystemTime;
 use std::{path::PathBuf, collections::HashMap, sync::Arc};
 
-use dataforge::{Reply};
+use dataforge::Reply;
 use protobuf::Message;
 use dataforge::protos::rsb_event;
 use apps::{point_to_histogramm, PointHistogramm};
@@ -179,7 +179,7 @@ fn file_tree_entry(
     }
 }
 
-impl eframe::App for MyApp {   
+impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint_after(std::time::Duration::from_secs(1));
         egui::SidePanel::left("left").show(ctx, |ui| {
@@ -206,9 +206,7 @@ impl eframe::App for MyApp {
 
                 if let Ok(ref mut mutex) = self.state.try_lock() {
                     file_tree_entry(ui,root, mutex);
-                } else {
-                    // println!("try_lock failed");
-                }   
+                }
             }
         });
 
@@ -223,9 +221,13 @@ impl eframe::App for MyApp {
                     let (_, hash) = opened_files.last().unwrap();
                     if hash.opened && hash.histogram.is_some() {
                         let hist = hash.histogram.clone().unwrap();
+
                         let lines = hist.channels.iter().map(|(ch_num, y)| {
                             Line::new(
-                                y.iter().enumerate().map(|(x, y)| [hist.x[x] as f64, *y as f64]).collect::<Vec<_>>()).name(
+                                y.iter().enumerate().flat_map(|(x, y)| [
+                                    [(hist.x[x] - hist.step / 2.0)  as f64, *y as f64],
+                                    [(hist.x[x] + hist.step / 2.0)  as f64, *y as f64]
+                                ]).collect::<Vec<_>>()).name(
                                     format!("ch #{ch_num}")
                                 )
                         });
@@ -254,7 +256,10 @@ impl eframe::App for MyApp {
                         }
 
                         Line::new(
-                            y_all.iter().enumerate().map(|(x, y)| [hist.x[x] as f64, *y as f64]).collect::<Vec<_>>()).name(
+                            y_all.iter().enumerate().flat_map(|(x, y)| [
+                                [(hist.x[x] - hist.step / 2.0)  as f64, *y as f64],
+                                [(hist.x[x] + hist.step / 2.0)  as f64, *y as f64]
+                            ]).collect::<Vec<_>>()).name(
                             filepath.to_string()
                         )
                     });

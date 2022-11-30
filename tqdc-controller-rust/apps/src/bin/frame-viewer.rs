@@ -25,24 +25,24 @@ struct Args {
 
    #[arg(long, default_value_t = STREAM_PORT)]
    tqdc_stream_port: u16,
+
+   #[arg(long, default_value_t = 0)]
+   hist_min: i32,
+
+   #[arg(long, default_value_t = 400)]
+   hist_max: i32,
+
+   #[arg(long, default_value_t = 400)]
+   hist_bins: usize,
 }
 
 fn main() {
 
     let args = Args::parse();
 
-    let (min, max) = (0, 400);
-    let bins = 400;
-    
-    let step = (max - min) as f32 / bins as f32;
-
-
-    let histogram_bg = Arc::new(Mutex::new(PointHistogramm {
-        x: (0..bins).map(|idx| {
-            min as f32 + step * (idx as f32) + step / 2.0
-        }).collect::<Vec<f32>>(),
-        channels: HashMap::new()
-    }));
+    let histogram_bg = Arc::new(
+        Mutex::new(
+            PointHistogramm::new((args.hist_min, args.hist_max), args.hist_bins)));
     let histogram = Arc::clone(&histogram_bg);
 
     
@@ -96,11 +96,7 @@ fn main() {
                                 let mut hist_lock = histogram_bg.lock().unwrap();
                                 for (ch_num, waveform) in &channels {
                                     let amplitude = *waveform.iter().max().unwrap();
-                                    if amplitude > min && amplitude < max {
-                                        let y = hist_lock.channels.entry(*ch_num).or_insert_with(|| vec![0.0; bins]);
-                                        let bin = ((amplitude - min) as f32 / step) as usize;
-                                        y[bin] += 1.0;
-                                    } 
+                                    hist_lock.add(*ch_num, amplitude); 
                                 }
                             }
 
@@ -180,7 +176,10 @@ impl eframe::App for MyEguiApp {
                             channels.sort_by_key(|(ch_num, _)| **ch_num);
                             for (ch_num, y) in channels {
                                 plot_ui.line(Line::new(
-                                y.iter().enumerate().map(|(x, y)| [hist.x[x] as f64, *y as f64]).collect::<Vec<_>>()).name(
+                                y.iter().enumerate().flat_map(|(x, y)| [
+                                    [(hist.x[x] - hist.step / 2.0)  as f64, *y as f64],
+                                    [(hist.x[x] + hist.step / 2.0)  as f64, *y as f64]
+                                ]).collect::<Vec<_>>()).name(
                                     format!("ch #{ch_num}")
                                 ));
                             }
