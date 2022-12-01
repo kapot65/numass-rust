@@ -74,6 +74,13 @@ pub enum ReplyStatus {
     Ok
 }
 
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+pub struct ZeroSuppressionParams {
+    pub head_size: usize,
+    pub threshold: i16
+}
+
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "reply_type")]
@@ -97,6 +104,7 @@ pub enum Reply {
         end_time: NaiveDateTime,
         external_meta: Option<serde_json::Value>,
         config: Option<serde_json::Value>,
+        zero_suppression: Option<ZeroSuppressionParams>,
         // split: bool,
         status: ReplyStatus,
     }

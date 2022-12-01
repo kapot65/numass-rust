@@ -12,7 +12,7 @@ use fs2::FileExt;
 use serde_json::Value;
 use eyre::{Result, ContextCompat};
 
-use dataforge::{extract_df_message, DFMeta, push_df_message};
+use dataforge::{extract_df_message, DFMeta, push_df_message, ZeroSuppressionParams};
 use apps::events_to_point;
 
 use apps::defaults::{
@@ -47,6 +47,15 @@ struct Args {
 
    #[arg(long)]
    backup_folder: Option<PathBuf>,
+
+   #[clap(long, short, action)]
+   zero_suppression: bool,
+
+   #[arg(long, default_value_t = 16)]
+   zero_suppression_head_size: usize,
+
+   #[arg(long, default_value_t = 34)]
+   zero_suppression_threshold: i16,
 }
 
 async fn acquire_point(acquisition_time: f32, external_meta: Option<Value>, args: Args) -> Result<(DFMeta, Option<Vec<u8>>)> {
@@ -68,7 +77,16 @@ async fn acquire_point(acquisition_time: f32, external_meta: Option<Value>, args
         &home.join::<std::path::PathBuf>(".config/AFI Electronics/TQDC2/TQDC2_default.ini".into())
     ).await);
 
-    let point = events_to_point(events).await?;
+    let zero_suppression = if args.zero_suppression {
+        Some(ZeroSuppressionParams {
+            head_size: args.zero_suppression_head_size,
+            threshold: args.zero_suppression_threshold
+        })
+    } else {
+        None
+    };
+
+    let point = events_to_point(events, zero_suppression).await?;
     
     let meta = DFMeta::Reply(dataforge::Reply::AcquirePoint { 
         acquisition_time, 
@@ -76,6 +94,7 @@ async fn acquire_point(acquisition_time: f32, external_meta: Option<Value>, args
         end_time, 
         external_meta, 
         config,
+        zero_suppression,
         status: dataforge::ReplyStatus::Ok 
     });
 

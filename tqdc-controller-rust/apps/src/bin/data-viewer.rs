@@ -87,6 +87,7 @@ async fn background_processing(mut tx: watch::Receiver<Option<Action>>, configur
                                 end_time: _, 
                                 external_meta: _, 
                                 config: _, 
+                                zero_suppression: _,
                                 status: _
                             }) => {
                                 let data = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
