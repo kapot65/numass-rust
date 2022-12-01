@@ -65,7 +65,7 @@ pub async fn point_to_histogramm(point: &Point, range: (i32, i32), bins: usize) 
                     i16::from_le_bytes(frame.data[idx*2..idx*2+2].try_into().unwrap())
                 });
 
-                let first = waveform.clone().take(4).sum::<i16>() / 4;
+                let first = waveform.clone().take(16).sum::<i16>() / 16;
 
                 let waveform_normed = waveform.map(|ampl| {
                     ampl - first
@@ -91,9 +91,9 @@ pub async fn events_to_point(events: Vec<MStreamFragment>, zero_suppression: Opt
 
             let append = match zero_suppression {
                 Some(params) => {
-                    let baseline = channel.waveform.iter().take(params.head_size).sum::<i16>() as f32 / params.head_size as f32;
-                    let max = *channel.waveform.iter().max().unwrap() as f32 - baseline;
-                    max > params.threshold as f32
+                    let baseline = channel.waveform.iter().take(params.baseline).sum::<i16>() / params.baseline as i16;
+                    let max = *channel.waveform.iter().max().unwrap() - baseline;
+                    max > params.threshold * 4
                 }
                 None => true
             };

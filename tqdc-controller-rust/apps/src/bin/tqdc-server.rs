@@ -51,8 +51,9 @@ struct Args {
    #[clap(long, short, action)]
    zero_suppression: bool,
 
+   /// number of first bins taken to calculate baseline
    #[arg(long, default_value_t = 16)]
-   zero_suppression_head_size: usize,
+   zero_suppression_baseline: usize,
 
    #[arg(long, default_value_t = 34)]
    zero_suppression_threshold: i16,
@@ -79,7 +80,7 @@ async fn acquire_point(acquisition_time: f32, external_meta: Option<Value>, args
 
     let zero_suppression = if args.zero_suppression {
         Some(ZeroSuppressionParams {
-            head_size: args.zero_suppression_head_size,
+            baseline: args.zero_suppression_baseline,
             threshold: args.zero_suppression_threshold
         })
     } else {
