@@ -57,13 +57,23 @@ struct Args {
 
    #[arg(long, default_value_t = 34)]
    zero_suppression_threshold: i16,
+
+   #[arg(long)]
+   lockfile: Option<PathBuf>,
+
+   /// path to AFI-TQDC2 configuration file 
+   #[arg(long)]
+   afi_config: Option<PathBuf>,
 }
 
 async fn acquire_point(acquisition_time: f32, external_meta: Option<Value>, args: Args) -> Result<(DFMeta, Option<Vec<u8>>)> {
 
-    let home = home::home_dir().wrap_err_with(|| {"unable to get home directory"})?;
-
-    let lockfile_path = home.join::<std::path::PathBuf>(".config/AFI Electronics/TQDC2/lock".into());
+    let lockfile_path = if let Some(lockfile) = args.lockfile {
+        lockfile
+    } else {
+        let home = home::home_dir().wrap_err_with(|| {"unable to get home directory"})?;
+        home.join::<std::path::PathBuf>(".config/AFI Electronics/TQDC2/lock".into())
+    };
     let lockfile = std::fs::OpenOptions::new().read(true).write(true).create(true).open(&lockfile_path)?;
     lockfile.lock_exclusive()?;
 
@@ -74,9 +84,13 @@ async fn acquire_point(acquisition_time: f32, external_meta: Option<Value>, args
         args.tqdc_ip, args.tqdc_control_port, args.tqdc_stream_port
     ).await?;
     let end_time = Utc::now().naive_local();
-    let config = Some(tqdc::get_tqdc_configuration(
-        &home.join::<std::path::PathBuf>(".config/AFI Electronics/TQDC2/TQDC2_default.ini".into())
-    ).await);
+    let config_filepath = if let Some(afi_config) = args.afi_config {
+        afi_config
+    } else {
+        let home = home::home_dir().wrap_err_with(|| {"unable to get home directory"})?;
+        home.join::<std::path::PathBuf>(".config/AFI Electronics/TQDC2/TQDC2_default.ini".into())
+    };
+    let config = Some(tqdc::get_tqdc_configuration(&config_filepath).await);
 
     let zero_suppression = if args.zero_suppression {
         Some(ZeroSuppressionParams {
