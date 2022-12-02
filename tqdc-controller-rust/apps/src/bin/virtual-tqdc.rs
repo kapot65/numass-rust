@@ -39,7 +39,7 @@ async fn handle_control_port(
                     acq.push(match reg {
                         CtrlReg::Read16 { address, value: _ } => {
                             if let Some(rval) = regs16.lock().await.get(&(address as u16)) {
-                                CtrlReg::Read16 { address: address, value: *rval }
+                                CtrlReg::Read16 { address, value: *rval }
                             } else {
                                 panic!("adress {address:x?} not found in registers")
                             }
@@ -47,13 +47,10 @@ async fn handle_control_port(
                         CtrlReg::Write16 { address, value } => {
                             regs16.lock().await.insert(address as u16, value);
                         
-                            match address {
-                                Register16::DeviceCtrl => {
-                                    if value == DeviceCtrl::Run as u16 {
-                                        control_tx.send(()).unwrap();
-                                    }
+                            if let Register16::DeviceCtrl = address {
+                                if value == DeviceCtrl::Run as u16 {
+                                    control_tx.send(()).unwrap();
                                 }
-                                _ => {}
                             }
 
                             CtrlReg::Write16 { address, value }
@@ -143,7 +140,7 @@ async fn main() -> io::Result<()> {
     
     {
       let mut guard =  regs16.lock().await;
-      guard.insert(Register16::DeviceId as u16, 0x0001 as u16);
+      guard.insert(Register16::DeviceId as u16, 0x0001);
       guard.insert(
         Register16::RunState as u16, 
         tqdc::regs::RunState::Finished as u16);

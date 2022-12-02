@@ -114,12 +114,12 @@ impl MlinkMessage {
             }
 
             MessageType::CtrlAck => {
-                let regs = MlinkMessage::extract_regs(&data);
+                let regs = MlinkMessage::extract_regs(data);
                 MlinkMessage::CtrlAck { header, regs } 
             }
 
             MessageType::CtrlReq => {
-                let regs = MlinkMessage::extract_regs(&data);
+                let regs = MlinkMessage::extract_regs(data);
                 MlinkMessage::CtrlReq { header, regs } 
             },
         }
@@ -127,7 +127,7 @@ impl MlinkMessage {
 
     pub fn to_datagram(message: &MlinkMessage) -> Vec<u8> {
 
-        return match message {
+        match message {
             MlinkMessage::StreamAcq {header, offset, id} => {
                 
                 let mut buffer = Vec::with_capacity(12 + 8 + 4);
@@ -180,7 +180,7 @@ impl MlinkMessage {
         
     }
 
-    fn calculate_regs_len(regs: &Vec<CtrlReg>) -> u16 {
+    fn calculate_regs_len(regs: &[CtrlReg]) -> u16 {
         regs.iter().map(|r| {
             match r {
                 CtrlReg::Read16 { address: _, value: _ } => 1,
@@ -254,7 +254,7 @@ impl MlinkMessage {
                 }
 
                 CtrlReg::Write16 { address, value} => {
-                    let word: u32 = 0x00000000 | ((*address as u32 & 0x7FFF) << 16) | (*value as u32);
+                    let word: u32 = ((*address as u32 & 0x7FFF) << 16) | (*value as u32);
                     buffer.extend_from_slice(&word.to_le_bytes());
                 }
 
@@ -266,8 +266,8 @@ impl MlinkMessage {
                 }
 
                 CtrlReg::Write32 { address, value} => {
-                    let word1: u32 = 0x00000000 | ((*address as u32 & 0x7FFF) << 16) | (*value & 0xFFFF);
-                    let word2: u32 = 0x00000000 | (((*address as u32 + 1) as u32 & 0x7FFF) << 16) | (*value >> 16);
+                    let word1: u32 = ((*address as u32 & 0x7FFF) << 16) | (*value & 0xFFFF);
+                    let word2: u32 = (((*address as u32 + 1) as u32 & 0x7FFF) << 16) | (*value >> 16);
                     buffer.extend_from_slice(&word1.to_le_bytes());
                     buffer.extend_from_slice(&word2.to_le_bytes());
                 }
@@ -276,7 +276,7 @@ impl MlinkMessage {
     }
 
     fn write_crc(buffer: &mut Vec<u8>) {
-        buffer.extend_from_slice(&vec![0,0,0,0]);
+        buffer.extend_from_slice(&[0,0,0,0]);
     }  
 }
 
@@ -334,13 +334,13 @@ impl MLinkHeader {
         let type_ = MessageType::try_from(u16::from_le_bytes(bytes[..2].try_into().unwrap())).unwrap();
         let sync = MessageSync::try_from(u16::from_le_bytes(bytes[2..4].try_into().unwrap())).unwrap();
 
-        return MLinkHeader {
+        MLinkHeader {
             type_, sync,
             seq: u16::from_le_bytes(bytes[4..6].try_into().unwrap()),
             len: u16::from_le_bytes(bytes[6..8].try_into().unwrap()),
             src: u16::from_le_bytes(bytes[8..10].try_into().unwrap()),
             dst: u16::from_le_bytes(bytes[10..12].try_into().unwrap()),
-        };
+        }
     }
 }
 
