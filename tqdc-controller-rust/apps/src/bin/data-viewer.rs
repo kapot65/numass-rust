@@ -229,7 +229,7 @@ impl eframe::App for MyApp {
                                     [(hist.x[x] - hist.step / 2.0)  as f64, *y as f64],
                                     [(hist.x[x] + hist.step / 2.0)  as f64, *y as f64]
                                 ]).collect::<Vec<_>>()).name(
-                                    format!("ch #{ch_num}")
+                                    format!("ch #{}", ch_num + 1)
                                 )
                         });
 
