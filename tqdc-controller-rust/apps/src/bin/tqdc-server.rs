@@ -10,7 +10,7 @@ use tokio::net::TcpListener;
 use fs2::FileExt;
 
 use serde_json::Value;
-use eyre::{Result, ContextCompat};
+use eyre::{Result, ContextCompat, Report};
 
 use dataforge::{extract_df_message, DFMeta, push_df_message, ZeroSuppressionParams};
 use apps::events_to_point;
@@ -83,6 +83,12 @@ async fn acquire_point(acquisition_time: f32, external_meta: Option<Value>, args
         args.host_ip, args.host_control_port, args.host_stream_port,
         args.tqdc_ip, args.tqdc_control_port, args.tqdc_stream_port
     ).await?;
+
+    if events.is_empty() {
+        return Err(Report::msg("(acquire_point) no frames gathered from TQDC during acquisition; \
+            please reset board (turn off/ turn on + fix network + restart softwafe)"));
+    }
+
     let end_time = Utc::now().naive_local();
     let config_filepath = if let Some(afi_config) = args.afi_config {
         afi_config
