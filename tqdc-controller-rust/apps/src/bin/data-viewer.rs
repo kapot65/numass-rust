@@ -46,6 +46,16 @@ enum FSRepr {
     }
 }
 
+impl FSRepr {
+    fn to_filename(&self) -> &str{
+        let path = match self {
+            FSRepr::File { path }  => path,
+            FSRepr::Directory { path, children: _ } => path
+        };
+        path.file_name().unwrap().to_str().unwrap()
+    }
+}
+
 async fn background_processing(mut tx: watch::Receiver<Option<Action>>, configuration: Arc<Mutex<HashMap<String, FileCache>>>) {
     while tx.changed().await.is_ok() {
 
@@ -124,13 +134,10 @@ fn expand_dir(path: PathBuf) -> FSRepr {
             expand_dir(entry.path())
         }).collect::<Vec<_>>();
 
-        children.sort_by_key(|e| {
-            let path = match e {
-                FSRepr::File { path }  => path,
-                FSRepr::Directory { path, children: _ } => path
-            };
-            path.file_name().unwrap().to_str().unwrap().to_owned()
+        children.sort_by(|a, b| {
+            natord::compare(a.to_filename(), b.to_filename())
         });
+
         FSRepr::Directory { path, children }
     } else {
         panic!()
@@ -184,31 +191,32 @@ impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint_after(std::time::Duration::from_secs(1));
         egui::SidePanel::left("left").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                if ui.button("open").clicked() {
-                    if let Some(root_path) = rfd::FileDialog::new().pick_folder() {
-                        self.root = Some(expand_dir(root_path))
+            egui::containers::ScrollArea::new([false, true]).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button("open").clicked() {
+                        if let Some(root_path) = rfd::FileDialog::new().pick_folder() {
+                            self.root = Some(expand_dir(root_path))
+                        }
+                    }
+                    if let Some(root) = &self.root {
+                        if ui.button("reload").clicked() {
+                            self.root = Some(expand_dir(match root {
+                                FSRepr::File { path } => path.to_owned(),
+                                FSRepr::Directory { path, children: _ } => path.to_owned()
+                            }));
+                        }
+                    }
+                    if ui.button("apply").clicked() {
+                        self.background_pipe.send(Some(Action::CalculateHistogram)).unwrap();
+                    }
+                });
+    
+                if let Some(root) = &mut self.root {
+                    if let Ok(ref mut mutex) = self.state.try_lock() {
+                        file_tree_entry(ui,root, mutex);
                     }
                 }
-                if let Some(root) = &self.root {
-                    if ui.button("reload").clicked() {
-                        self.root = Some(expand_dir(match root {
-                            FSRepr::File { path } => path.to_owned(),
-                            FSRepr::Directory { path, children: _ } => path.to_owned()
-                        }));
-                    }
-                }
-                if ui.button("apply").clicked() {
-                    self.background_pipe.send(Some(Action::CalculateHistogram)).unwrap();
-                }
-            });
-
-            if let Some(root) = &mut self.root {
-
-                if let Ok(ref mut mutex) = self.state.try_lock() {
-                    file_tree_entry(ui,root, mutex);
-                }
-            }
+            })
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
