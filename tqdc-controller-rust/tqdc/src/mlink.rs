@@ -44,7 +44,6 @@ pub enum CtrlReg {
     }
 }
 
-
 impl MlinkMessage {
 
     pub fn new_stream_acq(seq: u16, src: u16, dst: u16, offset: u16, id: u16) -> MlinkMessage {
@@ -90,6 +89,7 @@ impl MlinkMessage {
         // TODO: remove duplicate check?
         assert!(data.len() >= 12, "packet length less than header length (12 bytes)");
         let header = MLinkHeader::from_bytes(&data[..12]);
+        let data = &data[..(header.len as usize) * 4 ];
 
         match header.type_ {
             MessageType::Stream => {
@@ -453,6 +453,20 @@ impl MStreamFragment {
     }
 }
 
+pub fn stream_to_acq_fast(datagram: &[u8]) -> [u8; 24] {
+    [
+        0x54u8, 0x53, // type
+        0x50, 0x2a, // sync
+        datagram[4], datagram[5], // seq
+        5, 0, // size
+        1, 1, // src
+        1, 0, // dst
+        0, 0, 64, 1, // first word
+        datagram[16], datagram[17], datagram[18], datagram[19], // fragment + offset
+        0, 0, 0, 0 // crc
+    ]
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -461,9 +475,8 @@ mod tests {
 
     #[tokio::test]
     async fn parse_mstream_data_samples() -> tokio::io::Result<()> {
-
         let mut file = tokio::fs::File::open(
-            // "./test-data/frames/0l.bin"
+            // "../test-data/frames/0l.bin"
             // "./test-data/frames/subs-overflow.bin"
             // "./test-data/frames/trash-3.bin"
             "../test-data/frames/0l-cropped-2.bin"
@@ -472,10 +485,50 @@ mod tests {
     
         let mut contents = [0u8; 2048];
         let size = file.read(&mut contents).await?;
+
+        println!("{size}");
     
-        let message = MlinkMessage::from_datagram(&contents[..size]);
+        let message = MlinkMessage::from_datagram(&contents[..]);
         
         println!("{message:?}");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn compare_fast() -> tokio::io::Result<()> {
+
+        let mut file = tokio::fs::File::open(
+            "../test-data/frames/0l.bin"
+            // "./test-data/frames/subs-overflow.bin"
+            // "./test-data/frames/trash-3.bin"
+            // "../test-data/frames/0l-cropped-2.bin"
+            // "./test-data/frames/408ns-7ch.bin"
+        ).await?;
+    
+        let mut contents = [0u8; 2048];
+        let size = file.read(&mut contents).await?;
+
+        let acq_fast = stream_to_acq_fast(&contents);
+        println!("{acq_fast:?}");
+    
+        let message = MlinkMessage::from_datagram(&contents[..]);
+
+        if let MlinkMessage::StreamReq { header, frames } = message {
+
+            if let Some(frame) = frames.first() {
+            
+                let acq = MlinkMessage::to_datagram(&MlinkMessage::new_stream_acq(
+                    header.seq, 
+                    0x0101, 
+                    0x0001, 
+                    frame.fragment_offset, 
+                    frame.fragment_id, 
+                ));
+
+                println!("{acq:?}")
+            }
+        }
 
         Ok(())
     }

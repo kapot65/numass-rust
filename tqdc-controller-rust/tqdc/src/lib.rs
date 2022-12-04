@@ -4,7 +4,7 @@ pub mod regs;
 use std::net::{IpAddr, SocketAddr};
 use std::{vec, path::PathBuf};
 
-use eyre::{Result, Report, ContextCompat};
+use eyre::{Result, Report, ContextCompat, Context};
 
 use tokio::io::AsyncReadExt;
 use tokio::net::UdpSocket;
@@ -12,7 +12,7 @@ use tokio::time::{self, sleep, Duration};
 use serde_json::{Value, json};
 
 use regs::{Register16, Register32, RunMode, DeviceCtrl, TriggerCSR, RunState, as_run_state};
-use mlink::{MlinkMessage, CtrlReg, MStreamFragment};
+use mlink::{MlinkMessage, CtrlReg, MStreamFragment, stream_to_acq_fast};
 
 async fn start_acquisition(millis: u32, host_control_addr: SocketAddr, tqdc_contol_addr: SocketAddr) -> Result<()> {
     let sock = UdpSocket::bind(host_control_addr).await?;
@@ -151,9 +151,9 @@ async fn gather_frames(
     tqdc_contol_addr: SocketAddr, 
     host_stream_addr: SocketAddr, 
     tqdc_stream_addr: SocketAddr
-) -> Result<Vec<MStreamFragment>> {
+) -> Result<Vec<[u8; 1448]>> {
 
-    let mut events = Vec::new();
+    let mut frames = Vec::with_capacity(30_000 * 100);
     let stream_socket = UdpSocket::bind(host_stream_addr).await?;
 
     stream_socket.send_to(&MlinkMessage::to_datagram(&MlinkMessage::new_stream_acq(
@@ -173,28 +173,8 @@ async fn gather_frames(
             stream_socket.recv_from(&mut buf)).await {
             Ok(received) => {
                 let (len, _) = received?;
-                let message = MlinkMessage::from_datagram(&buf[..len]);
-
-                match message {
-                    MlinkMessage::StreamReq { header, frames } => {
-                        if let Some(frame) = frames.first() {
-
-                            stream_socket.send_to(&MlinkMessage::to_datagram(&MlinkMessage::new_stream_acq(
-                                header.seq, 
-                                0x0101, 
-                                0x0001, 
-                                frame.fragment_offset, 
-                                frame.fragment_id, 
-                            )), tqdc_stream_addr).await?;
-
-                            events.extend(frames);
-
-                        } else {
-                            Err(Report::msg("(gather_frames) - incoming stream packet has no frames"))?
-                        }
-                    }
-                    _ => Err(Report::msg("(gather_frames) - incoming packet is not STREAM type"))?
-                }
+                stream_socket.send_to(&stream_to_acq_fast(&buf), tqdc_stream_addr).await?;
+                frames.push(buf);
             }
             Err(_) => {
                 let state = check_run_state(
@@ -210,7 +190,24 @@ async fn gather_frames(
             }
         }
     };
+    Ok(frames)
+}
 
+fn frames_to_events(frames: Vec<[u8; 1448]>) -> Result<Vec<MStreamFragment>> {
+    let mut events = vec![];
+    for frame in frames {
+        let message = MlinkMessage::from_datagram(&frame);
+        match message {
+            MlinkMessage::StreamReq { header, frames } => {
+                if let Some(frame) = frames.first() {
+                    events.extend(frames);
+                } else {
+                    Err(Report::msg("(gather_frames) - incoming stream packet has no frames"))?
+                }
+            }
+            _ => Err(Report::msg("(gather_frames) - incoming packet is not STREAM type"))?
+        }
+    }
     Ok(events)
 }
 
@@ -247,13 +244,16 @@ pub async fn acquire_point(
         tqdc_control_address
     ).await?;
 
-    let events = (gather_loop.await?)?;
+    let frames = (gather_loop.await.with_context(|| {
+        "gather_loop "
+    })?)?;
 
     stop_acquisition(
         host_control_address, 
         tqdc_control_address
     ).await?;
 
+    let events = frames_to_events(frames)?;
     Ok(events)
 }
 
