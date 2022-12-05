@@ -191,26 +191,25 @@ impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint_after(std::time::Duration::from_secs(1));
         egui::SidePanel::left("left").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("open").clicked() {
+                    if let Some(root_path) = rfd::FileDialog::new().pick_folder() {
+                        self.root = Some(expand_dir(root_path))
+                    }
+                }
+                if let Some(root) = &self.root {
+                    if ui.button("reload").clicked() {
+                        self.root = Some(expand_dir(match root {
+                            FSRepr::File { path } => path.to_owned(),
+                            FSRepr::Directory { path, children: _ } => path.to_owned()
+                        }));
+                    }
+                }
+                if ui.button("apply").clicked() {
+                    self.background_pipe.send(Some(Action::CalculateHistogram)).unwrap();
+                }
+            });
             egui::containers::ScrollArea::new([false, true]).show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    if ui.button("open").clicked() {
-                        if let Some(root_path) = rfd::FileDialog::new().pick_folder() {
-                            self.root = Some(expand_dir(root_path))
-                        }
-                    }
-                    if let Some(root) = &self.root {
-                        if ui.button("reload").clicked() {
-                            self.root = Some(expand_dir(match root {
-                                FSRepr::File { path } => path.to_owned(),
-                                FSRepr::Directory { path, children: _ } => path.to_owned()
-                            }));
-                        }
-                    }
-                    if ui.button("apply").clicked() {
-                        self.background_pipe.send(Some(Action::CalculateHistogram)).unwrap();
-                    }
-                });
-    
                 if let Some(root) = &mut self.root {
                     if let Ok(ref mut mutex) = self.state.try_lock() {
                         file_tree_entry(ui,root, mutex);
