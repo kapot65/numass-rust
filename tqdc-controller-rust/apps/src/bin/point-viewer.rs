@@ -43,8 +43,10 @@ async fn main() {
                         let x = (frame.time + 8u64 * (idx as u64) - (chunk_num as u64 * limit_ns)) as f64;
                         let y = i16::from_le_bytes(frame.data[idx*2..idx*2+2].try_into().unwrap()) as f64;
                         [x / 1000.0, y]
-                    }).collect::<Vec<_>>();
-                    chunks[chunk_num].push((channel.id as u8, waveform))
+                    });
+
+                    let baseline = waveform.clone().take(16).map(|[_, y]| y as f64).sum::<f64>() / 16.0;
+                    chunks[chunk_num].push((channel.id as u8, waveform.map(|[x,y]| [x, y - baseline]).collect::<Vec<_>>()))
             }
         }
     }
@@ -65,14 +67,13 @@ struct MyEguiApp {
 impl eframe::App for MyEguiApp {
    fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
 
-        if ctx.input().key_pressed(egui::Key::ArrowRight) {
+        if ctx.input().key_pressed(egui::Key::ArrowRight) && self.current_chunk < self.chunks.len() - 1 {
             self.current_chunk += 1;
         }
 
-        if ctx.input().key_pressed(egui::Key::ArrowLeft) {
+        if ctx.input().key_pressed(egui::Key::ArrowLeft) && self.current_chunk > 0 {
             self.current_chunk -= 1;
         }
-
 
         let colors = [
             Color32::RED, 
@@ -90,10 +91,10 @@ impl eframe::App for MyEguiApp {
 
             ui.horizontal(|ui| {
                 ui.add(egui::Slider::new(&mut self.current_chunk, 0..=self.chunks.len() - 1).step_by(1.0));
-                if ui.button("-").clicked() {
+                if ui.button("-").clicked() && self.current_chunk > 0 {
                     self.current_chunk -= 1;
                 }
-                if ui.button("+").clicked() {
+                if ui.button("+").clicked() && self.current_chunk < self.chunks.len() - 1 {
                     self.current_chunk += 1;
                 }
             });
