@@ -81,8 +81,8 @@ impl eframe::App for MyEguiApp {
             Color32::GREEN, 
             Color32::YELLOW, 
             Color32::WHITE,
-            Color32::GOLD,
-            Color32::KHAKI
+            Color32::GRAY,
+            Color32::LIGHT_RED
         ];
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -99,11 +99,14 @@ impl eframe::App for MyEguiApp {
                 }
             });
 
-            egui::plot::Plot::new("waveforms").show(ui, |plot_ui| {
+            egui::plot::Plot::new("waveforms").legend(egui::plot::Legend { 
+                text_style: egui::TextStyle::Body, 
+                background_alpha: 1.0, position: egui::plot::Corner::RightTop 
+            }).show(ui, |plot_ui| {
 
                 for (ch_num, x) in self.chunks[self.current_chunk].clone() {
                     plot_ui.line(
-                        egui::plot::Line::new(x).color(colors[(ch_num)as usize]));
+                        egui::plot::Line::new(x).color(colors[(ch_num)as usize]).name(format!("ch #{}", ch_num + 1)));
                 }
             });
         });
