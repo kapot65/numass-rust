@@ -8,16 +8,15 @@ use dataforge::protos::rsb_event;
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Opt {
-    directory: std::path::PathBuf,
+    filepath: std::path::PathBuf,
 }
-
 
 #[tokio::main]
 async fn main() {
 
     let args = Opt::parse();
 
-    let mut point_file = tokio::fs::File::open(args.directory).await.unwrap();
+    let mut point_file = tokio::fs::File::open(&args.filepath).await.unwrap();
     let message = dataforge::extract_df_message(&mut point_file).await.unwrap();
 
     let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
@@ -52,20 +51,20 @@ async fn main() {
     }
 
     let native_options = eframe::NativeOptions::default();
-    eframe::run_native("My egui App", native_options, Box::new(|_| Box::new(MyEguiApp {
+    eframe::run_native(args.filepath.to_str().unwrap(), native_options, Box::new(|_| Box::new(PointViewer {
         chunks,
         current_chunk: 0
     })));
 }
 
 
-struct MyEguiApp {
+struct PointViewer {
     chunks: Vec<Vec<(u8, Vec<[f64; 2]>)>>,
     current_chunk: usize
 }
 
-impl eframe::App for MyEguiApp {
-   fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+impl eframe::App for PointViewer {
+   fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {    
 
         if ctx.input().key_pressed(egui::Key::ArrowRight) && self.current_chunk < self.chunks.len() - 1 {
             self.current_chunk += 1;
@@ -87,28 +86,35 @@ impl eframe::App for MyEguiApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
 
-            ui.style_mut().spacing.slider_width = 500.0;
+            ui.style_mut().spacing.slider_width = frame.info().window_info.size.x - 150.0;
 
             ui.horizontal(|ui| {
-                ui.add(egui::Slider::new(&mut self.current_chunk, 0..=self.chunks.len() - 1).step_by(1.0));
-                if ui.button("-").clicked() && self.current_chunk > 0 {
+                ui.add(egui::Slider::new(&mut self.current_chunk, 0..=self.chunks.len() - 1)
+                    .suffix(" ms")
+                    .step_by(1.0));
+                if ui.button("<").clicked() && self.current_chunk > 0 {
                     self.current_chunk -= 1;
                 }
-                if ui.button("+").clicked() && self.current_chunk < self.chunks.len() - 1 {
+                if ui.button(">").clicked() && self.current_chunk < self.chunks.len() - 1 {
                     self.current_chunk += 1;
                 }
             });
 
-            egui::plot::Plot::new("waveforms").legend(egui::plot::Legend { 
-                text_style: egui::TextStyle::Body, 
-                background_alpha: 1.0, position: egui::plot::Corner::RightTop 
-            }).show(ui, |plot_ui| {
+            egui::plot::Plot::new("waveforms")
+                .legend(egui::plot::Legend { 
+                    text_style: egui::TextStyle::Body, 
+                    background_alpha: 1.0, position: egui::plot::Corner::RightTop 
+                })
+                .x_axis_formatter(|value, _| {
+                    format!("{value:.3} μs")
+                })
+                .show(ui, |plot_ui| {
 
-                for (ch_num, x) in self.chunks[self.current_chunk].clone() {
-                    plot_ui.line(
-                        egui::plot::Line::new(x).color(colors[(ch_num)as usize]).name(format!("ch #{}", ch_num + 1)));
-                }
-            });
+                    for (ch_num, x) in self.chunks[self.current_chunk].clone() {
+                        plot_ui.line(
+                            egui::plot::Line::new(x).color(colors[(ch_num)as usize]).name(format!("ch #{}", ch_num + 1)));
+                    }
+                });
         });
    }
 }

@@ -101,16 +101,17 @@ fn main() {
                                 fragment.channels.iter().map(|channel| {
 
                                     let first = channel.waveform.iter().take(16).sum::<i16>() / 16;
-                                    (
-                                        channel.channel_number, 
-                                        channel.waveform.iter().map(|v| (v - first) / 4).collect::<Vec<_>>()
-                                    )
+
+                                    Waveform {
+                                        ch_num: channel.channel_number, 
+                                        waveform: channel.waveform.iter().map(|v| (v - first) / 4).collect::<Vec<_>>()
+                                    }
                                 })
                             }).collect::<Vec<_>>();
 
 
                             {
-                                for (ch_num, waveform) in &channels {
+                                for Waveform {ch_num, waveform} in &channels {
                                     let amplitude = waveform.iter().max().unwrap();
                                     if amplitude > &args.count_rate_threshold {
                                         *counts.entry(*ch_num).or_insert(0u16) += 1;
@@ -132,7 +133,7 @@ fn main() {
 
                             {
                                 let mut hist_lock = histogram_bg.lock().unwrap();
-                                for (ch_num, waveform) in &channels {
+                                for Waveform {ch_num, waveform} in &channels {
                                     let amplitude = *waveform.iter().max().unwrap();
                                     hist_lock.add(*ch_num, amplitude); 
                                 }
@@ -160,8 +161,14 @@ fn main() {
     })));
 }
 
+#[derive(Clone)]
+struct Waveform {
+    ch_num: u8,
+    waveform: Vec<i16>
+}
+
 struct MyEguiApp {
-    waveforms: Arc<Mutex<Vec<(u8, Vec<i16>)>>>,
+    waveforms: Arc<Mutex<Vec<Waveform>>>,
     histogram: Arc<Mutex<PointHistogramm>>,
     count_rate: Arc<Mutex<HashMap<u8, u32>>>
 }
@@ -176,7 +183,7 @@ impl eframe::App for MyEguiApp {
         let channels = {
             let lock = self.waveforms.lock();
             let mut channels_map = HashMap::new();
-            for (ch_num, waveform) in lock.unwrap().clone() {
+            for Waveform {ch_num, waveform} in lock.unwrap().clone() {
                 channels_map.insert(ch_num, waveform);
             }
             channels_map

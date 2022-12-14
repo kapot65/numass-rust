@@ -172,7 +172,7 @@ async fn gather_frames(
             Duration::from_millis(500), 
             stream_socket.recv_from(&mut buf)).await {
             Ok(received) => {
-                let (len, _) = received?;
+                received?;
                 stream_socket.send_to(&stream_to_acq_fast(&buf), tqdc_stream_addr).await?;
                 frames.push(buf);
             }
@@ -198,8 +198,8 @@ fn frames_to_events(frames: Vec<[u8; 1448]>) -> Result<Vec<MStreamFragment>> {
     for frame in frames {
         let message = MlinkMessage::from_datagram(&frame);
         match message {
-            MlinkMessage::StreamReq { header, frames } => {
-                if let Some(frame) = frames.first() {
+            MlinkMessage::StreamReq { header: _, frames } => {
+                if frames.first().is_some() {
                     events.extend(frames);
                 } else {
                     Err(Report::msg("(gather_frames) - incoming stream packet has no frames"))?

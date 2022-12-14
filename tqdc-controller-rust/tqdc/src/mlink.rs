@@ -482,12 +482,14 @@ mod tests {
             "../test-data/frames/0l-cropped-2.bin"
             // "./test-data/frames/408ns-7ch.bin"
         ).await?;
-    
+
+        let meta = file.metadata().await.unwrap();
+        
         let mut contents = [0u8; 2048];
         let size = file.read(&mut contents).await?;
+        
+        assert!(size == meta.len() as usize);
 
-        println!("{size}");
-    
         let message = MlinkMessage::from_datagram(&contents[..]);
         
         println!("{message:?}");
@@ -508,6 +510,7 @@ mod tests {
     
         let mut contents = [0u8; 2048];
         let size = file.read(&mut contents).await?;
+        assert!(size != 0);
 
         let acq_fast = stream_to_acq_fast(&contents);
         println!("{acq_fast:?}");
