@@ -51,7 +51,7 @@ async fn main() {
     }
 
     let native_options = eframe::NativeOptions::default();
-    eframe::run_native(args.filepath.to_str().unwrap(), native_options, Box::new(|_| Box::new(PointViewer {
+    eframe::run_native(std::fs::canonicalize(&args.filepath).unwrap().to_str().unwrap(), native_options, Box::new(|_| Box::new(PointViewer {
         chunks,
         current_chunk: 0
     })));
