@@ -127,9 +127,6 @@ async fn background_processing(
                                 let data = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
                                     let processed = std::fs::metadata(&filepath).unwrap().modified().unwrap();
 
-                                    let range = (params.hist_min, params.hist_max);
-                                    let bins = params.hist_bins;
-
                                     let histogram = point_to_histogramm(&data, params).await;
                                     let mut conf = configuration_local.lock().await;
                                     conf.entry(filepath).and_modify(|cache| {
