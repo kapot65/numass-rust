@@ -34,6 +34,7 @@ fn correct_amp(y0: f32, y1: f32, y2: f32) -> (f32, f32) {
 #[tokio::main]
 async fn main() {
 
+    // let filepath = "/data/2022_12/Electrode_4/set_1/p4(200s)(HV1=10000)";
     let filepath = "/data/2022_12/Electrode_4/set_1/p4(200s)(HV1=10000)";
     // let filepath = "/data/2022_12/Tritium_5/set_8/p121(30s)(HV1=14000)";
 
@@ -45,7 +46,7 @@ async fn main() {
 
     let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
 
-    let waveforms_ch6 = point.channels.iter().find(|ch| ch.id == 5).unwrap().blocks[0].frames.iter()
+    let waveforms_ch6 = point.channels.iter().find(|ch| ch.id == 3).unwrap().blocks[0].frames.iter()
         .map(|frame| {
 
             let waveform = frame_to_waveform_normed(frame);

@@ -1,14 +1,18 @@
 use std::time::SystemTime;
 use std::{path::PathBuf, collections::HashMap, sync::Arc};
 
-use dataforge::Reply;
 use protobuf::Message;
-use dataforge::protos::rsb_event;
-use apps::{point_to_histogramm, PointHistogramm};
+
 use tokio::sync::{watch, Mutex};
 use eframe::egui;
 use eframe::egui::plot::{Plot, Line, Legend};
 use clap::Parser;
+
+
+use dataforge::Reply;
+use dataforge::protos::rsb_event;
+use apps::{point_to_histogramm, PointHistogramm, ProcessingParams, Algorithm};
+
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -25,6 +29,7 @@ struct FileCache {
 }
 
 struct MyApp {
+    processing_params: Arc<Mutex<ProcessingParams>>,
     root: Option<FSRepr>,
     state: Arc<Mutex<HashMap<String, FileCache>>>,
     background_pipe: watch::Sender<Option<Action>>
@@ -56,8 +61,25 @@ impl FSRepr {
     }
 }
 
-async fn background_processing(mut tx: watch::Receiver<Option<Action>>, configuration: Arc<Mutex<HashMap<String, FileCache>>>) {
+async fn background_processing(
+        mut tx: watch::Receiver<Option<Action>>, 
+        configuration: Arc<Mutex<HashMap<String, FileCache>>>,
+        processing_params: Arc<Mutex<ProcessingParams>>
+    ) {
+
+    let mut last_params = *processing_params.lock().await;
+
     while tx.changed().await.is_ok() {
+
+
+        let params = *processing_params.lock().await; 
+
+        let need_recalc = if last_params != params {
+            last_params = params;
+            true
+        } else {
+            false
+        };
 
         let action = (*tx.borrow()).unwrap();
         match action {
@@ -67,7 +89,9 @@ async fn background_processing(mut tx: watch::Receiver<Option<Action>>, configur
                     let conf = configuration.lock().await;
                     conf.iter().filter_map(|(filepath, cache)| {
                         if cache.opened {
-                            if let Some(processed) = cache.processed {
+                            if need_recalc {
+                                Some(filepath.clone())
+                            } else if let Some(processed) = cache.processed {
                                 let meta = std::fs::metadata(filepath).unwrap();
                                 if processed >= meta.modified().unwrap() {
                                     None
@@ -102,7 +126,11 @@ async fn background_processing(mut tx: watch::Receiver<Option<Action>>, configur
                             }) => {
                                 let data = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
                                     let processed = std::fs::metadata(&filepath).unwrap().modified().unwrap();
-                                    let histogram = point_to_histogramm(&data, (0, 400), 400).await;
+
+                                    let range = (params.hist_min, params.hist_max);
+                                    let bins = params.hist_bins;
+
+                                    let histogram = point_to_histogramm(&data, params).await;
                                     let mut conf = configuration_local.lock().await;
                                     conf.entry(filepath).and_modify(|cache| {
                                             cache.processed = Some(processed);
@@ -191,6 +219,63 @@ impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint_after(std::time::Duration::from_secs(1));
         egui::SidePanel::left("left").show(ctx, |ui| {
+
+            if let Ok(mut processing_params) = self.processing_params.try_lock() {
+
+                let mut algorithm = processing_params.algorithm;
+
+                ui.horizontal(|ui| {
+                    if ui.add(egui::RadioButton::new(algorithm == Algorithm::Max, "Max")).clicked() {
+                        algorithm = Algorithm::Max
+                    }
+                    
+                    if ui.add(egui::RadioButton::new(
+                        matches!(algorithm, Algorithm::Likhovid { .. }), "Likhovid")).clicked() {
+                        algorithm = Algorithm::Likhovid { left: 3, right: 19 } // TODO remove hardcode
+                    }
+                });
+
+                if let Algorithm::Likhovid { left, right } = algorithm {
+
+                    ui.separator();
+                    ui.label("Algorithm params");
+
+                    let mut left = left;
+                    ui.add(egui::Slider::new(&mut left, 0..=5).text("left"));
+                    let mut right = right;
+                    ui.add(egui::Slider::new(&mut right, 0..=40).text("right"));
+
+                    algorithm = Algorithm::Likhovid { 
+                        left, 
+                        right
+                    }
+                }
+
+                ui.separator();
+                ui.label("Histogramm params");
+
+                let mut hist_min = processing_params.hist_min;
+                ui.add(egui::Slider::new(&mut hist_min, -10.0..=400.0).text("left"));
+                let mut hist_max = processing_params.hist_max;
+                ui.add(egui::Slider::new(&mut hist_max, -10.0..=400.0).text("right"));
+                let mut hist_bins = processing_params.hist_bins;
+                ui.add(egui::Slider::new(&mut hist_bins, 10..=2000).text("bins"));
+
+
+                let mut convert_to_kev = processing_params.convert_to_kev;
+
+                ui.checkbox(&mut convert_to_kev, "convert to keV");
+                
+                *processing_params = ProcessingParams {
+                    algorithm,
+                    convert_to_kev,
+                    hist_min,
+                    hist_max,
+                    hist_bins,
+                };
+                ui.separator();
+            }
+
             ui.horizontal(|ui| {
                 if ui.button("open").clicked() {
                     if let Some(root_path) = rfd::FileDialog::new().pick_folder() {
@@ -296,9 +381,19 @@ async fn main() {
 
     let state = Arc::new(Mutex::new(HashMap::<String, FileCache>::new()));
     let configuration = Arc::clone(&state);
+
+    let processing_params = Arc::new(Mutex::new(ProcessingParams {
+        algorithm: Algorithm::Likhovid { left: 3, right: 19 },
+        convert_to_kev: true,
+        hist_min: 0.0,
+        hist_max: 27.0,
+        hist_bins: 270
+    }));
+    let processing_params_bg = Arc::clone(&processing_params);
+
     let (rx, tx) = watch::channel(None::<Action>);
 
-    tokio::spawn(background_processing(tx, configuration));
+    tokio::spawn(background_processing(tx, configuration, processing_params_bg));
 
     let options = eframe::NativeOptions::default();
     eframe::run_native(
@@ -306,6 +401,7 @@ async fn main() {
         options,
         Box::new(|_cc| {
             Box::new(MyApp {
+                processing_params,
                 root: opt.directory.map(expand_dir),
                 state,
                 background_pipe: rx

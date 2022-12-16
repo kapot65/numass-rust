@@ -51,7 +51,7 @@ fn main() {
 
     let histogram_bg = Arc::new(
         Mutex::new(
-            PointHistogramm::new((args.hist_min, args.hist_max), args.hist_bins)));
+            PointHistogramm::new((args.hist_min as f32, args.hist_max as f32), args.hist_bins)));
     let histogram = Arc::clone(&histogram_bg);
 
     
@@ -135,7 +135,7 @@ fn main() {
                                 let mut hist_lock = histogram_bg.lock().unwrap();
                                 for Waveform {ch_num, waveform} in &channels {
                                     let amplitude = *waveform.iter().max().unwrap();
-                                    hist_lock.add(*ch_num, amplitude); 
+                                    hist_lock.add(*ch_num, amplitude as f32); 
                                 }
                             }
 
