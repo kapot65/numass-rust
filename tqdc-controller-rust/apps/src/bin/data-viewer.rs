@@ -260,15 +260,18 @@ impl eframe::App for MyApp {
 
 
                 let mut convert_to_kev = processing_params.convert_to_kev;
-
                 ui.checkbox(&mut convert_to_kev, "convert to keV");
-                
+
+                let mut merge_close_events = processing_params.merge_close_events;
+
+                ui.checkbox(&mut merge_close_events, "merge close events");
                 *processing_params = ProcessingParams {
                     algorithm,
                     convert_to_kev,
                     hist_min,
                     hist_max,
                     hist_bins,
+                    merge_close_events
                 };
                 ui.separator();
             }
@@ -290,6 +293,13 @@ impl eframe::App for MyApp {
                 if ui.button("apply").clicked() {
                     self.background_pipe.send(Some(Action::CalculateHistogram)).unwrap();
                 }
+
+                if ui.button("clear").clicked() {
+                    if let Ok(mut lock) = self.state.try_lock() {
+                        lock.clear()
+                    }
+                }
+
             });
             egui::containers::ScrollArea::new([false, true]).show(ui, |ui| {
                 if let Some(root) = &mut self.root {
@@ -382,6 +392,7 @@ async fn main() {
     let processing_params = Arc::new(Mutex::new(ProcessingParams {
         algorithm: Algorithm::Likhovid { left: 3, right: 19 },
         convert_to_kev: true,
+        merge_close_events: true,
         hist_min: 0.0,
         hist_max: 27.0,
         hist_bins: 270

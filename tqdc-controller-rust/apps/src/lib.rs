@@ -48,6 +48,7 @@ const KEV_COEFF_LIKHOVID: [[f32; 2]; 7] = [
 pub struct ProcessingParams {
     pub algorithm: Algorithm,
     pub convert_to_kev: bool,
+    pub merge_close_events: bool,
     // TODO: add to KeV corrections
     // TODO: refactor to separate struct and merge with PointHistogram
     pub hist_min: f32,
@@ -61,7 +62,7 @@ impl PointHistogramm {
         let step = (max - min) / bins as f32;
         PointHistogramm {
             x: (0..bins).map(|idx| {
-                min as f32 + step * (idx as f32) + step / 2.0
+                min + step * (idx as f32) + step / 2.0
             }).collect::<Vec<f32>>(),
             step,
             range,
@@ -75,7 +76,7 @@ impl PointHistogramm {
         let (min, max) = self.range;
         if amplitude > min && amplitude < max {
             let y = self.channels.entry(ch_num).or_insert_with(|| vec![0.0; self.bins]);
-            let bin = ((amplitude - min) as f32 / self.step) as usize;
+            let bin = ((amplitude - min) / self.step) as usize;
             y[bin] += 1.0;
         }
     }
@@ -99,14 +100,12 @@ pub async fn point_to_histogramm(point: &Point, params: ProcessingParams) -> Poi
     let range = (params.hist_min, params.hist_max);
     let bins = params.hist_bins;
 
-    match params.algorithm {
+    let mut histogram = PointHistogramm::new(range, bins);
+
+    let mut events_per_channel = match params.algorithm {
         
         Algorithm::Max => {
-
-            let mut histogram = PointHistogramm::new(range, bins);
-
-            for channel in &point.channels {
-
+            point.channels.iter().map(|channel| {
                 let amplitudes = channel.blocks.iter().flat_map(|block| {
                     block.frames.iter().map(|frame| {
                         let waveform_len = frame.data.len() / 2;
@@ -121,29 +120,27 @@ pub async fn point_to_histogramm(point: &Point, params: ProcessingParams) -> Poi
                             ampl - first
                         });
         
-                        let x = waveform_normed.max().unwrap() as f32;
 
-                        if params.convert_to_kev {
-                            let [a, b] = KEV_COEFF_MAX[channel.id as usize];
-                            a * x + b
-                        } else {
-                            x
-                        }
-                        
+                        let (x_pos, x)  = waveform_normed.enumerate().max_by_key(|(_, amp)| *amp).unwrap();
+
+                        Some((
+                            frame.time /*+ x_pos as u64 * 8*/, 
+                            if params.convert_to_kev {
+                                let [a, b] = KEV_COEFF_MAX[channel.id as usize];
+                                a * x as f32 + b
+                            } else {
+                                x as f32
+                            }
+                        ))
                     })
                 }).collect::<Vec<_>>();
         
-                histogram.add_batch(channel.id as u8, amplitudes);
-            };
-        
-            histogram
+                (channel.id as u8, amplitudes)
+            }).collect::<Vec<_>>()
         }
 
         Algorithm::Likhovid { left, right } => {
-
-            let mut histogram = PointHistogramm::new(range, bins);
-
-            for channel in &point.channels {
+            point.channels.iter().map(|channel| {
 
                 let amplitudes = channel.blocks.iter().flat_map(|block| {
                     block.frames.iter().map(|frame| {
@@ -156,10 +153,10 @@ pub async fn point_to_histogramm(point: &Point, params: ProcessingParams) -> Poi
                         let waveform = waveform.collect::<Vec<_>>();
 
                         let baseline = waveform.iter().take(16).sum::<i16>() as f32 / 16.0;
-                        let (argmax, _) = waveform.iter().enumerate().max_by_key(|(_, amp)| *amp).unwrap();
+                        let (x_pos, _) = waveform.iter().enumerate().max_by_key(|(_, amp)| *amp).unwrap();
 
-                        let left = if argmax >= left {argmax - left} else { 0 };
-                        let right = std::cmp::min(waveform_len, argmax + right);
+                        let left = if x_pos >= left {x_pos - left} else { 0 };
+                        let right = std::cmp::min(waveform_len, x_pos + right);
                         let crop =  &waveform[left..right];
 
                         let amplitude = crop.iter().sum::<i16>() as f32 / crop.len() as f32;
@@ -167,22 +164,75 @@ pub async fn point_to_histogramm(point: &Point, params: ProcessingParams) -> Poi
 
                         let x = amplitude - baseline;
 
-                        if params.convert_to_kev {
-                            let [a, b] = KEV_COEFF_LIKHOVID[channel.id as usize];
-                            a * x + b
-                        } else {
-                            x
-                        }
+                        Some((
+                            frame.time /*+ x_pos as u64 * 8*/,
+                            if params.convert_to_kev {
+                                let [a, b] = KEV_COEFF_LIKHOVID[channel.id as usize];
+                                a * x + b
+                            } else {
+                                x
+                            }
+                        ))
                     })
                 }).collect::<Vec<_>>();
 
-                histogram.add_batch(channel.id as u8, amplitudes);
-            };
-
-            histogram
-
+                (channel.id as u8, amplitudes)
+            }).collect::<Vec<_>>()
         }
-    }    
+    };
+
+
+    if params.merge_close_events {
+
+        for ch_id in 0usize..7 {
+            events_per_channel[ch_id].1.sort_by_key(|k| k.unwrap().0);
+        }
+
+        
+
+        for ch_id in [5usize, 0, 1, 2, 3, 4, 6] {
+
+            let mut start_idxs = vec![0usize; 7];
+            for ev_id in 0..events_per_channel[ch_id].1.len() {
+    
+                if let Some((time1, ampl1)) = events_per_channel[ch_id].1[ev_id] {
+                    for ch_id_2 in 0usize..7 {
+    
+                        if ch_id == ch_id_2 {
+                            continue;
+                        }
+    
+                        for ev_id_2 in start_idxs[ch_id_2]..events_per_channel[ch_id_2].1.len() {
+                            if let Some((time2, ampl2)) = events_per_channel[ch_id_2].1[ev_id_2] {
+                                match time2.cmp(&time1) {
+                                    std::cmp::Ordering::Less => {}
+                                    std::cmp::Ordering::Equal => {
+                                        events_per_channel[ch_id].1[ev_id] = Some((time1, ampl1 + ampl2));
+                                        events_per_channel[ch_id_2].1[ev_id_2] = None;
+                                    }
+                                    std::cmp::Ordering::Greater => {
+                                        if ev_id_2 != 0 {
+                                            start_idxs[ch_id_2] = ev_id_2 - 1;
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                }
+            }
+        }
+    }
+    
+
+    for (ch_num, events) in events_per_channel {
+        let amps = events.iter().filter_map(|val| val.map(|(_, amp)| amp)).collect::<Vec<_>>();
+        histogram.add_batch(ch_num, amps);
+    }
+
+    histogram
 }
 
 pub async fn events_to_point(events: Vec<MStreamFragment>, zero_suppression: Option<ZeroSuppressionParams>) -> tokio::io::Result<rsb_event::Point> {
