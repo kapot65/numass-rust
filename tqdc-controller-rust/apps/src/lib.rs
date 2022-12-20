@@ -81,7 +81,7 @@ impl PointHistogramm {
         }
     }
 
-    pub fn add_batch(&mut self, ch_num: u8, amplitudes: Vec<f32>) {
+    pub fn add7_batch(&mut self, ch_num: u8, amplitudes: Vec<f32>) {
         let (min, _) = self.range;
         let y = self.channels.entry(ch_num).or_insert_with(|| vec![0.0; self.bins]);
 
@@ -184,19 +184,22 @@ pub async fn point_to_histogramm(point: &Point, params: ProcessingParams) -> Poi
 
     if params.merge_close_events {
 
-        for ch_id in 0usize..7 {
-            events_per_channel[ch_id].1.sort_by_key(|k| k.unwrap().0);
+        for (_, channel) in &mut events_per_channel {
+            channel.sort_by_key(|k| k.unwrap().0);
         }
-
         
 
         for ch_id in [5usize, 0, 1, 2, 3, 4, 6] {
+
+            if ch_id >= events_per_channel.len() {
+                continue;
+            }
 
             let mut start_idxs = vec![0usize; 7];
             for ev_id in 0..events_per_channel[ch_id].1.len() {
     
                 if let Some((time1, ampl1)) = events_per_channel[ch_id].1[ev_id] {
-                    for ch_id_2 in 0usize..7 {
+                    for ch_id_2 in 0..events_per_channel.len() {
     
                         if ch_id == ch_id_2 {
                             continue;
