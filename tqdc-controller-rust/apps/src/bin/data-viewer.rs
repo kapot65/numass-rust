@@ -28,7 +28,7 @@ struct FileCache {
     histogram: Option<PointHistogramm>
 }
 
-struct MyApp {
+struct DataViewerApp {
     processing_params: Arc<Mutex<ProcessingParams>>,
     root: Option<FSRepr>,
     state: Arc<Mutex<HashMap<String, FileCache>>>,
@@ -212,7 +212,7 @@ fn file_tree_entry(
     }
 }
 
-impl eframe::App for MyApp {
+impl eframe::App for DataViewerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint_after(std::time::Duration::from_secs(1));
         egui::SidePanel::left("left").show(ctx, |ui| {
@@ -317,64 +317,93 @@ impl eframe::App for MyApp {
                     cache.opened
                 });
 
+                // TODO remove code duplication
                 if opened_files.clone().count() == 1 {
                     let (_, hash) = opened_files.last().unwrap();
                     if hash.opened && hash.histogram.is_some() {
                         let hist = hash.histogram.clone().unwrap();
 
-                        let lines = hist.channels.iter().map(|(ch_num, y)| {
-                            Line::new(
-                                y.iter().enumerate().flat_map(|(x, y)| [
-                                    [(hist.x[x] - hist.step / 2.0)  as f64, *y as f64],
-                                    [(hist.x[x] + hist.step / 2.0)  as f64, *y as f64]
-                                ]).collect::<Vec<_>>()).name(
-                                    format!("ch #{}", ch_num + 1)
-                                )
-                        });
-
-                        Plot::new("Test Plot").legend(Legend { 
+                        Plot::new("Histogram Plot").legend(Legend { 
                             text_style: egui::TextStyle::Body, 
                             background_alpha: 1.0, position: egui::plot::Corner::RightTop 
                         })
                         .show(ui, |plot_ui| {
+
+                            let bounds = plot_ui.plot_bounds();
+
+                            let lines = hist.channels.iter().map(|(ch_num, y)| {
+
+                                let mut events_in_window = 0;
+
+                                let left_border = bounds.min()[0] as f32;
+                                let right_border = bounds.max()[0] as f32;
+
+                                let line_data = y.iter().enumerate().flat_map(|(x, y)| {
+                                    if hist.x[x] > left_border && hist.x[x] < right_border {
+                                        events_in_window += *y as i32;
+                                    }
+                                    [
+                                        [(hist.x[x] - hist.step / 2.0)  as f64, *y as f64],
+                                        [(hist.x[x] + hist.step / 2.0)  as f64, *y as f64]
+                                    ]
+                                }).collect::<Vec<_>>();
+                                
+                                Line::new(line_data)
+                                    .name(
+                                        format!("ch #{}\t({events_in_window})", ch_num + 1)
+                                    )
+                            });
+
                             lines.for_each(|line| {
                                 plot_ui.line(line);
                             })
                         });
                     }
                 } else {
-                    let lines = opened_files
-                    .filter(|(_, cache)| {cache.histogram.is_some()})
-                    .map(|(filepath, hash)| {
-                        let hist = hash.histogram.clone().unwrap();
+                    Plot::new("Histogram Plot").legend(Legend { 
+                        text_style: egui::TextStyle::Body, 
+                        background_alpha: 1.0, position: egui::plot::Corner::RightTop 
+                    })
+                    .show(ui, |plot_ui| {
 
-                        let mut y_all = vec![0.0; hist.x.len()];
-                        for (_, y) in hist.channels {
-                            for (idx, val) in y.iter().enumerate() {
-                                y_all[idx] += val;
+                        let bounds = plot_ui.plot_bounds();
+
+                        let lines = opened_files
+                        .filter(|(_, cache)| {cache.histogram.is_some()})
+                        .map(|(filepath, hash)| {
+                            let hist = hash.histogram.clone().unwrap();
+
+                            let left_border = bounds.min()[0] as f32;
+                            let right_border = bounds.max()[0] as f32;
+
+                            let mut events_in_window = 0;
+                                    
+
+                            let mut y_all = vec![0.0; hist.x.len()];
+                            for (_, y) in hist.channels {
+                                for (idx, val) in y.iter().enumerate() {
+                                    y_all[idx] += val;
+                                }
                             }
-                        }
 
-                        Line::new(
-                            y_all.iter().enumerate().flat_map(|(x, y)| [
-                                [(hist.x[x] - hist.step / 2.0)  as f64, *y as f64],
-                                [(hist.x[x] + hist.step / 2.0)  as f64, *y as f64]
-                            ]).collect::<Vec<_>>()).name(
-                            filepath.to_string()
-                        )
-                    });
+                            let line_data = y_all.iter().enumerate().flat_map(|(x, y)| {
+                                if hist.x[x] > left_border && hist.x[x] < right_border {
+                                    events_in_window += *y as i32;
+                                }
+                                [
+                                    [(hist.x[x] - hist.step / 2.0)  as f64, *y as f64],
+                                    [(hist.x[x] + hist.step / 2.0)  as f64, *y as f64]
+                                ]
+                            }).collect::<Vec<_>>();
 
-                    if lines.clone().count() > 0 {
-                        Plot::new("Test Plot").legend(Legend { 
-                            text_style: egui::TextStyle::Body, 
-                            background_alpha: 1.0, position: egui::plot::Corner::RightTop 
-                        })
-                        .show(ui, |plot_ui| {
-                            lines.for_each(|line| {
-                                plot_ui.line(line);
-                            })
+                            Line::new(line_data)
+                                .name(format!("{filepath}\t({events_in_window})"))
                         });
-                    }
+
+                        lines.for_each(|line| {
+                            plot_ui.line(line);
+                        })
+                    });
                 }
             }
         });
@@ -408,7 +437,7 @@ async fn main() {
         "data-viewer",
         options,
         Box::new(|_cc| {
-            Box::new(MyApp {
+            Box::new(DataViewerApp {
                 processing_params,
                 root: opt.directory.map(expand_dir),
                 state,

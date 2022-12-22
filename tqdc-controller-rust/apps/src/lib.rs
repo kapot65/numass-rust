@@ -81,7 +81,7 @@ impl PointHistogramm {
         }
     }
 
-    pub fn add7_batch(&mut self, ch_num: u8, amplitudes: Vec<f32>) {
+    pub fn add_batch(&mut self, ch_num: u8, amplitudes: Vec<f32>) {
         let (min, _) = self.range;
         let y = self.channels.entry(ch_num).or_insert_with(|| vec![0.0; self.bins]);
 
