@@ -238,7 +238,7 @@ impl eframe::App for DataViewerApp {
                     ui.label("Algorithm params");
 
                     let mut left = left;
-                    ui.add(egui::Slider::new(&mut left, 0..=5).text("left"));
+                    ui.add(egui::Slider::new(&mut left, 0..=15).text("left"));
                     let mut right = right;
                     ui.add(egui::Slider::new(&mut right, 0..=40).text("right"));
 

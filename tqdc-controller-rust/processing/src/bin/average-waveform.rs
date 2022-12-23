@@ -3,7 +3,7 @@ use plotters::prelude::*;
 use protobuf::Message;
 
 use dataforge::protos::rsb_event;
-
+use processing::{frame_to_waveform, correct_amp, find_first_peak};
 
 #[derive(Debug, Clone)]
 struct WaveformNormed {
@@ -12,23 +12,6 @@ struct WaveformNormed {
     bin: usize,
     x: f32,
     y: f32
-}
-
-// TODO move to lib
-fn frame_to_waveform_normed(frame: &rsb_event::point::channel::block::Frame) -> Vec<i16>{
-
-    let waveform_len = frame.data.len() / 2;
-    (0..waveform_len).map(|idx| {
-        i16::from_le_bytes(frame.data[idx*2..idx*2+2].try_into().unwrap())
-    }).collect::<Vec<_>>()
-}
-
-fn correct_amp(y0: f32, y1: f32, y2: f32) -> (f32, f32) {
-    (
-        // calculated with SymPy
-        (y0 - y2)/(2.0*(y0 - 2.0*y1 + y2)),
-        (-(y0*y0)/8.0 + y0*y1 + y0*y2/4.0 - 2.0 * y1 * y1 + y1*y2 - (y2*y2)/8.0)/(y0 - 2.0 * y1 + y2)
-    )
 }
 
 #[tokio::main]
@@ -49,17 +32,10 @@ async fn main() {
     let waveforms_ch6 = point.channels.iter().find(|ch| ch.id == 3).unwrap().blocks[0].frames.iter()
         .map(|frame| {
 
-            let waveform = frame_to_waveform_normed(frame);
-
+            let waveform = frame_to_waveform(frame);
             let baseline = waveform.iter().take(16).sum::<i16>() as f32 / 16.0;
 
-            let bin = waveform.iter().enumerate().find(|(idx, amp)| {
-                let amp = **amp as f32 - baseline;
-                amp > threshold &&
-                (*idx == 0 || waveform[idx - 1] as f32 - baseline <= amp)&&
-                (*idx == waveform.len() - 1 || waveform[idx + 1] as f32 - baseline <= amp)
-            }).map(|(idx, _)| idx).unwrap();
-
+            let bin = find_first_peak(&waveform, threshold, baseline);
 
             let left = if bin == 0 {
                 waveform[bin + 1] as f32
@@ -119,7 +95,7 @@ async fn main() {
 
             chart.configure_mesh().draw().unwrap();
 
-            for WaveformNormed { waveform, baseline, bin, x, y } in group {
+            for WaveformNormed { waveform, baseline, bin, x, y: _ } in group {
 
                 let offset_x = bin as f32 - 35.0 + x;
                 // let scale_y = y / 195.0;

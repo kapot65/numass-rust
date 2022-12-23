@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 tqdc = {path = "../tqdc"}
 dataforge = {path = "../dataforge"}
+processing = {path = "../processing"}
 
 tokio = { version = "1.21.2", features = ["full"] }
 tokio-timerfd = "0.2.0"

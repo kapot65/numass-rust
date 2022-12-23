@@ -37,15 +37,16 @@ async fn main() {
                     chunks.push(vec![])
                 }
 
+                // TODO: Refactor with processing::frame_to_waveform
                 let waveform_len = frame.data.len() / 2;
-                    let waveform = (0..waveform_len).map(|idx| {
-                        let x = (frame.time + 8u64 * (idx as u64) - (chunk_num as u64 * limit_ns)) as f64;
-                        let y = i16::from_le_bytes(frame.data[idx*2..idx*2+2].try_into().unwrap()) as f64;
-                        [x / 1000.0, y]
-                    });
+                let waveform = (0..waveform_len).map(|idx| {
+                    let x = (frame.time + 8u64 * (idx as u64) - (chunk_num as u64 * limit_ns)) as f64;
+                    let y = i16::from_le_bytes(frame.data[idx*2..idx*2+2].try_into().unwrap()) as f64;
+                    [x / 1000.0, y]
+                });
 
-                    let baseline = waveform.clone().take(16).map(|[_, y]| y as f64).sum::<f64>() / 16.0;
-                    chunks[chunk_num].push((channel.id as u8, waveform.map(|[x,y]| [x, y - baseline]).collect::<Vec<_>>()))
+                let baseline = waveform.clone().take(16).map(|[_, y]| y as f64).sum::<f64>() / 16.0;
+                chunks[chunk_num].push((channel.id as u8, waveform.map(|[x,y]| [x, y - baseline]).collect::<Vec<_>>()))
             }
         }
     }

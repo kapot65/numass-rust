@@ -1,9 +1,11 @@
 pub mod defaults;
 
-use dataforge::{protos::rsb_event::{self, Point}, ZeroSuppressionParams};
-use tokio::io::AsyncWriteExt;
 use std::collections::HashMap;
+
+use tokio::io::AsyncWriteExt;
+
 use tqdc::mlink::MStreamFragment;
+use dataforge::{protos::rsb_event::{self, Point}, ZeroSuppressionParams};
 
 #[derive(Debug, Clone)]
 pub struct PointHistogramm {
@@ -108,28 +110,19 @@ pub async fn point_to_histogramm(point: &Point, params: ProcessingParams) -> Poi
             point.channels.iter().map(|channel| {
                 let amplitudes = channel.blocks.iter().flat_map(|block| {
                     block.frames.iter().map(|frame| {
-                        let waveform_len = frame.data.len() / 2;
-        
-                        let waveform = (0..waveform_len).map(|idx| {
-                            i16::from_le_bytes(frame.data[idx*2..idx*2+2].try_into().unwrap())
-                        });
-        
-                        let first = waveform.clone().take(16).sum::<i16>() / 16;
-        
-                        let waveform_normed = waveform.map(|ampl| {
-                            ampl - first
-                        });
-        
 
-                        let (x_pos, x)  = waveform_normed.enumerate().max_by_key(|(_, amp)| *amp).unwrap();
-
+                        let waveform = processing::frame_to_waveform(frame);
+                        let baseline = waveform.iter().take(16).sum::<i16>() as f32 / 16.0;
+        
+                        let (_, y)  = waveform.iter().enumerate().max_by_key(|(_, amp)| *amp).unwrap();
+                        let y = *y as f32 + baseline;
                         Some((
-                            frame.time /*+ x_pos as u64 * 8*/, 
+                            frame.time /*+ x as u64 * 8*/, 
                             if params.convert_to_kev {
                                 let [a, b] = KEV_COEFF_MAX[channel.id as usize];
-                                a * x as f32 + b
+                                a * y as f32 + b
                             } else {
-                                x as f32
+                                y as f32
                             }
                         ))
                     })
@@ -144,33 +137,27 @@ pub async fn point_to_histogramm(point: &Point, params: ProcessingParams) -> Poi
 
                 let amplitudes = channel.blocks.iter().flat_map(|block| {
                     block.frames.iter().map(|frame| {
-                        let waveform_len = frame.data.len() / 2;
-
-                        let waveform = (0..waveform_len).map(|idx| {
-                            i16::from_le_bytes(frame.data[idx*2..idx*2+2].try_into().unwrap())
-                        });
-
-                        let waveform = waveform.collect::<Vec<_>>();
-
+                        
+                        let waveform = processing::frame_to_waveform(frame);
                         let baseline = waveform.iter().take(16).sum::<i16>() as f32 / 16.0;
-                        let (x_pos, _) = waveform.iter().enumerate().max_by_key(|(_, amp)| *amp).unwrap();
+                        let (x, _)  = waveform.iter().enumerate().max_by_key(|(_, amp)| *amp).unwrap();
 
-                        let left = if x_pos >= left {x_pos - left} else { 0 };
-                        let right = std::cmp::min(waveform_len, x_pos + right);
-                        let crop =  &waveform[left..right];
+                        // TODO: move to processing
+                        let amplitude = {
+                            let left = if x >= left {x - left} else { 0 };
+                            let right = std::cmp::min(waveform.len(), x + right);
+                            let crop =  &waveform[left..right];
+                            crop.iter().sum::<i16>() as f32 / crop.len() as f32
+                        };
 
-                        let amplitude = crop.iter().sum::<i16>() as f32 / crop.len() as f32;
-
-
-                        let x = amplitude - baseline;
-
+                        let y = amplitude - baseline;
                         Some((
                             frame.time /*+ x_pos as u64 * 8*/,
                             if params.convert_to_kev {
                                 let [a, b] = KEV_COEFF_LIKHOVID[channel.id as usize];
-                                a * x + b
+                                a * y + b
                             } else {
-                                x
+                                y
                             }
                         ))
                     })
@@ -181,14 +168,12 @@ pub async fn point_to_histogramm(point: &Point, params: ProcessingParams) -> Poi
         }
     };
 
-
     if params.merge_close_events {
 
         for (_, channel) in &mut events_per_channel {
             channel.sort_by_key(|k| k.unwrap().0);
         }
         
-
         for ch_id in [5usize, 0, 1, 2, 3, 4, 6] {
 
             if ch_id >= events_per_channel.len() {
@@ -229,7 +214,6 @@ pub async fn point_to_histogramm(point: &Point, params: ProcessingParams) -> Poi
         }
     }
     
-
     for (ch_num, events) in events_per_channel {
         let amps = events.iter().filter_map(|val| val.map(|(_, amp)| amp)).collect::<Vec<_>>();
         histogram.add_batch(ch_num, amps);
