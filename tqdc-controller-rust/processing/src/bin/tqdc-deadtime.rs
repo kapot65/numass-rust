@@ -1,0 +1,64 @@
+use protobuf::Message;
+use plotly::{Plot, Histogram, histogram::Bins, Layout, layout::Axis, common::Title};
+
+use dataforge::protos::rsb_event;
+
+#[tokio::main]
+async fn main() {
+
+    let filepath = "/data/2022_12/Tritium_7/set_1/p120(30s)(HV1=12000)";
+    // let filepath = "/data/2022_12/Tritium_7/set_1/p0(30s)(HV1=14000)";
+    // let filepath = "/data/2022_12/Tritium_7/set_1/p6(30s)(HV1=18100)";
+
+    let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
+    let message = dataforge::extract_df_message(&mut point_file).await.unwrap();
+
+    let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
+
+
+    let mut times = point.channels.iter().flat_map(|channel| {
+        channel.blocks.iter().flat_map(|block| {
+            block.frames.iter().map(|frame| {
+                let waveform = processing::frame_to_waveform(frame);
+                let baseline = waveform.iter().take(16).sum::<i16>() as f32 / 16.0;
+                let threshold = 10.0;
+
+                let x_offset = processing::find_first_peak(&waveform, threshold, baseline) as u64 * 8;
+                frame.time + x_offset
+            })
+
+        })
+    }).collect::<Vec<_>>();
+    times.sort();
+
+
+    let deltas = {
+        let mut deltas = vec![0; times.len() - 1];
+        for idx in 1..times.len() {
+            deltas[idx - 1] = times[idx] - times[idx - 1]
+        };
+        let mut deltas = deltas.iter().filter(
+            |delta| **delta != 0
+        ).copied().collect::<Vec<_>>();
+        deltas.sort();
+        deltas        
+    };
+
+    let trace2 = Histogram::new(deltas)
+        .x_bins(Bins::new(0.0, 3e5, 24.0))
+        .opacity(0.6);
+
+    let mut plot = Plot::new();
+
+    let layout = Layout::new()
+    .title(Title::new(format!("Time Deltas for {filepath}").as_str()))
+    .x_axis(Axis::new().title(Title::new("time delta, ns")))
+    .y_axis(Axis::new().type_(plotly::layout::AxisType::Log))
+    
+    .height(1000);
+    plot.set_layout(layout);
+
+    plot.add_trace(trace2);
+
+    plot.show();
+}

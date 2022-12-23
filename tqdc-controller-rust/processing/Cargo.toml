@@ -12,3 +12,4 @@ tokio = { version = "1.21.2", features = ["full"] }
 protobuf = "3.2.0"
 
 plotters = "0.3.1"
+plotly = "0.8.3"
