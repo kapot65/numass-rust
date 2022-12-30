@@ -1,6 +1,71 @@
 
 use dataforge::protos::rsb_event;
 
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum Algorithm {
+    Max,
+    Likhovid {
+        left: usize,
+        right: usize
+    }
+}
+
+ // TODO remove hardcode
+const KEV_COEFF_MAX: [[f32; 2]; 7] = [
+    [0.0597, 0.1481],
+    [0.0608, 0.1942],
+    [0.0634, 0.0839],
+    [0.0627, 0.1587],
+    [0.0626, 0.1675],
+    [0.0675, 0.0930],
+    [0.0580, 0.0923],
+];
+
+const KEV_COEFF_LIKHOVID: [[f32; 2]; 7] = [
+    [0.134678, 0.09647 ],
+    [0.141536, 0.060275],
+    [0.147718, 0.027412],
+    [0.150288, 0.038774],
+    [0.15131 , 0.071923],
+    [0.15336 , 0.029206],
+    [0.136762, 0.041848]
+];
+
+pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 {
+    match algorithm {
+        Algorithm::Max => {
+            let [a, b] = KEV_COEFF_MAX[ch_id as usize];
+            a * *amplitude as f32 + b
+        },
+        Algorithm::Likhovid { .. } => {
+            let [a, b] = KEV_COEFF_LIKHOVID[ch_id as usize];
+            a * *amplitude + b
+        }
+    }
+}
+
+pub fn frame_to_event(frame: &rsb_event::point::channel::block::Frame, algorithm: &Algorithm) -> (u64, f32) {
+    let waveform = frame_to_waveform(frame);
+    let baseline = waveform.iter().take(16).sum::<i16>() as f32 / 16.0;
+    let (x, y)  = waveform.iter().enumerate().max_by_key(|(_, amp)| *amp).unwrap();
+
+    match algorithm {
+        
+        Algorithm::Max => (x as u64 * 8,  *y as f32 + baseline),
+        Algorithm::Likhovid { left, right } => {
+            // TODO: move to processing
+            let amplitude = {
+                let left = if x >= *left {x - left} else { 0 };
+                let right = std::cmp::min(waveform.len(), x + right);
+                let crop =  &waveform[left..right];
+                crop.iter().sum::<i16>() as f32 / crop.len() as f32
+            };
+
+            (x as u64 * 8, amplitude - baseline)
+        }
+    }
+}
+
 pub fn frame_to_waveform(frame: &rsb_event::point::channel::block::Frame) -> Vec<i16>{
     let waveform_len = frame.data.len() / 2;
     (0..waveform_len).map(|idx| {

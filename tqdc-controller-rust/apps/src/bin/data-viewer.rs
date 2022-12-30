@@ -11,7 +11,8 @@ use clap::Parser;
 
 use dataforge::Reply;
 use dataforge::protos::rsb_event;
-use apps::{point_to_histogramm, PointHistogramm, ProcessingParams, Algorithm};
+use apps::{point_to_histogramm, PointHistogramm, ProcessingParams};
+use processing::Algorithm;
 
 
 #[derive(Parser, Debug)]

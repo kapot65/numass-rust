@@ -2,6 +2,7 @@ pub mod defaults;
 
 use std::collections::HashMap;
 
+use processing::{frame_to_event, Algorithm, convert_to_kev};
 use tokio::io::AsyncWriteExt;
 
 use tqdc::mlink::MStreamFragment;
@@ -15,36 +16,6 @@ pub struct PointHistogramm {
     bins: usize,
     range: (f32, f32)
 }
-
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub enum Algorithm {
-    Max,
-    Likhovid {
-        left: usize,
-        right: usize
-    }
-}
-
- // TODO remove hardcode
-const KEV_COEFF_MAX: [[f32; 2]; 7] = [
-    [0.0597, 0.1481],
-    [0.0608, 0.1942],
-    [0.0634, 0.0839],
-    [0.0627, 0.1587],
-    [0.0626, 0.1675],
-    [0.0675, 0.0930],
-    [0.0580, 0.0923],
-];
-
-const KEV_COEFF_LIKHOVID: [[f32; 2]; 7] = [
-    [0.134678, 0.09647 ],
-    [0.141536, 0.060275],
-    [0.147718, 0.027412],
-    [0.150288, 0.038774],
-    [0.15131 , 0.071923],
-    [0.15336 , 0.029206],
-    [0.136762, 0.041848]
-];
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub struct ProcessingParams {
@@ -104,69 +75,22 @@ pub async fn point_to_histogramm(point: &Point, params: ProcessingParams) -> Poi
 
     let mut histogram = PointHistogramm::new(range, bins);
 
-    let mut events_per_channel = match params.algorithm {
-        
-        Algorithm::Max => {
-            point.channels.iter().map(|channel| {
-                let amplitudes = channel.blocks.iter().flat_map(|block| {
-                    block.frames.iter().map(|frame| {
-
-                        let waveform = processing::frame_to_waveform(frame);
-                        let baseline = waveform.iter().take(16).sum::<i16>() as f32 / 16.0;
-        
-                        let (_, y)  = waveform.iter().enumerate().max_by_key(|(_, amp)| *amp).unwrap();
-                        let y = *y as f32 + baseline;
-                        Some((
-                            frame.time /*+ x as u64 * 8*/, 
-                            if params.convert_to_kev {
-                                let [a, b] = KEV_COEFF_MAX[channel.id as usize];
-                                a * y as f32 + b
-                            } else {
-                                y as f32
-                            }
-                        ))
-                    })
-                }).collect::<Vec<_>>();
-        
-                (channel.id as u8, amplitudes)
-            }).collect::<Vec<_>>()
-        }
-
-        Algorithm::Likhovid { left, right } => {
-            point.channels.iter().map(|channel| {
-
-                let amplitudes = channel.blocks.iter().flat_map(|block| {
-                    block.frames.iter().map(|frame| {
-                        
-                        let waveform = processing::frame_to_waveform(frame);
-                        let baseline = waveform.iter().take(16).sum::<i16>() as f32 / 16.0;
-                        let (x, _)  = waveform.iter().enumerate().max_by_key(|(_, amp)| *amp).unwrap();
-
-                        // TODO: move to processing
-                        let amplitude = {
-                            let left = if x >= left {x - left} else { 0 };
-                            let right = std::cmp::min(waveform.len(), x + right);
-                            let crop =  &waveform[left..right];
-                            crop.iter().sum::<i16>() as f32 / crop.len() as f32
-                        };
-
-                        let y = amplitude - baseline;
-                        Some((
-                            frame.time /*+ x_pos as u64 * 8*/,
-                            if params.convert_to_kev {
-                                let [a, b] = KEV_COEFF_LIKHOVID[channel.id as usize];
-                                a * y + b
-                            } else {
-                                y
-                            }
-                        ))
-                    })
-                }).collect::<Vec<_>>();
-
-                (channel.id as u8, amplitudes)
-            }).collect::<Vec<_>>()
-        }
-    };
+    let mut events_per_channel = point.channels.iter().map(|channel| {
+        let amplitudes = channel.blocks.iter().flat_map(|block| {
+            block.frames.iter().map(|frame| {
+                let (_, amp) = frame_to_event(frame, &params.algorithm);
+                Some((
+                    frame.time,
+                    if params.convert_to_kev {
+                        convert_to_kev(&amp, channel.id as u8, &params.algorithm)
+                    } else {
+                        amp
+                    }
+                ))
+            })
+        }).collect::<Vec<_>>();
+        (channel.id as u8, amplitudes)
+    }).collect::<Vec<_>>();
 
     if params.merge_close_events {
 
