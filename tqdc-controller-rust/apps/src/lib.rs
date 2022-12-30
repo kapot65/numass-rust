@@ -2,7 +2,7 @@ pub mod defaults;
 
 use std::collections::HashMap;
 
-use processing::{frame_to_event, Algorithm, convert_to_kev};
+use processing::{waveform_to_event, Algorithm, convert_to_kev, frame_to_waveform};
 use tokio::io::AsyncWriteExt;
 
 use tqdc::mlink::MStreamFragment;
@@ -78,7 +78,7 @@ pub async fn point_to_histogramm(point: &Point, params: ProcessingParams) -> Poi
     let mut events_per_channel = point.channels.iter().map(|channel| {
         let amplitudes = channel.blocks.iter().flat_map(|block| {
             block.frames.iter().map(|frame| {
-                let (_, amp) = frame_to_event(frame, &params.algorithm);
+                let (_, amp) = waveform_to_event(&frame_to_waveform(frame), &params.algorithm);
                 Some((
                     frame.time,
                     if params.convert_to_kev {

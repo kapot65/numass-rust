@@ -44,8 +44,7 @@ pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 
     }
 }
 
-pub fn frame_to_event(frame: &rsb_event::point::channel::block::Frame, algorithm: &Algorithm) -> (u64, f32) {
-    let waveform = frame_to_waveform(frame);
+pub fn waveform_to_event(waveform: &Vec<i16>, algorithm: &Algorithm) -> (u64, f32) {
     let baseline = waveform.iter().take(16).sum::<i16>() as f32 / 16.0;
     let (x, y)  = waveform.iter().enumerate().max_by_key(|(_, amp)| *amp).unwrap();
 
