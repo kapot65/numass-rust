@@ -18,8 +18,10 @@ struct WaveformNormed {
 async fn main() {
 
     // let filepath = "/data/2022_12/Electrode_4/set_1/p4(200s)(HV1=10000)";
-    let filepath = "/data/2022_12/Electrode_4/set_1/p4(200s)(HV1=10000)";
+    // let filepath = "/data/2022_12/Electrode_4/set_1/p4(200s)(HV1=10000)";
+    let filepath = "/data/2022_12/Gun_16/set_1/p0(200s)(HV1=15990)";
     // let filepath = "/data/2022_12/Tritium_5/set_8/p121(30s)(HV1=14000)";
+    let channel = 6;
 
     let threshold = 20.0;
     let step = 10.0;
@@ -29,7 +31,8 @@ async fn main() {
 
     let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
 
-    let waveforms_ch6 = point.channels.iter().find(|ch| ch.id == 3).unwrap().blocks[0].frames.iter()
+    let waveforms_ch6 = point.channels.iter()
+        .find(|ch| ch.id == channel - 1).unwrap().blocks[0].frames.iter()
         .map(|frame| {
 
             let waveform = frame_to_waveform(frame);
@@ -80,7 +83,7 @@ async fn main() {
             let amp_min = idx as f32 * step;
             let amp_max = (idx as f32 + 1.0) * step;
 
-            let caption = format!("{filepath} {} - {} : {} events", amp_min, amp_max, group.len());
+            let caption = format!("{filepath} (ch # {channel}) {amp_min} - {amp_max} : {} events", group.len());
 
             let filename = format!("imgs/{idx}.png");
 
