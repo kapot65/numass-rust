@@ -1,7 +1,7 @@
 use protobuf::Message;
 use clap::Parser;
 
-use dataforge::protos::rsb_event;
+use numass::protos::rsb_event;
 use tokio::io::AsyncWriteExt;
 
 /// Converts DataForge point to raw binary format.
@@ -29,7 +29,7 @@ async fn main() {
     };
 
     let mut point_file = tokio::fs::File::open(&args.filepath).await.unwrap();
-    let message = dataforge::extract_df_message(&mut point_file).await.unwrap();
+    let message = numass::extract_df_message(&mut point_file).await.unwrap();
 
     let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
 

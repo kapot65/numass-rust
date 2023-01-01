@@ -1,5 +1,5 @@
 
-use dataforge::protos::rsb_event;
+use numass::protos::rsb_event;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Algorithm {

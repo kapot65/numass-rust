@@ -12,7 +12,7 @@ use fs2::FileExt;
 use serde_json::Value;
 use eyre::{Result, ContextCompat, Report};
 
-use dataforge::{extract_df_message, DFMeta, push_df_message, ZeroSuppressionParams};
+use numass::{extract_df_message, DFMeta, ZeroSuppressionParams};
 use apps::events_to_point;
 
 use apps::defaults::{
@@ -109,14 +109,14 @@ async fn acquire_point(acquisition_time: f32, external_meta: Option<Value>, args
 
     let point = events_to_point(events, zero_suppression).await?;
     
-    let meta = DFMeta::Reply(dataforge::Reply::AcquirePoint { 
+    let meta = DFMeta::Reply(numass::Reply::AcquirePoint { 
         acquisition_time, 
         start_time, 
         end_time, 
         external_meta, 
         config,
         zero_suppression,
-        status: dataforge::ReplyStatus::Ok 
+        status: numass::ReplyStatus::Ok 
     });
 
     let data = Some({
@@ -166,13 +166,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match msg.meta {
                     DFMeta::Command(command) => {
                         match command {
-                            dataforge::Command::Init => {
-                                push_df_message(&mut socket, DFMeta::Reply(dataforge::Reply::Init {
-                                    status: dataforge::ReplyStatus::Ok,
+                            numass::Command::Init => {
+                                dataforge::push_df_message(&mut socket, DFMeta::Reply(numass::Reply::Init {
+                                    status: numass::ReplyStatus::Ok,
                                     reseted: false
                                 }), None).await.expect("catch IO error on sending DF message");
                             }
-                            dataforge::Command::AcquirePoint { split: _, acquisition_time, external_meta } => {
+                            numass::Command::AcquirePoint { split: _, acquisition_time, external_meta } => {
                                 match acquire_point(acquisition_time, external_meta, args.clone()).await {
                                     Ok((meta, data)) => {
 
@@ -185,13 +185,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 .await.expect("catch IO error on sending DF message");
                                         }
 
-                                        push_df_message(&mut socket,  meta, data).await
+                                        dataforge::push_df_message(&mut socket,  meta, data).await
                                             .expect("catch IO error on sending DF message");
 
                                     }
                                     Err(error) => {
-                                        push_df_message(&mut socket, DFMeta::Reply(dataforge::Reply::Error { 
-                                            error_code: dataforge::ErrorType::AlgoritmError, 
+                                        dataforge::push_df_message(&mut socket, DFMeta::Reply(numass::Reply::Error { 
+                                            error_code: numass::ErrorType::AlgoritmError, 
                                             description: error.to_string()
                                         }), None).await
                                         .expect("catch IO error on sending DF message");
@@ -202,8 +202,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
 
                     _ => {
-                        push_df_message(&mut socket, DFMeta::Reply(dataforge::Reply::Error { 
-                            error_code: dataforge::ErrorType::UnknownMessageError, 
+                        dataforge::push_df_message(&mut socket, DFMeta::Reply(numass::Reply::Error { 
+                            error_code: numass::ErrorType::UnknownMessageError, 
                             description: "tqdc-server doesn't handles anything but commands".to_string()
                         }), None).await
                         .expect("catch IO error on sending DF message");

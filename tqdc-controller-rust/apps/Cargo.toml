@@ -11,6 +11,7 @@ rfd = "0.10.0"
 
 [dependencies]
 tqdc = {path = "../tqdc"}
+numass = {path = "../numass"}
 dataforge = {path = "../dataforge"}
 processing = {path = "../processing"}
 

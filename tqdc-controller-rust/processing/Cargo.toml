@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 dataforge = {path = "../dataforge"}
+numass = {path = "../numass"}
 
 tokio = { version = "1.21.2", features = ["full"] }
 protobuf = "3.2.0"

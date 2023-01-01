@@ -2,7 +2,7 @@
 use plotters::prelude::*;
 use protobuf::Message;
 
-use dataforge::protos::rsb_event;
+use numass::protos::rsb_event;
 use processing::{frame_to_waveform, correct_amp, find_first_peak};
 
 #[derive(Debug, Clone)]
@@ -27,7 +27,7 @@ async fn main() {
     let step = 10.0;
 
     let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
-    let message = dataforge::extract_df_message(&mut point_file).await.unwrap();
+    let message = numass::extract_df_message(&mut point_file).await.unwrap();
 
     let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
 

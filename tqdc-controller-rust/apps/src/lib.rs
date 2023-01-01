@@ -6,7 +6,7 @@ use processing::{waveform_to_event, Algorithm, convert_to_kev, frame_to_waveform
 use tokio::io::AsyncWriteExt;
 
 use tqdc::mlink::MStreamFragment;
-use dataforge::{protos::rsb_event::{self, Point}, ZeroSuppressionParams};
+use numass::{protos::rsb_event::{self, Point}, ZeroSuppressionParams};
 
 #[derive(Debug, Clone)]
 pub struct PointHistogramm {
