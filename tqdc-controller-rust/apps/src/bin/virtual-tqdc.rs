@@ -8,6 +8,11 @@ use tokio::io;
 use tokio::io::AsyncReadExt;
 use tokio::sync::{Mutex, watch};
 use tokio::net::UdpSocket;
+
+#[cfg(target_os = "windows")]
+use tokio::time::sleep;
+
+#[cfg(target_os = "unix")]
 use tokio_timerfd::sleep;
 
 use tqdc::regs::{Register16, Register32, DeviceCtrl};
@@ -117,7 +122,12 @@ async fn handle_stream_port(
 
             tokio::time::timeout(Duration::from_millis(time_limit as u64), async {
                 loop {
+                    #[cfg(target_os = "windows")]
+                    sleep(Duration::from_micros(10)).await;
+                    
+                    #[cfg(target_os = "unix")]
                     sleep(Duration::from_micros(10)).await.unwrap();
+
                     tx.send_to(&contents[..size], to_addr).await.unwrap();
                 }
             }).await.unwrap_err();     

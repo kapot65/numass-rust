@@ -278,9 +278,12 @@ impl eframe::App for DataViewerApp {
             }
 
             ui.horizontal(|ui| {
-                if ui.button("open").clicked() {
-                    if let Some(root_path) = rfd::FileDialog::new().pick_folder() {
-                        self.root = Some(expand_dir(root_path))
+                #[cfg(target_os = "unix")]
+                {
+                    if ui.button("open").clicked() {
+                        if let Some(root_path) = rfd::FileDialog::new().pick_folder() {
+                            self.root = Some(expand_dir(root_path))
+                        }
                     }
                 }
                 if let Some(root) = &self.root {
