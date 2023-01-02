@@ -8,9 +8,8 @@ use eframe::egui;
 use eframe::egui::plot::{Plot, Line, Legend};
 use clap::Parser;
 
-
-use numass::Reply;
-use numass::protos::rsb_event;
+use dataforge::read_df_message;
+use numass::{protos::rsb_event, Reply, NumassMeta};
 use apps::{point_to_histogramm, PointHistogramm, ProcessingParams};
 use processing::Algorithm;
 
@@ -114,9 +113,9 @@ async fn background_processing(
 
                     tokio::spawn(async move {
                         let mut point_file = tokio::fs::File::open(&filepath).await.unwrap();
-                        let message = numass::extract_df_message(&mut point_file).await.unwrap();
+                        let message = read_df_message::<NumassMeta>(&mut point_file).await.unwrap();
                         match message.meta {
-                            numass::DFMeta::Reply(Reply::AcquirePoint { 
+                            numass::NumassMeta::Reply(Reply::AcquirePoint { 
                                 acquisition_time: _, 
                                 start_time: _, 
                                 end_time: _, 

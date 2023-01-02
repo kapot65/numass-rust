@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use processing::{waveform_to_event, Algorithm, convert_to_kev};
 use protobuf::Message;
 
-use numass::protos::rsb_event;
+use dataforge::read_df_message;
+use numass::{protos::rsb_event, NumassMeta};
 
 #[tokio::main]
 async fn main() {
@@ -80,7 +81,7 @@ async fn main() {
                 let mut crosses = HashMap::new();
 
                 let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
-                let message = numass::extract_df_message(&mut point_file).await.unwrap();
+                let message = read_df_message::<NumassMeta>(&mut point_file).await.unwrap();
 
                 let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
                 for channel in &point.channels {

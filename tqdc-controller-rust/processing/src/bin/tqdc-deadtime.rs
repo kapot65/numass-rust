@@ -1,7 +1,8 @@
 use protobuf::Message;
 use plotly::{Plot, Histogram, histogram::Bins, Layout, layout::Axis, common::Title};
 
-use numass::protos::rsb_event;
+use dataforge::read_df_message;
+use numass::{protos::rsb_event, NumassMeta};
 
 #[tokio::main]
 async fn main() {
@@ -11,7 +12,7 @@ async fn main() {
     // let filepath = "/data/2022_12/Tritium_7/set_1/p6(30s)(HV1=18100)";
 
     let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
-    let message = numass::extract_df_message(&mut point_file).await.unwrap();
+    let message = read_df_message::<NumassMeta>(&mut point_file).await.unwrap();
 
     let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
 
