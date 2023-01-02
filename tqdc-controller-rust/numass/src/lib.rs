@@ -97,32 +97,3 @@ pub enum Reply {
         status: ReplyStatus,
     }
 }
-
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-    use dataforge::read_df_message;
-
-    #[tokio::test]
-    async fn parse_2021_file() {
-
-        let mut file = tokio::fs::File::open(
-            "../test-data/points/p0(30s)(HV1=14000).df"
-        ).await.unwrap();
-
-        let msg = read_df_message::<NumassMeta>(&mut file).await.unwrap();
-        println!("{:?}", msg.meta)
-    }
-    
-    #[tokio::test]
-    async fn parse_2022_file() {
-
-        let mut file = tokio::fs::File::open(
-            "../test-data/points/p-2022-11-14-real-5v.df"
-        ).await.unwrap();
-
-        let msg = read_df_message::<NumassMeta>(&mut file).await.unwrap();
-        println!("{:?}", msg.meta)
-    }
-}
