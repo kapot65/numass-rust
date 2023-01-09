@@ -8,8 +8,8 @@ use eframe::egui::plot::{Plot, Line, Legend};
 use clap::Parser;
 
 use tqdc::mlink::MlinkMessage;
-use apps::PointHistogramm;
 use apps::defaults::{HOST_IP, BOARD_IP, STREAM_PORT, HOST_STREAM_PORT};
+use processing::histogram::PointHistogram;
 
 
 
@@ -51,7 +51,7 @@ fn main() {
 
     let histogram_bg = Arc::new(
         Mutex::new(
-            PointHistogramm::new((args.hist_min as f32, args.hist_max as f32), args.hist_bins)));
+            PointHistogram::new((args.hist_min as f32, args.hist_max as f32), args.hist_bins)));
     let histogram = Arc::clone(&histogram_bg);
 
     
@@ -169,7 +169,7 @@ struct Waveform {
 
 struct MyEguiApp {
     waveforms: Arc<Mutex<Vec<Waveform>>>,
-    histogram: Arc<Mutex<PointHistogramm>>,
+    histogram: Arc<Mutex<PointHistogram>>,
     count_rate: Arc<Mutex<HashMap<u8, u32>>>
 }
 

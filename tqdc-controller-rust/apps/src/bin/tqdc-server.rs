@@ -12,8 +12,7 @@ use fs2::FileExt;
 use serde_json::Value;
 use eyre::{Result, ContextCompat, Report};
 
-use dataforge::{read_df_message, write_df_message};
-use numass::{NumassMeta, ZeroSuppressionParams};
+use numass::{extract_df_message, DFMeta, ZeroSuppressionParams};
 use apps::events_to_point;
 
 use apps::defaults::{
@@ -67,7 +66,7 @@ struct Args {
    afi_config: Option<PathBuf>,
 }
 
-async fn acquire_point(acquisition_time: f32, external_meta: Option<Value>, args: Args) -> Result<(NumassMeta, Option<Vec<u8>>)> {
+async fn acquire_point(acquisition_time: f32, external_meta: Option<Value>, args: Args) -> Result<(DFMeta, Option<Vec<u8>>)> {
 
     let lockfile_path = if let Some(lockfile) = args.lockfile {
         lockfile
@@ -110,7 +109,7 @@ async fn acquire_point(acquisition_time: f32, external_meta: Option<Value>, args
 
     let point = events_to_point(events, zero_suppression).await?;
     
-    let meta = NumassMeta::Reply(numass::Reply::AcquirePoint { 
+    let meta = DFMeta::Reply(numass::Reply::AcquirePoint { 
         acquisition_time, 
         start_time, 
         end_time, 
@@ -159,16 +158,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             loop {
 
                 let args = args.to_owned();
-                let msg = read_df_message(&mut socket).await
+                let msg = extract_df_message(&mut socket).await
                     .expect("catch IO error on receiving DF message");
 
                 println!("{msg:?}");
 
                 match msg.meta {
-                    NumassMeta::Command(command) => {
+                    DFMeta::Command(command) => {
                         match command {
                             numass::Command::Init => {
-                                write_df_message(&mut socket, NumassMeta::Reply(numass::Reply::Init {
+                                dataforge::push_df_message(&mut socket, DFMeta::Reply(numass::Reply::Init {
                                     status: numass::ReplyStatus::Ok,
                                     reseted: false
                                 }), None).await.expect("catch IO error on sending DF message");
@@ -182,16 +181,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             let filename = now.format("%Y-%m-%d-%H-%M-%S.df").to_string();
                                             let mut point_file = tokio::fs::File::create(backup_folder.join(filename))
                                                 .await.expect("catch IO error on sending DF message");
-                                            write_df_message(&mut point_file, meta.clone(), data.clone())
+                                            dataforge::push_df_message(&mut point_file, meta.clone(), data.clone())
                                                 .await.expect("catch IO error on sending DF message");
                                         }
 
-                                        write_df_message(&mut socket,  meta, data).await
+                                        dataforge::push_df_message(&mut socket,  meta, data).await
                                             .expect("catch IO error on sending DF message");
 
                                     }
                                     Err(error) => {
-                                        write_df_message(&mut socket, NumassMeta::Reply(numass::Reply::Error { 
+                                        dataforge::push_df_message(&mut socket, DFMeta::Reply(numass::Reply::Error { 
                                             error_code: numass::ErrorType::AlgoritmError, 
                                             description: error.to_string()
                                         }), None).await
@@ -203,7 +202,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
 
                     _ => {
-                        write_df_message(&mut socket, NumassMeta::Reply(numass::Reply::Error { 
+                        dataforge::push_df_message(&mut socket, DFMeta::Reply(numass::Reply::Error { 
                             error_code: numass::ErrorType::UnknownMessageError, 
                             description: "tqdc-server doesn't handles anything but commands".to_string()
                         }), None).await
