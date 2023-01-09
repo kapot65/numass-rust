@@ -8,11 +8,10 @@ use eframe::egui;
 use eframe::egui::plot::{Plot, Line, Legend};
 use clap::Parser;
 
-
-use numass::Reply;
-use numass::protos::rsb_event;
-use apps::{point_to_histogramm, ProcessingParams};
-use processing::{Algorithm, histogram::PointHistogram};
+use dataforge::read_df_message;
+use numass::{protos::rsb_event, Reply, NumassMeta};
+use apps::{point_to_histogramm, PointHistogramm, ProcessingParams};
+use processing::Algorithm;
 
 
 #[derive(Parser, Debug)]
@@ -26,7 +25,7 @@ struct Opt {
 struct FileCache {
     opened: bool,
     processed: Option<SystemTime>,
-    histogram: Option<PointHistogram>
+    histogram: Option<PointHistogramm>
 }
 
 struct DataViewerApp {
@@ -114,9 +113,9 @@ async fn background_processing(
 
                     tokio::spawn(async move {
                         let mut point_file = tokio::fs::File::open(&filepath).await.unwrap();
-                        let message = numass::extract_df_message(&mut point_file).await.unwrap();
+                        let message = read_df_message::<NumassMeta>(&mut point_file).await.unwrap();
                         match message.meta {
-                            numass::DFMeta::Reply(Reply::AcquirePoint { 
+                            numass::NumassMeta::Reply(Reply::AcquirePoint { 
                                 acquisition_time: _, 
                                 start_time: _, 
                                 end_time: _, 
@@ -423,7 +422,7 @@ async fn main() {
     let configuration = Arc::clone(&state);
 
     let processing_params = Arc::new(Mutex::new(ProcessingParams {
-        algorithm: Algorithm::Likhovid { left: 6, right: 36 },
+        algorithm: Algorithm::Likhovid { left: 3, right: 19 },
         convert_to_kev: true,
         merge_close_events: true,
         hist_min: 0.0,

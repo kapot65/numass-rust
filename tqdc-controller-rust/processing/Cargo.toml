@@ -9,11 +9,11 @@ edition = "2021"
 dataforge = {path = "../dataforge"}
 numass = {path = "../numass"}
 
+mongodb = "2.3.1"
+serde_json = "1.0.91"
+
 tokio = { version = "1.21.2", features = ["full"] }
 protobuf = "3.2.0"
-
-# polyfit-rs = "0.2.1"
-linreg = "0.2.0"
 
 plotters = "0.3.1"
 plotly = "0.8.3"

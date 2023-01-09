@@ -2,7 +2,8 @@ use protobuf::Message;
 use eframe::{egui, epaint::Color32};
 use clap::Parser;
 
-use numass::protos::rsb_event;
+use dataforge::read_df_message;
+use numass::{protos::rsb_event, NumassMeta};
 
 
 #[derive(Parser, Debug)]
@@ -17,7 +18,7 @@ async fn main() {
     let args = Opt::parse();
 
     let mut point_file = tokio::fs::File::open(&args.filepath).await.unwrap();
-    let message = numass::extract_df_message(&mut point_file).await.unwrap();
+    let message = read_df_message::<NumassMeta>(&mut point_file).await.unwrap();
 
     let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
 

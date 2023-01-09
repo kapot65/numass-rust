@@ -1,4 +1,5 @@
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use serde::{Serialize, Deserialize};
 
 const DF01_OPEN_SCOPE: &[u8; 2] = b"#!";
 const DF01_CLOSE_SCOPE: &[u8; 4] = b"!#\r\n";
@@ -25,7 +26,7 @@ impl TryFrom<u32> for MetaType {
 
 #[derive(Debug)]
 pub enum DFBinaryHeader {
-    Text,
+    DFText,
     DF01 {
         time: u32,
         meta_type: MetaType,
@@ -33,6 +34,12 @@ pub enum DFBinaryHeader {
         data_type: u32,
         data_len: usize
     }
+}
+
+#[derive(Debug)]
+pub struct DFMessage<T: for<'a> Deserialize<'a>> {
+    pub meta: T,
+    pub data: Option<Vec<u8>>
 }
 
 pub async fn read_binary_header(stream: & mut (impl AsyncReadExt + std::marker::Unpin)) -> tokio::io::Result<DFBinaryHeader> {
@@ -81,9 +88,9 @@ pub async fn read_binary_header(stream: & mut (impl AsyncReadExt + std::marker::
     }
 }
 
-pub async fn push_df_message(
+pub async fn write_df_message<T: Serialize>(
     stream: & mut (impl AsyncWriteExt + std::marker::Unpin), 
-    meta: impl serde::Serialize, data: Option<Vec<u8>>) -> tokio::io::Result<()> {
+    meta: T, data: Option<Vec<u8>>) -> tokio::io::Result<()> {
 
         let meta_vec =  {
             let mut json = serde_json::to_vec_pretty(&meta).unwrap();
@@ -129,42 +136,49 @@ pub async fn push_df_message(
         Ok(())
 }
 
+pub async fn read_df_header_and_meta<T: for<'a> Deserialize<'a>> (
+    stream: & mut (impl AsyncReadExt + std::marker::Unpin)) -> tokio::io::Result<(DFBinaryHeader, T)> {
 
-#[cfg(test)]
-mod tests {
+    let header = read_binary_header(stream).await?;
+    
+    let meta = match &header {
+        DFBinaryHeader::DF01 {  meta_type, meta_len, .. } => {
+            let meta_bytes = {
+                let mut meta_bytes = vec![0u8; meta_len.to_owned() as usize];
+                stream.read_exact(&mut meta_bytes[..]).await?;
+                meta_bytes
+            };
 
-    use super::*;
+            match meta_type {
+                MetaType::Json => {
+                    serde_json::from_slice(&meta_bytes)?
+                },
+                meta_type => panic!("MetaType::{meta_type:?} handling is not implemented")
+            }
+        },
+        DFBinaryHeader::DFText => todo!()
+    };
 
-    #[tokio::test]
-    async fn parse_header() {
+    Ok((header, meta))
+}
 
-        let mut file = tokio::fs::File::open("../test-data/points/p0(30s)(HV1=14000).df").await.unwrap();
+pub async fn read_df_message<T: for<'a> Deserialize<'a>> (
+    stream: & mut (impl AsyncReadExt + std::marker::Unpin)) -> tokio::io::Result<DFMessage<T>> {
 
-        let header = read_binary_header(&mut file).await.unwrap();
+    let (header, meta) = read_df_header_and_meta(stream).await?;
+    
+    let data = match header {
+        DFBinaryHeader::DF01 { data_len, .. } => {
+            if data_len != 0 {
+                let mut data_bytes = vec![0u8; data_len as usize];
+                stream.read_exact(&mut data_bytes[..]).await?;
+                Some(data_bytes)
+            } else {
+                None
+            }
+        },
+        DFBinaryHeader::DFText => todo!()
+    };
 
-        if let DFBinaryHeader::DF01 { meta_len, .. } = header {
-
-            let mut meta_bytes = vec![0u8; meta_len as usize];
-            file.read_exact(&mut meta_bytes[..]).await.unwrap();
-
-            println!("{}", String::from_utf8(meta_bytes).unwrap());
-        }  
-    }
-
-    #[tokio::test]
-    async fn create_message() {
-
-        let data = r#"
-        {
-            "type": "point"
-        }"#;
-
-        // Parse the string of data into serde_json::Value.
-        let meta: serde_json::Value = serde_json::from_str(data).unwrap();
-
-        let mut stream = vec![];
-        push_df_message(&mut stream, meta, None).await.unwrap();
-
-        println!("{:?}", String::from_utf8_lossy(&stream))
-    }
+    Ok(DFMessage { meta, data })
 }
