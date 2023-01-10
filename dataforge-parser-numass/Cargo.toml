@@ -1,0 +1,21 @@
+[package]
+name = "numass"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+dataforge = { git = "ssh://git@bitbucket.org/Kapot/dataforge-parser-rust.git", tag = "0.1.0" }
+
+protobuf = "3.2.0"
+tokio = { version = "1.21.2", features = ["full"] }
+serde = { version = "1.0.147", features = ["derive"] }
+chrono = { version = "0.4.22", features = ["serde"] }
+serde_json = "1.0.87"
+serde_with = "2.0.1"
+serde_repr = "0.1.9"
+
+[build-dependencies]
+protobuf-codegen = "3.2.0"
+
+
