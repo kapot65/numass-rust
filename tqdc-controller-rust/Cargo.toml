@@ -4,6 +4,4 @@ members = [
   "apps",
   "processing",
   "tqdc",
-  "dataforge",
-  "numass",
 ]

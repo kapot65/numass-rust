@@ -8,10 +8,11 @@ use eframe::egui;
 use eframe::egui::plot::{Plot, Line, Legend};
 use clap::Parser;
 
+
+use numass::{Reply, NumassMeta, protos::rsb_event};
 use dataforge::read_df_message;
-use numass::{protos::rsb_event, Reply, NumassMeta};
-use apps::{point_to_histogramm, PointHistogramm, ProcessingParams};
-use processing::Algorithm;
+use apps::{point_to_histogramm, ProcessingParams};
+use processing::{Algorithm, histogram::PointHistogram};
 
 
 #[derive(Parser, Debug)]
@@ -25,7 +26,7 @@ struct Opt {
 struct FileCache {
     opened: bool,
     processed: Option<SystemTime>,
-    histogram: Option<PointHistogramm>
+    histogram: Option<PointHistogram>
 }
 
 struct DataViewerApp {
@@ -422,7 +423,7 @@ async fn main() {
     let configuration = Arc::clone(&state);
 
     let processing_params = Arc::new(Mutex::new(ProcessingParams {
-        algorithm: Algorithm::Likhovid { left: 3, right: 19 },
+        algorithm: Algorithm::Likhovid { left: 6, right: 36 },
         convert_to_kev: true,
         merge_close_events: true,
         hist_min: 0.0,
