@@ -9,8 +9,6 @@ use numass::{protos::rsb_event, NumassMeta};
 async fn main() {
 
     let algorithm = Algorithm::Likhovid { left: 6, right: 36 };
-    let polyfit_range = 8usize;
-
 
     let points = [
         (6.0, "/data/numass-server/2022_12/Electrode_4/set_1/p2(200s)(HV1=6000)"),
@@ -101,15 +99,7 @@ async fn main() {
         }
     }
 
-    let calibration_data = {
-        let mut calibration_data = calibration_data.lock().await.clone();
-
-        // for (_, coeffs) in calibration_data {
-        //     coeffs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-        // }
-        
-        calibration_data
-    };
+    let calibration_data = calibration_data.lock().await.clone();
 
     let mut plot = plotly::Plot::new();
 
