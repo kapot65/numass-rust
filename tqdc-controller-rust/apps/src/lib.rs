@@ -47,6 +47,8 @@ pub async fn point_to_histogramm(point: &Point, params: ProcessingParams) -> Poi
 
     if params.merge_close_events {
 
+        events_per_channel.sort_by_key(|(ch_id, _)| *ch_id);
+
         for (_, channel) in &mut events_per_channel {
             channel.sort_by_key(|k| k.unwrap().0);
         }
