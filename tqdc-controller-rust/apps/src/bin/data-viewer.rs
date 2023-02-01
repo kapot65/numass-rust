@@ -306,7 +306,7 @@ impl eframe::App for DataViewerApp {
             }
 
             ui.horizontal(|ui| {
-                #[cfg(target_os = "unix")]
+                #[cfg(unix)]
                 {
                     if ui.button("open").clicked() {
                         if let Some(root_path) = rfd::FileDialog::new().pick_folder() {
@@ -332,59 +332,57 @@ impl eframe::App for DataViewerApp {
                     }
                 }
 
-                if ui.button("save").clicked() {
-                    let save_folder = tinyfiledialogs::select_folder_dialog("select folder to save", home_dir().unwrap().to_str().unwrap());
-                    if let Some(save_folder) = save_folder {
+                #[cfg(unix)] {
+                    if ui.button("save").clicked() {
 
+                        let save_folder = rfd::FileDialog::new().set_directory(home_dir().unwrap()).pick_folder();
+                        if let Some(save_folder) = save_folder {
+    
+                            let state = self.state.clone();
 
-                        let save_folder = PathBuf::from_str(&save_folder).unwrap();
-
-                        let state = self.state.clone();
-
-                        tokio::spawn(async move {
-                            let state = state.lock().await;
-
-                            for (name, cache) in state.iter() {
-
-                                if let Some(histogramm) = &cache.histogram {
-                                    let point_name = {
-                                        let temp = PathBuf::from_str(name).unwrap();
-                                        temp.file_name().unwrap().to_owned()
-                                    };
-        
-                                    let mut filepath = save_folder.clone();
-                                    filepath.push(point_name);
-        
-                                    let mut out_file = File::create(filepath).unwrap();
-
-                                    let channels_sorted = histogramm.channels.iter().collect::<BTreeMap<_, _>>();
-        
-                                    let mut row = String::new();
-                                    row.push_str("bin\t");
-                                    for (ch_num, _) in &channels_sorted {
-                                        row.push_str(&format!("ch {}\t", *ch_num + 1));
-                                    }
-                                    row.push('\n');
-                                    out_file.write_all(row.as_bytes()).unwrap();
-
-                                    for (idx, bin) in  histogramm.x.iter().enumerate() {
-
+                            tokio::spawn(async move {
+                                let state = state.lock().await;
+    
+                                for (name, cache) in state.iter() {
+    
+                                    if let Some(histogramm) = &cache.histogram {
+                                        let point_name = {
+                                            let temp = PathBuf::from_str(name).unwrap();
+                                            temp.file_name().unwrap().to_owned()
+                                        };
+            
+                                        let mut filepath = save_folder.clone();
+                                        filepath.push(point_name);
+            
+                                        let mut out_file = File::create(filepath).unwrap();
+    
+                                        let channels_sorted = histogramm.channels.iter().collect::<BTreeMap<_, _>>();
+            
                                         let mut row = String::new();
-
-                                        row.push_str(&format!("{bin:.4}\t"));
-                                        for val in channels_sorted.values() {
-                                            row.push_str(&format!("{}\t", val[idx]));
+                                        row.push_str("bin\t");
+                                        for ch_num in channels_sorted.keys() {
+                                            row.push_str(&format!("ch {}\t", *ch_num + 1));
                                         }
                                         row.push('\n');
                                         out_file.write_all(row.as_bytes()).unwrap();
+    
+                                        for (idx, bin) in  histogramm.x.iter().enumerate() {
+    
+                                            let mut row = String::new();
+    
+                                            row.push_str(&format!("{bin:.4}\t"));
+                                            for val in channels_sorted.values() {
+                                                row.push_str(&format!("{}\t", val[idx]));
+                                            }
+                                            row.push('\n');
+                                            out_file.write_all(row.as_bytes()).unwrap();
+                                        }
                                     }
                                 }
-                                // out_file.write(buf)
-                            }
-                        });
+                            });
+                        }
                     }
                 }
- 
             });
             egui::containers::ScrollArea::new([false, true]).show(ui, |ui| {
                 if let Some(root) = &mut self.root {
