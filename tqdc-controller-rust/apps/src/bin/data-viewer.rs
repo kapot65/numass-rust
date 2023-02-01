@@ -6,18 +6,17 @@ use std::{path::PathBuf, collections::HashMap, sync::Arc};
 
 use home::home_dir;
 use protobuf::Message;
-
 use tokio::sync::{watch, Mutex};
 use eframe::egui;
 use eframe::egui::plot::{Plot, Line, Legend};
 use clap::Parser;
-
 
 use numass::{Reply, NumassMeta, protos::rsb_event};
 use dataforge::read_df_message;
 use apps::{point_to_histogramm, ProcessingParams};
 use processing::{Algorithm, histogram::PointHistogram};
 
+const DEFAULT_LIKHOVID: Algorithm = Algorithm::Likhovid { left: 6, right: 36 };
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -232,7 +231,7 @@ impl eframe::App for DataViewerApp {
                     
                     if ui.add(egui::RadioButton::new(
                         matches!(algorithm, Algorithm::Likhovid { .. }), "Likhovid")).clicked() {
-                        algorithm = Algorithm::Likhovid { left: 3, right: 19 } // TODO remove hardcode
+                        algorithm = DEFAULT_LIKHOVID
                     }
                 });
 
@@ -391,73 +390,33 @@ impl eframe::App for DataViewerApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             if let Ok(state) = self.state.try_lock() {
+                Plot::new("Histogram Plot").legend(Legend { 
+                    text_style: egui::TextStyle::Body, 
+                    background_alpha: 1.0, position: egui::plot::Corner::RightTop 
+                })
+                .show(ui, move |plot_ui| {
 
-                let opened_files = state.iter().filter(|(_, cache)| {
-                    cache.opened
-                });
+                    let opened_files = state.iter().filter(|(_, cache)| {
+                        cache.opened
+                    }).collect::<Vec<_>>();
 
-                // TODO remove code duplication
-                if opened_files.clone().count() == 1 {
-                    let (_, hash) = opened_files.last().unwrap();
-                    if hash.opened && hash.histogram.is_some() {
-                        let hist = hash.histogram.clone().unwrap();
-
-                        Plot::new("Histogram Plot").legend(Legend { 
-                            text_style: egui::TextStyle::Body, 
-                            background_alpha: 1.0, position: egui::plot::Corner::RightTop 
-                        })
-                        .show(ui, |plot_ui| {
-
-                            let bounds = plot_ui.plot_bounds();
-
-                            let lines = hist.channels.iter().map(|(ch_num, y)| {
-
-                                let mut events_in_window = 0;
-
-                                let left_border = bounds.min()[0] as f32;
-                                let right_border = bounds.max()[0] as f32;
-
-                                let line_data = y.iter().enumerate().flat_map(|(x, y)| {
-                                    if hist.x[x] > left_border && hist.x[x] < right_border {
-                                        events_in_window += *y as i32;
-                                    }
-                                    [
-                                        [(hist.x[x] - hist.step / 2.0)  as f64, *y as f64],
-                                        [(hist.x[x] + hist.step / 2.0)  as f64, *y as f64]
-                                    ]
-                                }).collect::<Vec<_>>();
-                                
-                                Line::new(line_data)
-                                    .name(
-                                        format!("ch #{}\t({events_in_window})", ch_num + 1)
-                                    )
-                            });
-
-                            lines.for_each(|line| {
-                                plot_ui.line(line);
-                            })
-                        });
-                    }
-                } else {
-                    Plot::new("Histogram Plot").legend(Legend { 
-                        text_style: egui::TextStyle::Body, 
-                        background_alpha: 1.0, position: egui::plot::Corner::RightTop 
-                    })
-                    .show(ui, |plot_ui| {
-
-                        let bounds = plot_ui.plot_bounds();
-
-                        let lines = opened_files
+                    let bounds = plot_ui.plot_bounds();
+                
+                    let lines = if opened_files.len() == 1 {
+                        let (_, cache) = opened_files[0];
+                        if !(cache.opened && cache.histogram.is_some()) {
+                            return;
+                        }
+                        let hist = cache.histogram.clone().unwrap();
+                        hist.channels.iter().map(|(ch_num, y)| {
+                            (format!("ch #{}", ch_num + 1), hist.step, hist.x.clone(), y.clone())
+                        }).collect::<Vec<_>>()
+                    } else {
+                        opened_files.iter()
                         .filter(|(_, cache)| {cache.histogram.is_some()})
-                        .map(|(filepath, hash)| {
-                            let hist = hash.histogram.clone().unwrap();
-
-                            let left_border = bounds.min()[0] as f32;
-                            let right_border = bounds.max()[0] as f32;
-
-                            let mut events_in_window = 0;
-                                    
-
+                        .map(|(filepath, cache)| {
+                            let hist = cache.histogram.clone().unwrap();
+                                
                             let mut y_all = vec![0.0; hist.x.len()];
                             for (_, y) in hist.channels {
                                 for (idx, val) in y.iter().enumerate() {
@@ -465,25 +424,33 @@ impl eframe::App for DataViewerApp {
                                 }
                             }
 
-                            let line_data = y_all.iter().enumerate().flat_map(|(x, y)| {
-                                if hist.x[x] > left_border && hist.x[x] < right_border {
-                                    events_in_window += *y as i32;
-                                }
-                                [
-                                    [(hist.x[x] - hist.step / 2.0)  as f64, *y as f64],
-                                    [(hist.x[x] + hist.step / 2.0)  as f64, *y as f64]
-                                ]
-                            }).collect::<Vec<_>>();
+                            (filepath.to_string(), hist.step, hist.x, y_all)
+                        }).collect::<Vec<_>>()
+                    };
 
-                            Line::new(line_data)
-                                .name(format!("{filepath}\t({events_in_window})"))
-                        });
 
-                        lines.for_each(|line| {
-                            plot_ui.line(line);
-                        })
-                    });
-                }
+                    for (name, step, x, y) in lines {
+                        let mut events_in_window = 0;
+    
+                        let left_border = bounds.min()[0] as f32;
+                        let right_border = bounds.max()[0] as f32;
+
+                        let line_data = y.iter().enumerate().flat_map(|(idx, y)| {
+                            if x[idx] > left_border && x[idx] < right_border {
+                                events_in_window += *y as i32;
+                            }
+                            [
+                                [(x[idx] - step / 2.0)  as f64, *y as f64],
+                                [(x[idx] + step / 2.0)  as f64, *y as f64]
+                            ]
+                        }).collect::<Vec<_>>();
+                                
+                        plot_ui.line(Line::new(line_data)
+                        .name(
+                            format!("{name}\t({events_in_window})")
+                        ))
+                    }
+                });
             }
         });
     }
@@ -498,7 +465,7 @@ async fn main() {
     let configuration = Arc::clone(&state);
 
     let processing_params = Arc::new(Mutex::new(ProcessingParams {
-        algorithm: Algorithm::Likhovid { left: 6, right: 36 },
+        algorithm: DEFAULT_LIKHOVID,
         convert_to_kev: true,
         merge_close_events: true,
         merge_map: [
