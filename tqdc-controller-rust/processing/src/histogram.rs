@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
 pub struct PointHistogram {
     pub x: Vec<f32>,
-    pub channels: HashMap<u8, Vec<f32>>,
+    pub channels: BTreeMap<u8, Vec<f32>>,
     pub step: f32,
     bins: usize,
     range: (f32, f32)
@@ -20,7 +20,7 @@ impl PointHistogram {
             step,
             range,
             bins,
-            channels: HashMap::new()
+            channels: BTreeMap::new()
         }
     }
 

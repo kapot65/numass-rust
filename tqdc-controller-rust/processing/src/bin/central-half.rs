@@ -1,6 +1,6 @@
-use std::collections::{HashMap, BTreeMap};
+use std::collections::BTreeMap;
 
-use plotly::{Plot, Scatter, common::{Mode, Line, LineShape}};
+use plotly::{Plot, Scatter, common::{Line, LineShape}};
 use protobuf::Message;
 use dataforge::read_df_message;
 use numass::{NumassMeta, protos::rsb_event};

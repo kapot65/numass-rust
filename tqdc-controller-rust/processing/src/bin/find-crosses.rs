@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use protobuf::Message;
 
@@ -56,16 +56,16 @@ async fn main() {
     // ];
 
     let files = [
-        "/data/2022_12/Tritium_7/set_1/p120(30s)(HV1=12000)",
-        "/data/2022_12/Tritium_7/set_2/p120(30s)(HV1=12000)",
-        "/data/2022_12/Tritium_7/set_3/p120(30s)(HV1=12000)",
-        "/data/2022_12/Tritium_7/set_4/p120(30s)(HV1=12000)",
-        "/data/2022_12/Tritium_7/set_5/p120(30s)(HV1=12000)",
-        "/data/2022_12/Tritium_7/set_6/p120(30s)(HV1=12000)",
-        "/data/2022_12/Tritium_7/set_7/p120(30s)(HV1=12000)",
-        "/data/2022_12/Tritium_7/set_8/p120(30s)(HV1=12000)",
-        "/data/2022_12/Tritium_7/set_9/p120(30s)(HV1=12000)",
-        "/data/2022_12/Tritium_7/set_10/p120(30s)(HV1=12000)",
+        "/data/numass-server/2022_12/Tritium_7/set_1/p120(30s)(HV1=12000)",
+        "/data/numass-server/2022_12/Tritium_7/set_2/p120(30s)(HV1=12000)",
+        "/data/numass-server/2022_12/Tritium_7/set_3/p120(30s)(HV1=12000)",
+        "/data/numass-server/2022_12/Tritium_7/set_4/p120(30s)(HV1=12000)",
+        "/data/numass-server/2022_12/Tritium_7/set_5/p120(30s)(HV1=12000)",
+        "/data/numass-server/2022_12/Tritium_7/set_6/p120(30s)(HV1=12000)",
+        "/data/numass-server/2022_12/Tritium_7/set_7/p120(30s)(HV1=12000)",
+        "/data/numass-server/2022_12/Tritium_7/set_8/p120(30s)(HV1=12000)",
+        "/data/numass-server/2022_12/Tritium_7/set_9/p120(30s)(HV1=12000)",
+        "/data/numass-server/2022_12/Tritium_7/set_10/p120(30s)(HV1=12000)",
     ];
 
     let mut counts = [0; 7];
@@ -81,7 +81,7 @@ async fn main() {
 
             let filepath = filepath.to_owned();
             tokio::spawn(async move {
-                let mut crosses = HashMap::new();
+                let mut crosses = BTreeMap::new();
 
                 let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
                 let message = read_df_message::<NumassMeta>(&mut point_file).await.unwrap();
@@ -140,7 +140,7 @@ async fn main() {
         .map(|(ch_num, waveforms)| (*ch_num, waveforms.clone()))
     .collect::<Vec<_>>();
 
-    let mut homogeneity = HashMap::new();
+    let mut homogeneity = BTreeMap::new();
 
     for (_, waveforms) in &double_crosses {
 

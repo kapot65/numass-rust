@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Write;
 use std::str::FromStr;
@@ -76,7 +75,6 @@ async fn background_processing(
     let mut last_params = *processing_params.lock().await;
 
     while tx.changed().await.is_ok() {
-
 
         let params = *processing_params.lock().await; 
 
@@ -291,7 +289,6 @@ impl eframe::App for DataViewerApp {
                     }
                 });
 
-
                 *processing_params = ProcessingParams {
                     algorithm,
                     convert_to_kev,
@@ -356,11 +353,10 @@ impl eframe::App for DataViewerApp {
             
                                         let mut out_file = File::create(filepath).unwrap();
     
-                                        let channels_sorted = histogramm.channels.iter().collect::<BTreeMap<_, _>>();
             
                                         let mut row = String::new();
                                         row.push_str("bin\t");
-                                        for ch_num in channels_sorted.keys() {
+                                        for ch_num in histogramm.channels.keys() {
                                             row.push_str(&format!("ch {}\t", *ch_num + 1));
                                         }
                                         row.push('\n');
@@ -371,7 +367,7 @@ impl eframe::App for DataViewerApp {
                                             let mut row = String::new();
     
                                             row.push_str(&format!("{bin:.4}\t"));
-                                            for val in channels_sorted.values() {
+                                            for val in histogramm.channels.values() {
                                                 row.push_str(&format!("{}\t", val[idx]));
                                             }
                                             row.push('\n');

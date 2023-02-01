@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::net::{UdpSocket, SocketAddr};
 use std::time::Instant;
 
@@ -58,7 +58,7 @@ fn main() {
     let waveforms_bg = Arc::new(Mutex::new(vec![]));
     let waveforms = Arc::clone(&waveforms_bg);
 
-    let count_rate_bg = Arc::new(Mutex::new(HashMap::new()));
+    let count_rate_bg = Arc::new(Mutex::new(BTreeMap::new()));
     let count_rate = Arc::clone(&count_rate_bg);
 
     std::thread::spawn(move || {
@@ -78,7 +78,7 @@ fn main() {
 
 
             let mut start = Instant::now();
-            let mut counts = HashMap::new();
+            let mut counts = BTreeMap::new();
 
             loop {
                 let mut buf = [0; 4096 * 10];
@@ -125,10 +125,10 @@ fn main() {
                                 let mut count_rate_lock = count_rate_bg.lock().unwrap();
                                 *count_rate_lock = counts.iter()
                                     .map(|(ch_num, counts)| (*ch_num, ((*counts as f32) / (elapsed_ms as f32 / 1000.0)) as u32))
-                                    .collect::<HashMap<_,_>>();
+                                    .collect::<BTreeMap<_,_>>();
 
                                 start = Instant::now();
-                                counts = HashMap::new();
+                                counts = BTreeMap::new();
                             }
 
                             {
@@ -170,7 +170,7 @@ struct Waveform {
 struct MyEguiApp {
     waveforms: Arc<Mutex<Vec<Waveform>>>,
     histogram: Arc<Mutex<PointHistogram>>,
-    count_rate: Arc<Mutex<HashMap<u8, u32>>>
+    count_rate: Arc<Mutex<BTreeMap<u8, u32>>>
 }
 
 impl eframe::App for MyEguiApp {
@@ -182,7 +182,7 @@ impl eframe::App for MyEguiApp {
 
         let channels = {
             let lock = self.waveforms.lock();
-            let mut channels_map = HashMap::new();
+            let mut channels_map = BTreeMap::new();
             for Waveform {ch_num, waveform} in lock.unwrap().clone() {
                 channels_map.insert(ch_num, waveform);
             }
@@ -192,24 +192,18 @@ impl eframe::App for MyEguiApp {
         egui::TopBottomPanel::top("count_rates").show(ctx, |ui| {
             let count_rate_lock = self.count_rate.lock().unwrap();
 
-            let mut channels = Vec::from_iter(count_rate_lock.iter());
-            channels.sort_by_key(|(ch_num, _)| **ch_num);
-
             ui.label("count_rates:");
-            for (ch_num, count_rate) in channels {
+            for (ch_num, count_rate) in count_rate_lock.iter() {
                 ui.label(format!("ch {}: {count_rate: >8} Hz", ch_num + 1));
             }
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
 
-            let mut sorted = channels.iter().collect::<Vec<_>>();
-            sorted.sort_by_key(|k| k.0);
-
-            let lines = sorted.iter().map(|(ch_num, waveform)| {
+            let lines = channels.iter().map(|(ch_num, waveform)| {
                 Line::new(
                     waveform.iter().enumerate().map(|(x, y)| [x as f64, *y as f64]).collect::<Vec<_>>()).name(
-                        format!("ch #{}", **ch_num + 1)
+                        format!("ch #{}", ch_num + 1)
                 )
             });
 
@@ -230,10 +224,10 @@ impl eframe::App for MyEguiApp {
                         text_style: egui::TextStyle::Body, 
                         background_alpha: 1.0, position: egui::plot::Corner::RightTop 
                         }).show(ui, |plot_ui| {
+
                             let hist = self.histogram.lock().unwrap().clone();
-                            let mut channels = Vec::from_iter(hist.channels.iter());
-                            channels.sort_by_key(|(ch_num, _)| **ch_num);
-                            for (ch_num, y) in channels {
+                            
+                            for (ch_num, y) in hist.channels {
                                 plot_ui.line(Line::new(
                                 y.iter().enumerate().flat_map(|(x, y)| [
                                     [(hist.x[x] - hist.step / 2.0)  as f64, *y as f64],
