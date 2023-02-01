@@ -271,14 +271,37 @@ impl eframe::App for DataViewerApp {
                 let mut merge_close_events = processing_params.merge_close_events;
 
                 ui.checkbox(&mut merge_close_events, "merge close events");
+                
+
+                let mut merge_map = processing_params.merge_map;
+                ui.collapsing("merge mapping", |ui| {
+                    for ch_1 in 0usize..7 {
+                        ui.horizontal(|ui| {
+                            ui.label(format!("{} <- ", ch_1 + 1));
+                            for ch_2 in 0usize..7 {
+                                let name = (ch_2 + 1).to_string();
+                                if ch_1 == ch_2 {
+                                    let checkbox = egui::Checkbox::new(&mut merge_map[ch_1][ch_2], name);
+                                    ui.add_enabled(false, checkbox);
+                                } else if ui.checkbox(&mut merge_map[ch_1][ch_2], name).changed() && merge_map[ch_1][ch_2] {
+                                    merge_map[ch_2][ch_1] = false;
+                                }
+                            }
+                        });
+                    }
+                });
+
+
                 *processing_params = ProcessingParams {
                     algorithm,
                     convert_to_kev,
                     hist_min,
                     hist_max,
                     hist_bins,
-                    merge_close_events
-                };
+                    merge_close_events,
+                    merge_map,
+                };                
+ 
                 ui.separator();
             }
 
@@ -484,6 +507,15 @@ async fn main() {
         algorithm: Algorithm::Likhovid { left: 6, right: 36 },
         convert_to_kev: true,
         merge_close_events: true,
+        merge_map: [
+            [false, true, false, false, true, false, false],
+            [false, false, false, true, false, false, false],
+            [false, false, false, false, true, false, false],
+            [false, false, false, false, false, false, false],
+            [false, false, false, false, false, false, false],
+            [true, true, true, true, true, false, true],
+            [false, false, true, true, false, false, false],
+        ],
         hist_min: 0.0,
         hist_max: 27.0,
         hist_bins: 270

@@ -1,6 +1,6 @@
 pub mod defaults;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 
 
 use tokio::io::AsyncWriteExt;
@@ -14,6 +14,7 @@ pub struct ProcessingParams {
     pub algorithm: Algorithm,
     pub convert_to_kev: bool,
     pub merge_close_events: bool,
+    pub merge_map: [[bool; 7]; 7],
     // TODO: add to KeV corrections
     // TODO: refactor to separate struct and merge with PointHistogram
     pub hist_min: f32,
@@ -28,74 +29,38 @@ pub async fn point_to_histogramm(point: &Point, params: ProcessingParams) -> Poi
 
     let mut histogram = PointHistogram::new(range, bins);
 
-    let mut events_per_channel = point.channels.iter().map(|channel| {
-        let amplitudes = channel.blocks.iter().flat_map(|block| {
-            block.frames.iter().map(|frame| {
-                let (_, amp) = waveform_to_event(&frame_to_waveform(frame), &params.algorithm);
-                Some((
-                    frame.time,
-                    if params.convert_to_kev {
-                        convert_to_kev(&amp, channel.id as u8, &params.algorithm)
-                    } else {
-                        amp
-                    }
-                ))
-            })
-        }).collect::<Vec<_>>();
-        (channel.id as u8, amplitudes)
-    }).collect::<Vec<_>>();
+    let mut frames = BTreeMap::new();
 
-    if params.merge_close_events {
+    for channel in &point.channels {
+        for block in &channel.blocks {
+            for frame in &block.frames {
+                let entry = frames.entry(frame.time).or_insert(BTreeMap::new());
 
-        events_per_channel.sort_by_key(|(ch_id, _)| *ch_id);
+                let waveform = frame_to_waveform(frame);
+                let amp = waveform_to_event(&waveform, &params.algorithm).1;
+                let amp = convert_to_kev(&amp, channel.id as u8, &params.algorithm);
 
-        for (_, channel) in &mut events_per_channel {
-            channel.sort_by_key(|k| k.unwrap().0);
-        }
-        
-        for ch_id in [5usize, 0, 1, 2, 3, 4, 6] {
-
-            if ch_id >= events_per_channel.len() {
-                continue;
-            }
-
-            let mut start_idxs = vec![0usize; 7];
-            for ev_id in 0..events_per_channel[ch_id].1.len() {
-    
-                if let Some((time1, ampl1)) = events_per_channel[ch_id].1[ev_id] {
-                    for ch_id_2 in 0..events_per_channel.len() {
-    
-                        if ch_id == ch_id_2 {
-                            continue;
-                        }
-    
-                        for ev_id_2 in start_idxs[ch_id_2]..events_per_channel[ch_id_2].1.len() {
-                            if let Some((time2, ampl2)) = events_per_channel[ch_id_2].1[ev_id_2] {
-                                match time2.cmp(&time1) {
-                                    std::cmp::Ordering::Less => {}
-                                    std::cmp::Ordering::Equal => {
-                                        events_per_channel[ch_id].1[ev_id] = Some((time1, ampl1 + ampl2));
-                                        events_per_channel[ch_id_2].1[ev_id_2] = None;
-                                    }
-                                    std::cmp::Ordering::Greater => {
-                                        if ev_id_2 != 0 {
-                                            start_idxs[ch_id_2] = ev_id_2 - 1;
-                                        }
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                }
+                entry.insert(channel.id as usize, amp);
             }
         }
     }
-    
-    for (ch_num, events) in events_per_channel {
-        let amps = events.iter().filter_map(|val| val.map(|(_, amp)| amp)).collect::<Vec<_>>();
-        histogram.add_batch(ch_num, amps);
+
+    for (_, mut channels) in frames {
+        if params.merge_close_events {
+            for ch_1 in 0..7 {
+                for ch_2 in 0..7 {
+                    if params.merge_map[ch_1][ch_2] && channels.contains_key(&ch_1) && channels.contains_key(&ch_2) {
+                        let amp2  = channels.get(&ch_2).unwrap().to_owned();
+                        channels.entry(ch_1).and_modify(|amp| *amp += amp2);
+                        channels.remove_entry(&ch_2).unwrap();
+                    }
+                }
+            }
+        }
+
+        for (ch_num, amplitude) in channels {
+            histogram.add(ch_num as u8, amplitude)
+        }
     }
 
     histogram
