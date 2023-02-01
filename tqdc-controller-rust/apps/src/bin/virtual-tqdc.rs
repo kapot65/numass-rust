@@ -12,7 +12,7 @@ use tokio::net::UdpSocket;
 #[cfg(target_os = "windows")]
 use tokio::time::sleep;
 
-#[cfg(target_os = "unix")]
+#[cfg(unix)]
 use tokio_timerfd::sleep;
 
 use tqdc::regs::{Register16, Register32, DeviceCtrl};
@@ -125,7 +125,7 @@ async fn handle_stream_port(
                     #[cfg(target_os = "windows")]
                     sleep(Duration::from_micros(10)).await;
                     
-                    #[cfg(target_os = "unix")]
+                    #[cfg(unix)]
                     sleep(Duration::from_micros(10)).await.unwrap();
 
                     tx.send_to(&contents[..size], to_addr).await.unwrap();
