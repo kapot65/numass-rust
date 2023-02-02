@@ -272,21 +272,45 @@ impl eframe::App for DataViewerApp {
 
                 let mut merge_map = processing_params.merge_map;
                 ui.collapsing("merge mapping", |ui| {
-                    for ch_1 in 0usize..7 {
-                        ui.horizontal(|ui| {
-                            ui.label(format!("{} <- ", ch_1 + 1));
-                            for ch_2 in 0usize..7 {
-                                let name = (ch_2 + 1).to_string();
-                                if ch_1 == ch_2 {
-                                    let checkbox = egui::Checkbox::new(&mut merge_map[ch_1][ch_2], name);
-                                    ui.add_enabled(false, checkbox);
-                                } else if ui.checkbox(&mut merge_map[ch_1][ch_2], name).changed() && merge_map[ch_1][ch_2] {
-                                    merge_map[ch_2][ch_1] = false;
+
+                    egui_extras::TableBuilder::new(ui)
+                    // .auto_shrink([false, false])
+                    .columns(egui_extras::Column::exact(15.0), 8)
+                    .header(20.0, |mut header| {
+                        header.col(|_| {});
+                        for idx in 0..7 {
+                            header.col(|ui| {
+                                ui.label((idx + 1).to_string());
+                            });
+                        }
+                    })
+                    .body(|mut body| {
+                        for ch_1 in 0usize..7 {
+                            body.row(20.0, |mut row| {
+                                row.col(|ui| { ui.label(format!("{}<", ch_1 + 1));});
+                                for ch_2 in 0usize..7 {
+                                    row.col(|ui| {
+                                        if ch_1 == ch_2 {
+                                            let checkbox = egui::Checkbox::new(&mut merge_map[ch_1][ch_2], "");
+                                            ui.add_enabled(false, checkbox);
+                                        } else if ui.checkbox(&mut merge_map[ch_1][ch_2], "").changed() && merge_map[ch_1][ch_2] {
+                                            merge_map[ch_2][ch_1] = false;
+                                        }
+                                    });
                                 }
-                            }
-                        });
-                    }
+                            });
+                        }
+                    });
+                    let image = egui_extras::image::RetainedImage::from_image_bytes(
+                        "Detector.drawio.png", 
+                        include_bytes!("../../resources/Detector.drawio.png")).unwrap();
+                    image.show(ui);
+
                 });
+
+                
+                
+                // ui.add(image);
 
                 *processing_params = ProcessingParams {
                     algorithm,
