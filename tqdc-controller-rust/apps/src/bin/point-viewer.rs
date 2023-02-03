@@ -108,7 +108,7 @@ impl eframe::App for PointViewer {
                     background_alpha: 1.0, position: egui::plot::Corner::RightTop 
                 })
                 .x_axis_formatter(|value, _| {
-                    format!("{value:.3} μs")
+                    format!("{:.3} μs", (value * 8.0) / 1000.0)
                 })
                 .show(ui, |plot_ui| {
 
