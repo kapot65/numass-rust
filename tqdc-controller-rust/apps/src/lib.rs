@@ -38,7 +38,10 @@ pub async fn point_to_histogramm(point: &Point, params: ProcessingParams) -> Poi
 
                 let waveform = frame_to_waveform(frame);
                 let amp = waveform_to_event(&waveform, &params.algorithm).1;
-                let amp = convert_to_kev(&amp, channel.id as u8, &params.algorithm);
+
+                let amp = if params.convert_to_kev {
+                    convert_to_kev(&amp, channel.id as u8, &params.algorithm)
+                } else { amp };
 
                 entry.insert(channel.id as usize, amp);
             }

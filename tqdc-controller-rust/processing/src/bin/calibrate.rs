@@ -33,7 +33,7 @@ async fn main() {
                 let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
                 let message = dataforge::read_df_message::<NumassMeta>(&mut point_file).await.unwrap();
 
-                let mut histogram = PointHistogram::new((0.0, 400.0), 4000);
+                let mut histogram = PointHistogram::new((0.0, 400.0), 400);
 
                 let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
                 for channel in &point.channels {
@@ -47,16 +47,10 @@ async fn main() {
                     histogram.add_batch(channel.id as u8, amplitudes)
                 }
 
-                // let mut plot = plotly::Plot::new();
-
-                // let layout = plotly::Layout::new()
-                // .height(1000);
-                // plot.set_layout(layout);
-
 
                 for (ch_id, y) in histogram.channels {
     
-                    let (x, _)  = y.clone().iter().enumerate().max_by_key(|(_, amp)| **amp as u64).unwrap();
+                    let (x, _)  = y.clone().iter().enumerate().max_by_key(|(_, amp)| **amp as i64 * 1000).unwrap();
 
                     {
                         let mut lock = calibration_data.lock().await;

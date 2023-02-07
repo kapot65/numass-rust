@@ -13,13 +13,13 @@ pub enum Algorithm {
 
  // TODO remove hardcode
 const KEV_COEFF_MAX: [[f32; 2]; 7] = [
-    [0.059342787, 0.21608067],
-    [0.06457635, 6.9952064],
-    [-1.044893, 429.0634],
-    [0.062338196, 0.637557],
-    [0.06216397, 0.9386358],
-    [0.067569815, -5.922926],
-    [-0.0896193, 42.85107],
+    [0.059379287, 0.31509972],
+    [0.060557768, 0.26772976],
+    [0.06317734, 0.23027992],
+    [0.062333938, 0.26050186],
+    [0.062186483, 0.25954437],
+    [0.06751788, 0.2222414],
+    [0.05806803, 0.14519024],
 ];
 
 // coeffs for (3,19)
@@ -62,7 +62,7 @@ pub fn waveform_to_event(waveform: &Vec<i16>, algorithm: &Algorithm) -> (u64, f3
 
     match algorithm {
         
-        Algorithm::Max => (x as u64 * 8,  *y as f32 + baseline),
+        Algorithm::Max => (x as u64 * 8,  *y as f32 - baseline),
         Algorithm::Likhovid { left, right } => {
             // TODO: move to processing
             let amplitude = {
