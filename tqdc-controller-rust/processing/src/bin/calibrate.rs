@@ -8,7 +8,8 @@ use numass::{protos::rsb_event, NumassMeta};
 #[tokio::main]
 async fn main() {
 
-    let algorithm = Algorithm::Likhovid { left: 6, right: 36 };
+    let algorithm = Algorithm::Max;
+    // let algorithm = Algorithm::Likhovid { left: 6, right: 36 };
 
     let points = [
         (6.0, "/data/numass-server/2022_12/Electrode_4/set_1/p2(200s)(HV1=6000)"),
@@ -32,7 +33,7 @@ async fn main() {
                 let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
                 let message = dataforge::read_df_message::<NumassMeta>(&mut point_file).await.unwrap();
 
-                let mut histogram = PointHistogram::new((0.0, 100.0), 1000);
+                let mut histogram = PointHistogram::new((0.0, 400.0), 4000);
 
                 let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
                 for channel in &point.channels {
@@ -56,41 +57,15 @@ async fn main() {
                 for (ch_id, y) in histogram.channels {
     
                     let (x, _)  = y.clone().iter().enumerate().max_by_key(|(_, amp)| **amp as u64).unwrap();
-                    
-                    // let coeffs = polyfit_rs::polyfit_rs::polyfit(
-                    //     &histogram.x[x-polyfit_range..x+polyfit_range], 
-                    //     &y[x-polyfit_range..x+polyfit_range], 2).unwrap();
-                    // let a = coeffs[2];
-                    // let b = coeffs[1];
-                    // let c = coeffs[0];
-
-                    // let peak_x = -b / (2.0 * a);
 
                     {
                         let mut lock = calibration_data.lock().await;
                         let entry = lock.entry(ch_id).or_default();
-                        entry.push((kev as f32, histogram.x[x] as f32));
+                        entry.push((kev as f32, histogram.x[x]));
                     }
 
-                    // println!("ch #{ch_id} {coeffs:?}");
-                    // println!("{}", -b / (2.0 * a));
 
-                    // let x_poly = histogram.x[x-polyfit_range..x+polyfit_range].to_vec();
-                    // let y_poly = histogram.x[x-polyfit_range..x+polyfit_range].iter().map(|x| a * x * x + b * x + c).collect::<Vec<_>>();
-
-                    // let trace = plotly::Scatter::new(x_poly, y_poly)
-                    // .name(format!("ch #{ch_id}"));
-
-                    // plot.add_trace(trace);
-
-                    // let trace = plotly::Scatter::new(histogram.x.to_owned(), y.to_owned())
-                    // .line(plotly::common::Line::new().shape(plotly::common::LineShape::Hvh))
-                    // .name(format!("ch #{ch_id}"));
-
-                    // plot.add_trace(trace);
                 }
-
-                    // plot.show();
             })
         }).collect::<Vec<_>>();
 

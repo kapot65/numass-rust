@@ -13,13 +13,13 @@ pub enum Algorithm {
 
  // TODO remove hardcode
 const KEV_COEFF_MAX: [[f32; 2]; 7] = [
-    [0.0597, 0.1481],
-    [0.0608, 0.1942],
-    [0.0634, 0.0839],
-    [0.0627, 0.1587],
-    [0.0626, 0.1675],
-    [0.0675, 0.0930],
-    [0.0580, 0.0923],
+    [0.059342787, 0.21608067],
+    [0.06457635, 6.9952064],
+    [-1.044893, 429.0634],
+    [0.062338196, 0.637557],
+    [0.06216397, 0.9386358],
+    [0.067569815, -5.922926],
+    [-0.0896193, 42.85107],
 ];
 
 // coeffs for (3,19)
@@ -47,7 +47,7 @@ pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 
     match algorithm {
         Algorithm::Max => {
             let [a, b] = KEV_COEFF_MAX[ch_id as usize];
-            a * *amplitude as f32 + b
+            a * *amplitude + b
         },
         Algorithm::Likhovid { .. } => {
             let [a, b] = KEV_COEFF_LIKHOVID[ch_id as usize];
