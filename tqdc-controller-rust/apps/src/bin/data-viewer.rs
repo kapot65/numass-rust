@@ -34,7 +34,7 @@ struct FileCache {
 
 struct DataViewerApp {
     processing_params: Arc<Mutex<ProcessingParams>>,
-    root: Option<FSRepr>,
+    root: Arc<Mutex<Option<FSRepr>>>,
     state: Arc<Mutex<HashMap<String, FileCache>>>,
     background_pipe: watch::Sender<Option<Action>>
 }
@@ -44,7 +44,7 @@ enum Action {
     CalculateHistogram
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum FSRepr {
     File {
         path: PathBuf,
@@ -217,6 +217,9 @@ fn file_tree_entry(
 
 impl eframe::App for DataViewerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+
+        let root = self.root.try_lock().unwrap().clone();
+
         ctx.request_repaint_after(std::time::Duration::from_secs(1));
         egui::SidePanel::left("left").show(ctx, |ui| {
 
@@ -275,7 +278,7 @@ impl eframe::App for DataViewerApp {
 
                     egui_extras::TableBuilder::new(ui)
                     // .auto_shrink([false, false])
-                    .columns(egui_extras::Column::exact(15.0), 8)
+                    .columns(egui_extras::Size::Absolute { initial: 15.0, range: (15.0, 15.0) }, 8)
                     .header(20.0, |mut header| {
                         header.col(|_| {});
                         for idx in 0..7 {
@@ -329,19 +332,24 @@ impl eframe::App for DataViewerApp {
                 #[cfg(unix)]
                 {
                     if ui.button("open").clicked() {
-                        if let Some(root_path) = rfd::FileDialog::new().pick_folder() {
-                            self.root = Some(expand_dir(root_path))
-                        }
+                        let root = self.root.clone();
+                        tokio::spawn(async move{
+                            if let Some(root_path) = rfd::FileDialog::new().pick_folder() {
+                                *root.try_lock().unwrap() = Some(expand_dir(root_path))
+                            }
+                        });
                     }
                 }
-                if let Some(root) = &self.root {
+
+                if let Some(root) = &root {
                     if ui.button("reload").clicked() {
-                        self.root = Some(expand_dir(match root {
+                        *self.root.try_lock().unwrap() = Some(expand_dir(match root {
                             FSRepr::File { path } => path.to_owned(),
                             FSRepr::Directory { path, children: _ } => path.to_owned()
                         }));
                     }
                 }
+
                 if ui.button("apply").clicked() {
                     self.background_pipe.send(Some(Action::CalculateHistogram)).unwrap();
                 }
@@ -403,8 +411,9 @@ impl eframe::App for DataViewerApp {
                     }
                 }
             });
+
             egui::containers::ScrollArea::new([false, true]).show(ui, |ui| {
-                if let Some(root) = &mut self.root {
+                if let Some(root) = &root {
                     if let Ok(ref mut mutex) = self.state.try_lock() {
                         file_tree_entry(ui,root, mutex);
                     }
@@ -518,7 +527,7 @@ async fn main() {
         Box::new(|_cc| {
             Box::new(DataViewerApp {
                 processing_params,
-                root: opt.directory.map(expand_dir),
+                root: Arc::new(Mutex::new(opt.directory.map(expand_dir))),
                 state,
                 background_pipe: rx
             })
