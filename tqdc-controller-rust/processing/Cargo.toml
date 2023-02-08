@@ -21,4 +21,4 @@ linreg = "0.2.0"
 plotters = "0.3.1"
 plotly = "0.8.3"
 
-eframe = "0.20.1"
+eframe = "0.19.0"

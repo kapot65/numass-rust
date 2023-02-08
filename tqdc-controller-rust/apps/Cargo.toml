@@ -7,7 +7,6 @@ edition = "2021"
 
 [target.'cfg(unix)'.dependencies]
 tokio-timerfd = "0.2.0"
-rfd = "0.10.0"
 
 [dependencies]
 tqdc = {path = "../tqdc"}
@@ -32,3 +31,4 @@ natord = "1.0.9"
 clap = { version = "4.0.26", features = ["derive"] }
 
 battery = "0.7.8"
+rfd = "0.11.0"
