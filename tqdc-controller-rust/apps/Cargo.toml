@@ -27,8 +27,9 @@ eyre = "0.6.8"
 eframe = "0.19.0"
 egui_extras = {version = "0.19.0", features = ["image"]}
 
+rfd = "0.11.0"
 natord = "1.0.9"
 clap = { version = "4.0.26", features = ["derive"] }
+which = "4.4.0"
 
 battery = "0.7.8"
-rfd = "0.11.0"

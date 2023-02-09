@@ -1,3 +1,6 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] 
+
+use processing::utils::channel_colors;
 use protobuf::Message;
 use eframe::{egui, epaint::Color32};
 use clap::Parser;
@@ -9,7 +12,7 @@ use numass::{protos::rsb_event, NumassMeta};
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Opt {
-    filepath: std::path::PathBuf,
+    filepath: Option<std::path::PathBuf>,
 }
 
 #[tokio::main]
@@ -17,7 +20,11 @@ async fn main() {
 
     let args = Opt::parse();
 
-    let mut point_file = tokio::fs::File::open(&args.filepath).await.unwrap();
+    let filepath = args.filepath.unwrap_or_else(|| {
+        rfd::FileDialog::new().pick_file().expect("no file choosen")
+    });
+
+    let mut point_file = tokio::fs::File::open(&filepath).await.unwrap();
     let message = read_df_message::<NumassMeta>(&mut point_file).await.unwrap();
 
     let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
@@ -32,7 +39,7 @@ async fn main() {
         for block in channel.blocks {
             for frame in block.frames {
 
-                let chunk_num = (frame.time / (limit_ns as u64)) as usize;
+                let chunk_num = (frame.time / limit_ns) as usize;
 
                 while chunks.len() < chunk_num + 1 {
                     chunks.push(vec![])
@@ -46,23 +53,25 @@ async fn main() {
                     [x / 1000.0, y]
                 });
 
-                let baseline = waveform.clone().take(16).map(|[_, y]| y as f64).sum::<f64>() / 16.0;
+                let baseline = waveform.clone().take(16).map(|[_, y]| y).sum::<f64>() / 16.0;
                 chunks[chunk_num].push((channel.id as u8, waveform.map(|[x,y]| [x, y - baseline]).collect::<Vec<_>>()))
             }
         }
     }
 
     let native_options = eframe::NativeOptions::default();
-    eframe::run_native(std::fs::canonicalize(&args.filepath).unwrap().to_str().unwrap(), native_options, Box::new(|_| Box::new(PointViewer {
+    eframe::run_native(std::fs::canonicalize(&filepath).unwrap().to_str().unwrap(), native_options, Box::new(|_| Box::new(PointViewer {
         chunks,
-        current_chunk: 0
+        current_chunk: 0,
+        colors: channel_colors()
     })));
 }
 
 
 struct PointViewer {
     chunks: Vec<Vec<(u8, Vec<[f64; 2]>)>>,
-    current_chunk: usize
+    current_chunk: usize,
+    colors: [Color32; 7]
 }
 
 impl eframe::App for PointViewer {
@@ -75,16 +84,6 @@ impl eframe::App for PointViewer {
         if ctx.input().key_pressed(egui::Key::ArrowLeft) && self.current_chunk > 0 {
             self.current_chunk -= 1;
         }
-
-        let colors = [
-            Color32::RED, 
-            Color32::BLUE, 
-            Color32::GREEN, 
-            Color32::YELLOW, 
-            Color32::WHITE,
-            Color32::GRAY,
-            Color32::LIGHT_RED
-        ];
 
         egui::CentralPanel::default().show(ctx, |ui| {
 
@@ -108,13 +107,13 @@ impl eframe::App for PointViewer {
                     background_alpha: 1.0, position: egui::plot::Corner::RightTop 
                 })
                 .x_axis_formatter(|value, _| {
-                    format!("{:.3} μs", (value * 8.0) / 1000.0)
+                    format!("{value:.3} μs")
                 })
                 .show(ui, |plot_ui| {
 
                     for (ch_num, x) in self.chunks[self.current_chunk].clone() {
                         plot_ui.line(
-                            egui::plot::Line::new(x).color(colors[(ch_num)as usize]).name(format!("ch #{}", ch_num + 1)));
+                            egui::plot::Line::new(x).color(self.colors[(ch_num)as usize]).name(format!("ch #{}", ch_num + 1)));
                     }
                 });
         });

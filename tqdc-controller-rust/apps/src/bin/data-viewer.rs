@@ -6,7 +6,9 @@ use std::str::FromStr;
 use std::time::SystemTime;
 use std::{path::PathBuf, collections::HashMap, sync::Arc};
 
+use eframe::epaint::Color32;
 use home::home_dir;
+use processing::utils::{channel_colors, color_same_as_egui};
 use protobuf::Message;
 use tokio::sync::{watch, Mutex};
 use eframe::egui;
@@ -17,6 +19,7 @@ use numass::{Reply, NumassMeta, protos::rsb_event};
 use dataforge::read_df_message;
 use apps::{point_to_histogramm, ProcessingParams};
 use processing::{Algorithm, histogram::PointHistogram};
+use which::which;
 
 const DEFAULT_LIKHOVID: Algorithm = Algorithm::Likhovid { left: 6, right: 36 };
 
@@ -38,6 +41,7 @@ struct DataViewerApp {
     processing_params: Arc<Mutex<ProcessingParams>>,
     root: Arc<Mutex<Option<FSRepr>>>,
     state: Arc<Mutex<HashMap<String, FileCache>>>,
+    colors: [Color32; 7],
     background_pipe: watch::Sender<Option<Action>>
 }
 
@@ -189,18 +193,6 @@ fn file_tree_entry(
             ui.horizontal(|ui| {
                 ui.checkbox(&mut cache.opened, "");
                 let filename = path.file_name().unwrap().to_str().unwrap();
-                // let status_glyph = if let Some(processed) = cache.processed {
-                //     let meta = std::fs::metadata(path).unwrap();
-                //     if meta.modified().unwrap() > processed {
-                //         "+"
-                //     } else {
-                //         "."
-                //     }                    
-                // } else {
-                //     "🕹️"
-                // };
-                // 
-                // ui.label(format!("{filename} {status_glyph}"));
                 ui.label(filename);
             });
         }
@@ -218,7 +210,7 @@ fn file_tree_entry(
 }
 
 impl eframe::App for DataViewerApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
 
         let root = self.root.try_lock().unwrap().clone();
 
@@ -312,10 +304,6 @@ impl eframe::App for DataViewerApp {
                     image.show(ui);
 
                 });
-
-                
-                
-                // ui.add(image);
 
                 *processing_params = ProcessingParams {
                     algorithm,
@@ -419,17 +407,23 @@ impl eframe::App for DataViewerApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             if let Ok(state) = self.state.try_lock() {
+                
+                let mut left_border = 0.0;
+                let mut right_border = 0.0;
+
+                let opened_files = state.iter().filter(|(_, cache)| {
+                    cache.opened
+                }).collect::<Vec<_>>();
+
                 Plot::new("Histogram Plot").legend(Legend { 
                     text_style: egui::TextStyle::Body, 
                     background_alpha: 1.0, position: egui::plot::Corner::RightTop 
-                })
-                .show(ui, move |plot_ui| {
-
-                    let opened_files = state.iter().filter(|(_, cache)| {
-                        cache.opened
-                    }).collect::<Vec<_>>();
+                }).height(frame.info().window_info.size.y - 35.0)
+                .show(ui, |plot_ui| {
 
                     let bounds = plot_ui.plot_bounds();
+                    left_border = bounds.min()[0] as f32;
+                    right_border = bounds.max()[0] as f32;
                 
                     let lines = if opened_files.len() == 1 {
                         let (_, cache) = opened_files[0];
@@ -438,14 +432,14 @@ impl eframe::App for DataViewerApp {
                         }
                         let hist = cache.histogram.clone().unwrap();
                         hist.channels.iter().map(|(ch_num, y)| {
-                            (format!("ch #{}", ch_num + 1), hist.step, hist.x.clone(), y.clone())
+                            (format!("ch #{}", ch_num + 1), self.colors[*ch_num as usize], hist.step, hist.x.clone(), y.clone())
                         }).collect::<Vec<_>>()
                     } else {
-                        opened_files.iter()
-                        .filter(|(_, cache)| {cache.histogram.is_some()})
-                        .map(|(filepath, cache)| {
+                        opened_files.iter().enumerate()
+                        .filter(|(_, (_, cache))| {cache.histogram.is_some()})
+                        .map(|(idx, (filepath, cache))| {
                             let hist = cache.histogram.clone().unwrap();
-                                
+
                             let mut y_all = vec![0.0; hist.x.len()];
                             for (_, y) in hist.channels {
                                 for (idx, val) in y.iter().enumerate() {
@@ -453,16 +447,12 @@ impl eframe::App for DataViewerApp {
                                 }
                             }
 
-                            (filepath.to_string(), hist.step, hist.x, y_all)
+                            (filepath.to_string(), color_same_as_egui(idx), hist.step, hist.x, y_all)
                         }).collect::<Vec<_>>()
                     };
 
-
-                    for (name, step, x, y) in lines {
+                    for (name, color, step, x, y) in lines {
                         let mut events_in_window = 0;
-    
-                        let left_border = bounds.min()[0] as f32;
-                        let right_border = bounds.max()[0] as f32;
 
                         let line_data = y.iter().enumerate().flat_map(|(idx, y)| {
                             if x[idx] > left_border && x[idx] < right_border {
@@ -473,12 +463,64 @@ impl eframe::App for DataViewerApp {
                                 [(x[idx] + step / 2.0)  as f64, *y as f64]
                             ]
                         }).collect::<Vec<_>>();
-                                
+
                         plot_ui.line(Line::new(line_data)
+                        .color(color)
                         .name(
                             format!("{name}\t({events_in_window})")
                         ))
                     }
+                });
+
+                // TODO: move to separate function
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+
+                    let point_viewer_in_path = which("point-viewer").is_ok();
+                    let filtered_viewer_in_path = which("draw-filtered").is_ok();
+
+                    let algorithm_ok = if let Ok(ref params)= self.processing_params.try_lock() {
+                        params.algorithm == Algorithm::Likhovid { left: 6, right: 36 } && params.convert_to_kev
+                    } else {
+                        false
+                    };
+
+                    let filtered_viewer_button = ui.add_enabled(
+                        opened_files.len() == 1 && filtered_viewer_in_path && algorithm_ok,  
+                        egui::Button::new("waveforms (in window)")).on_disabled_hover_ui(|ui| {
+                        if !filtered_viewer_in_path {
+                            ui.colored_label(egui::color::Color32::RED, "draw-filtered must be in PATH");
+                        }
+                        if opened_files.len() != 1 {
+                            ui.colored_label(egui::color::Color32::RED, "exact one file must be opened");
+                        }
+                        if !algorithm_ok {
+                            ui.colored_label(egui::color::Color32::RED, "params must be default (Algorithm::Likhovid { left: 6, right: 36 }, convert_to_kev)");
+                        }
+                    });
+
+                    if filtered_viewer_button.clicked() {
+                        let (filepath, _) = opened_files[0];
+                        tokio::process::Command::new("draw-filtered").arg(filepath)
+                            .arg("--min").arg(left_border.max(0.0).to_string())
+                            .arg("--max").arg(right_border.max(0.0).to_string())
+                            .spawn().unwrap();
+                    }
+
+                    let point_viewer_button = ui.add_enabled(opened_files.len() == 1 && point_viewer_in_path,  
+                        egui::Button::new("waveforms (all)")).on_disabled_hover_ui(|ui| {
+                        if !point_viewer_in_path {
+                            ui.colored_label(egui::color::Color32::RED, "point-viewer must be in PATH");
+                        }
+                        if opened_files.len() != 1 {
+                            ui.colored_label(egui::color::Color32::RED, "exact one file must be opened");
+                        }
+                    });
+
+                    if point_viewer_button.clicked() {
+                        let (filepath, _) = opened_files[0];
+                        tokio::process::Command::new("point-viewer").arg(filepath).spawn().unwrap();
+                    }
+                    
                 });
             }
         });
@@ -525,6 +567,7 @@ async fn main() {
                 processing_params,
                 root: Arc::new(Mutex::new(opt.directory.map(expand_dir))),
                 state,
+                colors: channel_colors(),
                 background_pipe: rx
             })
         }),

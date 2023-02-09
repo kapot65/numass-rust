@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use eframe::epaint::Color32;
+use processing::utils::channel_colors;
 use protobuf::Message;
 
 use dataforge::read_df_message;
@@ -9,64 +11,64 @@ use numass::{protos::rsb_event, NumassMeta};
 async fn main() {
 
     // let files = [
-    //     "/data/2022_12/Tritium_7/set_1/p52(30s)(HV1=15000)",
-    //     "/data/2022_12/Tritium_7/set_2/p52(30s)(HV1=15000)",
-    //     "/data/2022_12/Tritium_7/set_3/p52(30s)(HV1=15000)",
-    //     "/data/2022_12/Tritium_7/set_4/p52(30s)(HV1=15000)",
-    //     "/data/2022_12/Tritium_7/set_5/p52(30s)(HV1=15000)",
-    //     "/data/2022_12/Tritium_7/set_6/p52(30s)(HV1=15000)",
-    //     "/data/2022_12/Tritium_7/set_7/p52(30s)(HV1=15000)",
-    //     "/data/2022_12/Tritium_7/set_8/p52(30s)(HV1=15000)",
-    //     "/data/2022_12/Tritium_7/set_9/p52(30s)(HV1=15000)",
-    //     "/data/2022_12/Tritium_7/set_10/p52(30s)(HV1=15000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_1/p52(30s)(HV1=15000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_2/p52(30s)(HV1=15000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_3/p52(30s)(HV1=15000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_4/p52(30s)(HV1=15000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_5/p52(30s)(HV1=15000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_6/p52(30s)(HV1=15000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_7/p52(30s)(HV1=15000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_8/p52(30s)(HV1=15000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_9/p52(30s)(HV1=15000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_10/p52(30s)(HV1=15000)",
     // ];
 
-    // let files = [
-    //     "/data/2022_12/Tritium_7/set_1/p64(30s)(HV1=14500)",
-    //     "/data/2022_12/Tritium_7/set_2/p64(30s)(HV1=14500)",
-    //     "/data/2022_12/Tritium_7/set_3/p64(30s)(HV1=14500)",
-    //     "/data/2022_12/Tritium_7/set_4/p64(30s)(HV1=14500)",
-    //     "/data/2022_12/Tritium_7/set_5/p64(30s)(HV1=14500)",
-    //     "/data/2022_12/Tritium_7/set_6/p64(30s)(HV1=14500)",
-    //     "/data/2022_12/Tritium_7/set_7/p64(30s)(HV1=14500)",
-    //     "/data/2022_12/Tritium_7/set_8/p64(30s)(HV1=14500)",
-    //     "/data/2022_12/Tritium_7/set_9/p64(30s)(HV1=14500)",
-    //     "/data/2022_12/Tritium_7/set_10/p64(30s)(HV1=14500)",
-    // ];
+    let files = [
+        "/data/numass-server/2022_12/Tritium_7/set_1/p64(30s)(HV1=14500)",
+        "/data/numass-server/2022_12/Tritium_7/set_2/p64(30s)(HV1=14500)",
+        "/data/numass-server/2022_12/Tritium_7/set_3/p64(30s)(HV1=14500)",
+        "/data/numass-server/2022_12/Tritium_7/set_4/p64(30s)(HV1=14500)",
+        "/data/numass-server/2022_12/Tritium_7/set_5/p64(30s)(HV1=14500)",
+        "/data/numass-server/2022_12/Tritium_7/set_6/p64(30s)(HV1=14500)",
+        "/data/numass-server/2022_12/Tritium_7/set_7/p64(30s)(HV1=14500)",
+        "/data/numass-server/2022_12/Tritium_7/set_8/p64(30s)(HV1=14500)",
+        "/data/numass-server/2022_12/Tritium_7/set_9/p64(30s)(HV1=14500)",
+        "/data/numass-server/2022_12/Tritium_7/set_10/p64(30s)(HV1=14500)",
+    ];
 
     // let monitor_indices = [30,39,47,53,58,66,75,76,85,93,103,111,121];
     // let mut files = vec![];
     // for set_number in 1..=10 {
     //     for point_idx in monitor_indices {
-    //         files.push(format!("/data/2022_12/Tritium_7/set_{set_number}/p{point_idx}(30s)(HV1=14000)"))
+    //         files.push(format!("/data/numass-server/2022_12/Tritium_7/set_{set_number}/p{point_idx}(30s)(HV1=14000)"))
     //     }
     // }
 
     // let files = [
-    //     "/data/2022_12/Tritium_7/set_1/p98(30s)(HV1=13000)",
-    //     "/data/2022_12/Tritium_7/set_2/p98(30s)(HV1=13000)",
-    //     "/data/2022_12/Tritium_7/set_3/p98(30s)(HV1=13000)",
-    //     "/data/2022_12/Tritium_7/set_4/p98(30s)(HV1=13000)",
-    //     "/data/2022_12/Tritium_7/set_5/p98(30s)(HV1=13000)",
-    //     "/data/2022_12/Tritium_7/set_6/p98(30s)(HV1=13000)",
-    //     "/data/2022_12/Tritium_7/set_7/p98(30s)(HV1=13000)",
-    //     "/data/2022_12/Tritium_7/set_8/p98(30s)(HV1=13000)",
-    //     "/data/2022_12/Tritium_7/set_9/p98(30s)(HV1=13000)",
-    //     "/data/2022_12/Tritium_7/set_10/p98(30s)(HV1=13000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_1/p98(30s)(HV1=13000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_2/p98(30s)(HV1=13000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_3/p98(30s)(HV1=13000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_4/p98(30s)(HV1=13000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_5/p98(30s)(HV1=13000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_6/p98(30s)(HV1=13000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_7/p98(30s)(HV1=13000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_8/p98(30s)(HV1=13000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_9/p98(30s)(HV1=13000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_10/p98(30s)(HV1=13000)",
     // ];
 
-    let files = [
-        "/data/numass-server/2022_12/Tritium_7/set_1/p120(30s)(HV1=12000)",
-        "/data/numass-server/2022_12/Tritium_7/set_2/p120(30s)(HV1=12000)",
-        "/data/numass-server/2022_12/Tritium_7/set_3/p120(30s)(HV1=12000)",
-        "/data/numass-server/2022_12/Tritium_7/set_4/p120(30s)(HV1=12000)",
-        "/data/numass-server/2022_12/Tritium_7/set_5/p120(30s)(HV1=12000)",
-        "/data/numass-server/2022_12/Tritium_7/set_6/p120(30s)(HV1=12000)",
-        "/data/numass-server/2022_12/Tritium_7/set_7/p120(30s)(HV1=12000)",
-        "/data/numass-server/2022_12/Tritium_7/set_8/p120(30s)(HV1=12000)",
-        "/data/numass-server/2022_12/Tritium_7/set_9/p120(30s)(HV1=12000)",
-        "/data/numass-server/2022_12/Tritium_7/set_10/p120(30s)(HV1=12000)",
-    ];
+    // let files = [
+    //     "/data/numass-server/2022_12/Tritium_7/set_1/p120(30s)(HV1=12000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_2/p120(30s)(HV1=12000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_3/p120(30s)(HV1=12000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_4/p120(30s)(HV1=12000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_5/p120(30s)(HV1=12000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_6/p120(30s)(HV1=12000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_7/p120(30s)(HV1=12000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_8/p120(30s)(HV1=12000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_9/p120(30s)(HV1=12000)",
+    //     "/data/numass-server/2022_12/Tritium_7/set_10/p120(30s)(HV1=12000)",
+    // ];
 
     let mut counts = [0; 7];
 
@@ -177,6 +179,7 @@ async fn main() {
         crosses: double_crosses,
         filtered: vec![],
         ch_enabled: [false; 7],
+        colors: channel_colors(),
         current: 0
     })));
 
@@ -188,6 +191,7 @@ struct CrossesViewer {
     crosses: Vec<(u64, Vec<(u8, Vec<i16>)>)>,
     filtered: Vec<(u64, Vec<(u8, Vec<i16>)>)>,
     ch_enabled: [bool; 7],
+    colors: [Color32; 7],
     current: usize,
 }
 
@@ -201,16 +205,6 @@ impl eframe::App for CrossesViewer {
         if ctx.input().key_pressed(eframe::egui::Key::ArrowLeft) && self.current > 0 {
             self.current -= 1;
         }
-
-        let colors = [
-            eframe::epaint::Color32::RED, 
-            eframe::epaint::Color32::BLUE, 
-            eframe::epaint::Color32::GREEN, 
-            eframe::epaint::Color32::YELLOW, 
-            eframe::epaint::Color32::WHITE,
-            eframe::epaint::Color32::GRAY,
-            eframe::epaint::Color32::LIGHT_RED
-        ];
 
         eframe::egui::CentralPanel::default().show(ctx, |ui| {
 
@@ -266,7 +260,7 @@ impl eframe::App for CrossesViewer {
                                 eframe::egui::plot::Line::new(waveform.iter().enumerate().map(|(x, y)| {
                                     [x as f64, *y as f64]
                                 }).collect::<Vec<_>>())
-                                .color(colors[(*ch_num)as usize])
+                                .color(self.colors[(*ch_num)as usize])
                                 .name(format!("ch #{}", ch_num + 1)));
                         }
                     }

@@ -1,6 +1,7 @@
 
 use numass::protos::rsb_event;
 pub mod histogram;
+pub mod utils;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Algorithm {
