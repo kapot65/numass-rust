@@ -19,7 +19,15 @@ struct Opt {
     #[clap(long, default_value_t = 0.0)]
     min: f32,
     #[clap(long, default_value_t = 5.0)]
-    max: f32
+    max: f32,
+    #[clap(long, default_value_t = 5000)]
+    neigborhood: u64
+}
+
+#[derive(Debug, Clone)]
+struct DeviceFrame {
+    time: u64,
+    waveforms: BTreeMap<u8, Vec<i16>>
 }
 
 #[tokio::main]
@@ -34,13 +42,13 @@ async fn main() {
     let mut point_file = tokio::fs::File::open(&filepath).await.unwrap();
     let message = read_df_message::<NumassMeta>(&mut point_file).await.unwrap();
 
-    let mut independent: BTreeMap<u64, BTreeMap<u8, Vec<i16>>> = BTreeMap::new();
+    let mut events: BTreeMap<u64, BTreeMap<u8, Vec<i16>>> = BTreeMap::new();
 
     let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
     for channel in &point.channels {
         for block in &channel.blocks {
             for frame in &block.frames {
-                let entry = independent.entry(frame.time).or_default();
+                let entry = events.entry(frame.time).or_default();
                 entry.insert(channel.id as u8, frame_to_waveform(frame));
             }
         }
@@ -48,14 +56,45 @@ async fn main() {
 
     let algorithm = processing::Algorithm::Likhovid { left: 6, right: 36 };
 
-    let independent = independent.iter().filter_map(|(time, waveforms)| {
+    let events = events.iter().map(|(time, waveforms)| (*time, waveforms.clone())).collect::<Vec<_>>();
+
+    let independent = events.iter().enumerate().filter_map(|(idx, (time, waveforms))| {
         if !waveforms.iter().map(|(ch_id, waveform)| {
             let (_, amp) = waveform_to_event(waveform, &algorithm);
             convert_to_kev(&amp, *ch_id, &algorithm)
         }).any(|amp| range.contains(&amp)) {
             return None;
         }
-        Some((*time, waveforms.clone()))
+
+        let neighbors = {
+            let bounds = (*time - args.neigborhood)..(*time + args.neigborhood);
+            let mut neighbors = vec![];
+            let mut left = idx;
+            loop {
+                if left == 0 { break; }
+                if !bounds.contains(&events[left - 1].0) { break; }
+                neighbors.push(DeviceFrame {
+                    time: events[left - 1].0, 
+                    waveforms: events[left - 1].1.clone()
+                });
+                left -= 1;
+            }
+            let mut right = idx;
+            loop {
+                if right == events.len() - 1 { break; }
+                if !bounds.contains(&events[right + 1].0) { break; }
+                neighbors.push(DeviceFrame {
+                    time: events[right + 1].0, 
+                    waveforms: events[right + 1].1.clone()
+                });
+                right += 1;
+            }
+            neighbors
+        };
+        Some((DeviceFrame {
+            time: *time, 
+            waveforms: waveforms.clone()
+        }, neighbors))
     }).collect::<Vec<_>>();
 
 
@@ -65,11 +104,10 @@ async fn main() {
         current: 0,
         colors: channel_colors()
     })));
-
 }
 
 struct FilteredViewer {
-    independent: Vec<(u64, BTreeMap<u8, Vec<i16>>)>,
+    independent: Vec<(DeviceFrame, Vec<DeviceFrame>)>,
     current: usize,
     colors: [Color32; 7]
 }
@@ -85,6 +123,8 @@ impl eframe::App for FilteredViewer {
             self.current -= 1;
         }
 
+        let (current, neighbors) = &self.independent[self.current];
+
         eframe::egui::CentralPanel::default().show(ctx, |ui| {
 
             ui.style_mut().spacing.slider_width = frame.info().window_info.size.x - 200.0;
@@ -99,7 +139,7 @@ impl eframe::App for FilteredViewer {
                     self.current += 1;
                 }
 
-                ui.label(format!("{:.3} ms", self.independent[self.current].0 as f64 / 1e6))
+                ui.label(format!("{:.3} ms", current.time as f64 / 1e6))
             });
 
             eframe::egui::plot::Plot::new("waveforms")
@@ -111,12 +151,32 @@ impl eframe::App for FilteredViewer {
                     format!("{:.3} μs", (value * 8.0) / 1000.0)
                 })
                 .show(ui, |plot_ui| {
-                    for (ch_id, waveform) in &self.independent[self.current].1 {
+
+
+                    for (ch_id, waveform) in &current.waveforms {
                         plot_ui.line(
                             eframe::egui::plot::Line::new(waveform.iter().enumerate().map(|(x, y)| {
                                 [x as f64, *y as f64]
-                            }).collect::<Vec<_>>()).color(self.colors[*ch_id as usize]).name(format!("ch# {}", ch_id + 1)));
+                            }).collect::<Vec<_>>())
+                            .width(3.0)
+                            .color(self.colors[*ch_id as usize])
+                            .name(format!("ch# {}", ch_id + 1)));
                     };
+
+                    neighbors.iter().for_each(|DeviceFrame { time, waveforms }| {
+
+                        let delta = (*time as f64 - current.time as f64) / 8.0;
+
+                        for (ch_id, waveform) in waveforms {
+                            plot_ui.line(
+                                eframe::egui::plot::Line::new(waveform.iter().enumerate().map(|(x, y)| {
+                                    [x as f64 + delta, *y as f64]
+                                }).collect::<Vec<_>>())
+                                .width(1.0)
+                                .color(self.colors[*ch_id as usize])
+                                .name(format!("ch# {}", ch_id + 1)));
+                        };
+                    });
                 });
         });
    }
