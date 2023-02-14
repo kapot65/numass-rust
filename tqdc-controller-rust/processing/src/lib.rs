@@ -1,9 +1,27 @@
 
+use std::collections::BTreeMap;
+
+use histogram::PointHistogram;
+#[cfg(feature = "desktop")]
 use numass::protos::rsb_event;
+use serde::{Serialize, Deserialize};
 pub mod histogram;
 pub mod utils;
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct ProcessingParams {
+    pub algorithm: Algorithm,
+    pub convert_to_kev: bool,
+    pub merge_close_events: bool,
+    pub merge_map: [[bool; 7]; 7],
+    // TODO: add to KeV corrections
+    // TODO: refactor to separate struct and merge with PointHistogram
+    pub hist_min: f32,
+    pub hist_max: f32,
+    pub hist_bins: usize
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum Algorithm {
     Max,
     Likhovid {
@@ -44,6 +62,54 @@ const KEV_COEFF_LIKHOVID: [[f32; 2]; 7] = [
     [0.21352, 0.039334297]
 ];
 
+#[cfg(feature = "desktop")]
+pub fn point_to_histogramm(point: &rsb_event::Point, params: ProcessingParams) -> PointHistogram {
+
+    let range = (params.hist_min, params.hist_max);
+    let bins = params.hist_bins;
+
+    let mut histogram = PointHistogram::new(range, bins);
+
+    let mut frames = BTreeMap::new();
+
+    for channel in &point.channels {
+        for block in &channel.blocks {
+            for frame in &block.frames {
+                let entry = frames.entry(frame.time).or_insert(BTreeMap::new());
+
+                let waveform = frame_to_waveform(frame);
+                let amp = waveform_to_event(&waveform, &params.algorithm).1;
+
+                let amp = if params.convert_to_kev {
+                    convert_to_kev(&amp, channel.id as u8, &params.algorithm)
+                } else { amp };
+
+                entry.insert(channel.id as usize, amp);
+            }
+        }
+    }
+
+    for (_, mut channels) in frames {
+        if params.merge_close_events {
+            for ch_1 in 0..7 {
+                for ch_2 in 0..7 {
+                    if params.merge_map[ch_1][ch_2] && channels.contains_key(&ch_1) && channels.contains_key(&ch_2) {
+                        let amp2  = channels.get(&ch_2).unwrap().to_owned();
+                        channels.entry(ch_1).and_modify(|amp| *amp += amp2);
+                        channels.remove_entry(&ch_2).unwrap();
+                    }
+                }
+            }
+        }
+
+        for (ch_num, amplitude) in channels {
+            histogram.add(ch_num as u8, amplitude)
+        }
+    }
+
+    histogram
+}
+
 pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 {
     match algorithm {
         Algorithm::Max => {
@@ -78,6 +144,7 @@ pub fn waveform_to_event(waveform: &Vec<i16>, algorithm: &Algorithm) -> (u64, f3
     }
 }
 
+#[cfg(feature = "desktop")]
 pub fn frame_to_waveform(frame: &rsb_event::point::channel::block::Frame) -> Vec<i16>{
     let waveform_len = frame.data.len() / 2;
     (0..waveform_len).map(|idx| {

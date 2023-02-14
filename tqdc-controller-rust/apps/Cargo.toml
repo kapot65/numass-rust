@@ -12,7 +12,7 @@ tokio-timerfd = "0.2.0"
 tqdc = {path = "../tqdc"}
 numass = { git = "ssh://git@bitbucket.org/Kapot/dataforge-parser-numass.git", tag = "0.1.0" }
 dataforge = { git = "ssh://git@bitbucket.org/Kapot/dataforge-parser-rust.git", tag = "0.1.0" }
-processing = {path = "../processing"}
+processing = {path = "../processing", features = ["desktop"]}
 
 tokio = { version = "1.21.2", features = ["full"] }
 

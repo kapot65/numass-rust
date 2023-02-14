@@ -4,4 +4,5 @@ members = [
   "apps",
   "processing",
   "tqdc",
+  "viewers"
 ]

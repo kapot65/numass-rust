@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone)]
+use serde::{Serialize, Deserialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PointHistogram {
     pub x: Vec<f32>,
     pub channels: BTreeMap<u8, Vec<f32>>,
