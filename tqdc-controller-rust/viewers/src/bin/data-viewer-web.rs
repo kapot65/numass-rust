@@ -1,31 +1,72 @@
-use std::{path::PathBuf, str::FromStr};
+use std::{path::PathBuf, str::FromStr, net::SocketAddr};
 
-use actix_files::Files;
-use actix_web::{get, web, App, HttpServer, Responder, post};
+use actix_web::{web::{self, Data}, App, HttpServer, Responder, post};
+#[cfg(not(debug_assertions))]
+use actix_web::{get, web::Bytes, HttpResponse, http::header::ContentType};
+
 use data_viewer_web::backend::{expand_dir, ProcessRequest, process_file};
 
-#[get("/api/files")]
-async fn files() -> impl Responder {
-    let files = expand_dir(PathBuf::from_str("/data/numass-server").unwrap());
-    web::Json(files)
-}
-
 #[post("/api/process")]
-async fn index(request: web::Json<ProcessRequest>) -> impl Responder {
+async fn process(request: web::Json<ProcessRequest>) -> impl Responder {
     let actix_web::web::Json(ProcessRequest { filepath, params }) = request;
     web::Json(process_file(filepath, params).await)
 }
 
+#[cfg(not(debug_assertions))]
+#[get("/")]
+async fn index() -> impl Responder {
+    HttpResponse::Ok()
+        .content_type(ContentType::html())
+        .body(include_str!("../../../dist/index.html"))
+}
+
+#[cfg(not(debug_assertions))]
+#[get("/data-viewer.js")]
+async fn js() -> impl Responder {
+    HttpResponse::Ok()
+        .content_type("text/javascript")
+        .body(include_str!("../../../dist/data-viewer.js"))
+}
+
+#[cfg(not(debug_assertions))]
+#[get("/data-viewer_bg.wasm")]
+async fn wasm() -> impl Responder {
+    HttpResponse::Ok()
+        .content_type("application/wasm")
+        .body(Bytes::from_static(include_bytes!("../../../dist/data-viewer_bg.wasm")))
+}
+
+use clap::Parser;
+#[derive(Parser, Debug, Clone)]
+#[clap(author, version, about, long_about = None)]
+struct Opt {
+    directory: PathBuf,
+    #[clap(long, default_value_t = SocketAddr::from_str("0.0.0.0:8085").unwrap())]
+    address: SocketAddr
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    let args = Opt::parse();
+    HttpServer::new(move || {
+        let app = App::new()
+        .app_data(Data::new(args.directory.clone()))
+        .route("/api/files", web::get().to(|directory: web::Data<PathBuf>| async move {
+            let files = expand_dir(PathBuf::clone(&directory));
+            web::Json(files)
+        }))
+        .service(process);
 
-    HttpServer::new(|| {
-        App::new()
-        .service(index)
-        .service(files)
-        .service(Files::new("/", "../dist").index_file("index.html"))
+        #[cfg(not(debug_assertions))] {
+            app.service(index)
+            .service(js)
+            .service(wasm)
+        }
+        #[cfg(debug_assertions)] {
+            app
+        }
     })
-    .bind(("0.0.0.0", 8085))?
+    .bind(args.address)?
     .run()
     .await
 }
