@@ -1,9 +1,9 @@
-
-use std::collections::BTreeMap;
-
-use histogram::PointHistogram;
 #[cfg(feature = "desktop")]
-use numass::protos::rsb_event;
+use {
+    std::collections::BTreeMap,
+    numass::protos::rsb_event,
+    histogram::PointHistogram
+};
 use serde::{Serialize, Deserialize};
 pub mod histogram;
 pub mod utils;

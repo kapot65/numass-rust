@@ -1,13 +1,12 @@
 use std::{path::PathBuf, time::SystemTime};
 
-#[cfg(not(target_arch = "wasm32"))]
-use dataforge::read_df_message;
-#[cfg(not(target_arch = "wasm32"))]
-use numass::{NumassMeta, protos::rsb_event, Reply};
-#[cfg(not(target_arch = "wasm32"))]
-use protobuf::Message;
-#[cfg(not(target_arch = "wasm32"))]
-use processing::point_to_histogramm;
+#[cfg(not(target_arch = "wasm32"))] 
+use {
+    dataforge::read_df_message,
+    numass::{NumassMeta, protos::rsb_event, Reply},
+    protobuf::Message,
+    processing::point_to_histogramm
+};
 
 use processing::{ProcessingParams, histogram::PointHistogram};
 use serde::{Serialize, Deserialize};
@@ -68,8 +67,8 @@ pub async fn process_file(filepath: PathBuf, params: ProcessingParams) -> FileCa
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn expand_dir(path: PathBuf) -> FSRepr {
-    #[cfg(not(target_arch = "wasm32"))]
     {
         let meta = std::fs::metadata(&path).unwrap();
         if meta.is_file() {
@@ -82,7 +81,7 @@ pub fn expand_dir(path: PathBuf) -> FSRepr {
                 let entry = child.unwrap();
                 expand_dir(entry.path())
             }).collect::<Vec<_>>();
-
+            
             children.sort_by(|a, b| {
                 natord::compare(a.to_filename(), b.to_filename())
             });
@@ -92,9 +91,4 @@ pub fn expand_dir(path: PathBuf) -> FSRepr {
             panic!()
         }
     }
-    #[cfg(target_arch = "wasm32")]
-    {
-        todo!()
-    }
-    
 }

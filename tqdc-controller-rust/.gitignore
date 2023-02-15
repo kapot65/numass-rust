@@ -2,6 +2,7 @@ imgs
 
 target-trunk/
 /dist/
+viewers/dist/
 
 /test-data/points/*kHz*
 

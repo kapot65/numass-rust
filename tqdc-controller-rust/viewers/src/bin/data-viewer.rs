@@ -30,9 +30,8 @@ async fn main() -> eframe::Result<()> {
         Box::new(|_| {
             let app = app::DataViewerApp::new();
             if let Some(directory) = opt.directory {
-                *app.root.try_lock().unwrap() = Some(expand_dir(directory))
+                *app.root.lock() = Some(expand_dir(directory))
             }
-            // DataViewerApp::open_directory(root, root_path)
             Box::new(app)
         }),
     )
@@ -42,8 +41,6 @@ async fn main() -> eframe::Result<()> {
 #[cfg(target_arch = "wasm32")]
 fn main() {
     // Make sure panics are logged using `console.error`.
-    use wasm_bindgen_futures::spawn_local;
-
     console_error_panic_hook::set_once();
 
     // Redirect tracing to console.log and friends:

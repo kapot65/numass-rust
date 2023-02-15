@@ -4,33 +4,29 @@ use std::{collections::HashMap, sync::Arc};
 use eframe::epaint::{Color32, Hsva};
 
 #[cfg(not(target_arch = "wasm32"))]
-use tokio::sync::Mutex;
-#[cfg(not(target_arch = "wasm32"))]
-use std::fs::File;
-#[cfg(not(target_arch = "wasm32"))]
-use std::io::Write;
-#[cfg(not(target_arch = "wasm32"))]
-use home::home_dir;
-#[cfg(not(target_arch = "wasm32"))]
-use crate::backend::process_file;
-#[cfg(not(target_arch = "wasm32"))]
-use which::which;
+use {
+    tokio:: spawn,
+    std::fs::File,
+    std::io::Write,
+    home::home_dir,
+    crate::backend::{process_file, expand_dir},
+    which::which,
+};
 
 #[cfg(target_arch = "wasm32")]
-use wasm_bindgen_futures::spawn_local;
-#[cfg(target_arch = "wasm32")]
-use std::sync::Mutex;
-#[cfg(target_arch = "wasm32")]
-use gloo_net::http::Request;
-#[cfg(target_arch = "wasm32")]
-use crate::backend::ProcessRequest;
+use {
+    wasm_bindgen_futures::spawn_local as spawn,
+    gloo_net::http::Request,
+    crate::backend::ProcessRequest
+};
 
 use eframe::egui::{self, Ui};
 use eframe::egui::plot::{Plot, Line, Legend};
 
+use egui::mutex::Mutex;
 use processing::{Algorithm, ProcessingParams};
 
-use crate::backend::{expand_dir, FSRepr, FileCache};
+use crate::backend::{FSRepr, FileCache};
 
 pub const DEFAULT_LIKHOVID: Algorithm = Algorithm::Likhovid { left: 6, right: 36 };
 
@@ -75,42 +71,40 @@ impl DataViewerApp {
 
     fn files_editor(&self, ui: &mut Ui) {
     
-        let root_lock = self.root.try_lock().unwrap().clone();
+        let root_lock = self.root.lock().clone();
     
         ui.horizontal(|ui| {
     
             if ui.button("open").clicked() {
                 let root = self.root.clone();
-                #[cfg(not(target_arch = "wasm32"))]
-                tokio::spawn(async move {
+                
+                spawn(async move {
+                    #[cfg(not(target_arch = "wasm32"))]
                     if let Some(root_path) = rfd::FileDialog::new().pick_folder() {
-                        *root.try_lock().unwrap() = Some(expand_dir(root_path))
+                        *root.lock() = Some(expand_dir(root_path))
+                    }
+                    #[cfg(target_arch = "wasm32")] {
+                        let resp = Request::get("/api/files").send().await.unwrap();
+                        *root.lock() = Some(resp.json::<FSRepr>().await.unwrap())
                     }
                 });
-                #[cfg(target_arch = "wasm32")]{
-                    spawn_local(async move {
-                        let resp = Request::get("/api/files").send().await.unwrap();
-                        *root.try_lock().unwrap() = Some(resp.json::<FSRepr>().await.unwrap())
-                    })
-                }
             }
     
-            if let Some(root) = root_lock.clone() {
-                if ui.button("reload").clicked() {
-                    #[cfg(not(target_arch = "wasm32"))]
-                    {
-                        *self.root.try_lock().unwrap() = Some(expand_dir(match root {
-                            FSRepr::File { path } => path,
-                            FSRepr::Directory { path, children: _ } => path
-                        }));
-                    }
-                    #[cfg(target_arch = "wasm32")]{
-                        let root = self.root.clone();
-                        spawn_local(async move {
-                            let resp = Request::get("/api/files").send().await.unwrap();
-                            *root.try_lock().unwrap() = Some(resp.json::<FSRepr>().await.unwrap())
-                        })
-                    }
+            let path = root_lock.clone().map(|root| match root {
+                FSRepr::File { path } => path,
+                FSRepr::Directory { path, children: _ } => path
+            });
+            if path.is_some() && ui.button("reload").clicked() {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    *self.root.lock() = Some(expand_dir(path.unwrap()));
+                }
+                #[cfg(target_arch = "wasm32")]{
+                    let root = self.root.clone();
+                    spawn(async move {
+                        let resp = Request::get("/api/files").send().await.unwrap();
+                        *root.lock() = Some(resp.json::<FSRepr>().await.unwrap())
+                    })
                 }
             }
     
@@ -119,19 +113,17 @@ impl DataViewerApp {
             }
     
             if ui.button("clear").clicked() {
-                if let Ok(mut lock) = self.state.try_lock() {
-                    lock.clear()
-                }
+                self.state.lock().clear()
             }
     
             #[cfg(not(target_arch = "wasm32"))]
             if ui.button("save").clicked() {
                 let state = self.state.clone();
-                tokio::spawn(async move {
+                spawn(async move {
                     let save_folder = rfd::FileDialog::new().set_directory(home_dir().unwrap()).pick_folder();
                     if let Some(save_folder) = save_folder {
     
-                        let state = state.lock().await;
+                        let state = state.lock();
     
                         for (name, cache) in state.iter() {
     
@@ -174,22 +166,19 @@ impl DataViewerApp {
         });
     
         egui::containers::ScrollArea::new([false, true]).show(ui, |ui| {
-            if let Some(root) = root_lock.clone() {
-                if let Ok(ref mut mutex) = self.state.try_lock() {
-                    file_tree_entry(ui, &root, mutex);
-                }
+            if let Some(root) = &root_lock {
+                file_tree_entry(ui, root, &mut self.state.lock());
             }
         });
     }
 
     pub fn process(&self) {
 
-        let params = *self.processing_params.try_lock().unwrap();
+        let params = *self.processing_params.lock();
         let state = Arc::clone(&self.state);
 
-        #[cfg(not(target_arch = "wasm32"))] 
         {
-            tokio::spawn(async move {
+            spawn(async move {
                 // TODO: add conditional recalculation
                 // let mut last_params = *processing_params.lock().await;
                 // let need_recalc = if last_params != params {
@@ -200,7 +189,7 @@ impl DataViewerApp {
                 // };
     
                 let files_to_processed = {
-                    state.try_lock().unwrap().iter().filter_map(|(filepath, cache)| {
+                    state.lock().iter().filter_map(|(filepath, cache)| {
                         if cache.opened {
                             let need_recalc = true;
                             if need_recalc {
@@ -223,62 +212,21 @@ impl DataViewerApp {
     
                 for filepath in files_to_processed {
                     let configuration_local = state.clone();
-                    tokio::spawn(async move {
-                        let cache = process_file(PathBuf::from(&filepath), params).await;
-
-                        let mut conf = configuration_local.lock().await;
+                    spawn(async move {
+                        #[cfg(not(target_arch = "wasm32"))] let cache = {
+                            process_file(PathBuf::from(&filepath), params).await
+                        };
+                        #[cfg(target_arch = "wasm32")] let cache = {
+                            Request::post("/api/process").json(&ProcessRequest {
+                                filepath: PathBuf::from(&filepath),
+                                params
+                            }).unwrap().send().await.unwrap().json::<FileCache>().await.unwrap()
+                        };
+                        let mut conf = configuration_local.lock();
                         conf.insert(filepath.to_owned(), cache);
                     });
                 }
                 
-            });
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            spawn_local(async move {
-                // TODO: add conditional recalculation
-                // let mut last_params = *processing_params.lock().await;
-                // let need_recalc = if last_params != params {
-                //     last_params = params;
-                //     true
-                // } else {
-                //     false
-                // };
-    
-                let files_to_processed = {
-                    state.try_lock().unwrap().iter().filter_map(|(filepath, cache)| {
-                        if cache.opened {
-                            let need_recalc = true;
-                            if need_recalc {
-                                Some(filepath.clone())
-                            } else if let Some(processed) = cache.processed {
-                                let meta = std::fs::metadata(filepath).unwrap();
-                                if processed >= meta.modified().unwrap() {
-                                    None
-                                } else {
-                                    Some(filepath.clone())
-                                }
-                            } else {
-                                Some(filepath.clone())
-                            }
-                        } else {
-                            None
-                        }
-                    }).collect::<Vec<_>>()
-                };
-    
-                for filepath in files_to_processed {
-                    let configuration_local = state.clone();
-                    spawn_local(async move {
-                        let cache = Request::post("/api/process").json(&ProcessRequest {
-                            filepath: PathBuf::from(&filepath),
-                            params
-                        }).unwrap().send().await.unwrap().json::<FileCache>().await.unwrap();
-
-                        let mut conf = configuration_local.lock().unwrap();
-                        conf.insert(filepath.to_owned(), cache);
-                    });
-                }
             });
         }
     }
@@ -427,145 +375,144 @@ fn params_editor(ui: &mut Ui, processing_params: ProcessingParams) -> Processing
 }
 
 impl eframe::App for DataViewerApp {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
 
         ctx.request_repaint_after(std::time::Duration::from_secs(1));
 
         egui::SidePanel::left("left").show(ctx, |ui| {
-            if let Ok(mut processing_params) = self.processing_params.try_lock() {
-                *processing_params = params_editor(ui, *processing_params);
-            }
+            let mut processing_params = self.processing_params.lock();
+            *processing_params = params_editor(ui, *processing_params);
+            drop(processing_params);
             self.files_editor(ui);
-            // files_editor(ui, &self.root, &mut self.background_pipe, &self.state);
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            if let Ok(state) = self.state.try_lock() {
+            let state = self.state.lock();
                 
-                let mut left_border = 0.0;
-                let mut right_border = 0.0;
+            let mut left_border = 0.0;
+            let mut right_border = 0.0;
 
-                let opened_files = state.iter().filter(|(_, cache)| {
-                    cache.opened
-                }).collect::<Vec<_>>();
+            let opened_files = state.iter().filter(|(_, cache)| {
+                cache.opened
+            }).collect::<Vec<_>>();
 
 
-                #[cfg(not(target_arch = "wasm32"))]
-                let plot = Plot::new("Histogram Plot").legend(Legend { 
-                    text_style: egui::TextStyle::Body, 
-                    background_alpha: 1.0, position: egui::plot::Corner::RightTop 
-                })
-                .height(frame.info().window_info.size.y - 35.0);
-                #[cfg(target_arch = "wasm32")]
-                let plot = Plot::new("Histogram Plot").legend(Legend { 
-                    text_style: egui::TextStyle::Body, 
-                    background_alpha: 1.0, position: egui::plot::Corner::RightTop 
-                });
-                
-                plot.show(ui, |plot_ui| {
+            #[cfg(not(target_arch = "wasm32"))]
+            let plot = Plot::new("Histogram Plot").legend(Legend { 
+                text_style: egui::TextStyle::Body, 
+                background_alpha: 1.0, position: egui::plot::Corner::RightTop 
+            })
+            .height(_frame.info().window_info.size.y - 35.0);
+            #[cfg(target_arch = "wasm32")]
+            let plot = Plot::new("Histogram Plot").legend(Legend { 
+                text_style: egui::TextStyle::Body, 
+                background_alpha: 1.0, position: egui::plot::Corner::RightTop 
+            });
+            
+            plot.show(ui, |plot_ui| {
 
-                    let bounds = plot_ui.plot_bounds();
-                    left_border = bounds.min()[0] as f32;
-                    right_border = bounds.max()[0] as f32;
-                
-                    let lines = if opened_files.len() == 1 {
-                        let (_, cache) = opened_files[0];
-                        if !(cache.opened && cache.histogram.is_some()) {
-                            return;
-                        }
+                let bounds = plot_ui.plot_bounds();
+                left_border = bounds.min()[0] as f32;
+                right_border = bounds.max()[0] as f32;
+            
+                let lines = if opened_files.len() == 1 {
+                    let (_, cache) = opened_files[0];
+                    if !(cache.opened && cache.histogram.is_some()) {
+                        return;
+                    }
+                    let hist = cache.histogram.clone().unwrap();
+                    hist.channels.iter().map(|(ch_num, y)| {
+                        (format!("ch #{}", ch_num + 1), color_same_as_egui(*ch_num as usize), hist.step, hist.x.clone(), y.clone())
+                    }).collect::<Vec<_>>()
+                } else {
+                    opened_files.iter().enumerate()
+                    .filter(|(_, (_, cache))| {cache.histogram.is_some()})
+                    .map(|(idx, (filepath, cache))| {
                         let hist = cache.histogram.clone().unwrap();
-                        hist.channels.iter().map(|(ch_num, y)| {
-                            (format!("ch #{}", ch_num + 1), color_same_as_egui(*ch_num as usize), hist.step, hist.x.clone(), y.clone())
-                        }).collect::<Vec<_>>()
-                    } else {
-                        opened_files.iter().enumerate()
-                        .filter(|(_, (_, cache))| {cache.histogram.is_some()})
-                        .map(|(idx, (filepath, cache))| {
-                            let hist = cache.histogram.clone().unwrap();
 
-                            let mut y_all = vec![0.0; hist.x.len()];
-                            for (_, y) in hist.channels {
-                                for (idx, val) in y.iter().enumerate() {
-                                    y_all[idx] += val;
-                                }
+                        let mut y_all = vec![0.0; hist.x.len()];
+                        for (_, y) in hist.channels {
+                            for (idx, val) in y.iter().enumerate() {
+                                y_all[idx] += val;
                             }
+                        }
 
-                            (filepath.to_string(), color_same_as_egui(idx), hist.step, hist.x, y_all)
-                        }).collect::<Vec<_>>()
-                    };
+                        (filepath.to_string(), color_same_as_egui(idx), hist.step, hist.x, y_all)
+                    }).collect::<Vec<_>>()
+                };
 
-                    for (name, color, step, x, y) in lines {
-                        let mut events_in_window = 0;
+                for (name, color, step, x, y) in lines {
+                    let mut events_in_window = 0;
 
-                        let line_data = y.iter().enumerate().flat_map(|(idx, y)| {
-                            if x[idx] > left_border && x[idx] < right_border {
-                                events_in_window += *y as i32;
-                            }
-                            [
-                                [(x[idx] - step / 2.0)  as f64, *y as f64],
-                                [(x[idx] + step / 2.0)  as f64, *y as f64]
-                            ]
-                        }).collect::<Vec<_>>();
+                    let line_data = y.iter().enumerate().flat_map(|(idx, y)| {
+                        if x[idx] > left_border && x[idx] < right_border {
+                            events_in_window += *y as i32;
+                        }
+                        [
+                            [(x[idx] - step / 2.0)  as f64, *y as f64],
+                            [(x[idx] + step / 2.0)  as f64, *y as f64]
+                        ]
+                    }).collect::<Vec<_>>();
 
-                        plot_ui.line(Line::new(line_data)
-                        .color(color)
-                        .name(
-                            format!("{name}\t({events_in_window})")
-                        ))
+                    plot_ui.line(Line::new(line_data)
+                    .color(color)
+                    .name(
+                        format!("{name}\t({events_in_window})")
+                    ))
+                }
+            });
+
+            // TODO: move to separate function
+            #[cfg(not(target_arch = "wasm32"))]
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+
+                let point_viewer_in_path = which("point-viewer").is_ok();
+                let filtered_viewer_in_path = which("draw-filtered").is_ok();
+                
+                let algorithm_ok = {
+                    let params = self.processing_params.lock();
+                    let algorithm_ok = params.algorithm == Algorithm::Likhovid { left: 6, right: 36 } && params.convert_to_kev;
+                    drop(params);
+                    algorithm_ok
+                };
+
+                let filtered_viewer_button = ui.add_enabled(
+                    opened_files.len() == 1 && filtered_viewer_in_path && algorithm_ok,  
+                    egui::Button::new("waveforms (in window)")).on_disabled_hover_ui(|ui| {
+                    if !filtered_viewer_in_path {
+                        ui.colored_label(Color32::RED, "draw-filtered must be in PATH");
+                    }
+                    if opened_files.len() != 1 {
+                        ui.colored_label(Color32::RED, "exact one file must be opened");
+                    }
+                    if !algorithm_ok {
+                        ui.colored_label(Color32::RED, "params must be default (Algorithm::Likhovid { left: 6, right: 36 }, convert_to_kev)");
                     }
                 });
 
-                // TODO: move to separate function
-                #[cfg(not(target_arch = "wasm32"))]
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                if filtered_viewer_button.clicked() {
+                    let (filepath, _) = opened_files[0];
+                    tokio::process::Command::new("draw-filtered").arg(filepath)
+                        .arg("--min").arg(left_border.max(0.0).to_string())
+                        .arg("--max").arg(right_border.max(0.0).to_string())
+                        .spawn().unwrap();
+                }
 
-                    let point_viewer_in_path = which("point-viewer").is_ok();
-                    let filtered_viewer_in_path = which("draw-filtered").is_ok();
-
-                    let algorithm_ok = if let Ok(ref params)= self.processing_params.try_lock() {
-                        params.algorithm == Algorithm::Likhovid { left: 6, right: 36 } && params.convert_to_kev
-                    } else {
-                        false
-                    };
-
-                    let filtered_viewer_button = ui.add_enabled(
-                        opened_files.len() == 1 && filtered_viewer_in_path && algorithm_ok,  
-                        egui::Button::new("waveforms (in window)")).on_disabled_hover_ui(|ui| {
-                        if !filtered_viewer_in_path {
-                            ui.colored_label(Color32::RED, "draw-filtered must be in PATH");
-                        }
-                        if opened_files.len() != 1 {
-                            ui.colored_label(Color32::RED, "exact one file must be opened");
-                        }
-                        if !algorithm_ok {
-                            ui.colored_label(Color32::RED, "params must be default (Algorithm::Likhovid { left: 6, right: 36 }, convert_to_kev)");
-                        }
-                    });
-
-                    if filtered_viewer_button.clicked() {
-                        let (filepath, _) = opened_files[0];
-                        tokio::process::Command::new("draw-filtered").arg(filepath)
-                            .arg("--min").arg(left_border.max(0.0).to_string())
-                            .arg("--max").arg(right_border.max(0.0).to_string())
-                            .spawn().unwrap();
+                let point_viewer_button = ui.add_enabled(opened_files.len() == 1 && point_viewer_in_path,  
+                    egui::Button::new("waveforms (all)")).on_disabled_hover_ui(|ui| {
+                    if !point_viewer_in_path {
+                        ui.colored_label(Color32::RED, "point-viewer must be in PATH");
                     }
-
-                    let point_viewer_button = ui.add_enabled(opened_files.len() == 1 && point_viewer_in_path,  
-                        egui::Button::new("waveforms (all)")).on_disabled_hover_ui(|ui| {
-                        if !point_viewer_in_path {
-                            ui.colored_label(Color32::RED, "point-viewer must be in PATH");
-                        }
-                        if opened_files.len() != 1 {
-                            ui.colored_label(Color32::RED, "exact one file must be opened");
-                        }
-                    });
-
-                    if point_viewer_button.clicked() {
-                        let (filepath, _) = opened_files[0];
-                        tokio::process::Command::new("point-viewer").arg(filepath).spawn().unwrap();
+                    if opened_files.len() != 1 {
+                        ui.colored_label(Color32::RED, "exact one file must be opened");
                     }
                 });
-            }
+
+                if point_viewer_button.clicked() {
+                    let (filepath, _) = opened_files[0];
+                    tokio::process::Command::new("point-viewer").arg(filepath).spawn().unwrap();
+                }
+            });
         });
     }
 }
