@@ -54,13 +54,13 @@ impl DataViewerApp {
                 convert_to_kev: true,
                 merge_close_events: true,
                 merge_map: [
-                    [false, true, false, false, true, false, false],
+                    [false, true, false, false, false, false, false],
                     [false, false, false, true, false, false, false],
                     [false, false, false, false, true, false, false],
-                    [false, false, false, false, false, false, false],
-                    [false, false, false, false, false, false, false],
+                    [false, false, false, false, false, false, true],
+                    [true, false, false, false, false, false, false],
                     [true, true, true, true, true, false, true],
-                    [false, false, true, true, false, false, false],
+                    [false, false, true, false, false, false, false],
                 ],
                 hist_min: 0.0,
                 hist_max: 27.0,
@@ -408,7 +408,7 @@ impl eframe::App for DataViewerApp {
                 text_style: egui::TextStyle::Body, 
                 background_alpha: 1.0, position: egui::plot::Corner::RightTop 
             });
-            
+
             plot.show(ui, |plot_ui| {
 
                 let bounds = plot_ui.plot_bounds();
@@ -455,6 +455,7 @@ impl eframe::App for DataViewerApp {
                     }).collect::<Vec<_>>();
 
                     plot_ui.line(Line::new(line_data)
+                    .width(if ctx.style().visuals.dark_mode { 1.0 } else { 2.0 })
                     .color(color)
                     .name(
                         format!("{name}\t({events_in_window})")
