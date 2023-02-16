@@ -17,11 +17,13 @@ use {
 use {
     wasm_bindgen_futures::spawn_local as spawn,
     gloo_net::http::Request,
-    crate::backend::ProcessRequest
+    crate::backend::ProcessRequest,
+    eframe::web_sys::window,
 };
 
 use eframe::egui::{self, Ui};
 use eframe::egui::plot::{Plot, Line, Legend};
+
 
 use egui::mutex::Mutex;
 use processing::{Algorithm, ProcessingParams};
@@ -53,6 +55,8 @@ impl DataViewerApp {
                 algorithm: DEFAULT_LIKHOVID,
                 convert_to_kev: true,
                 merge_close_events: true,
+                use_dead_time: true,
+                effective_dead_time: 4000,
                 merge_map: [
                     [false, true, false, false, false, false, false],
                     [false, false, false, true, false, false, false],
@@ -218,7 +222,7 @@ impl DataViewerApp {
                             process_file(PathBuf::from(&filepath), params).await
                         };
                         #[cfg(target_arch = "wasm32")] let cache = {
-                            Request::post("/api/process").json(&ProcessRequest {
+                            Request::post("/api/process").json(&ProcessRequest::CalcHist {
                                 filepath: PathBuf::from(&filepath),
                                 params
                             }).unwrap().send().await.unwrap().json::<FileCache>().await.unwrap()
@@ -252,6 +256,7 @@ fn file_tree_entry(
                 processed: None,
                 histogram: None 
             });
+            
             ui.horizontal(|ui| {
                 ui.checkbox(&mut cache.opened, "");
                 let filename = path.file_name().unwrap().to_str().unwrap();
@@ -317,8 +322,16 @@ fn params_editor(ui: &mut Ui, processing_params: ProcessingParams) -> Processing
     let mut convert_to_kev = processing_params.convert_to_kev;
     ui.checkbox(&mut convert_to_kev, "convert to keV");
 
-    let mut merge_close_events = processing_params.merge_close_events;
+    
+    let mut use_dead_time = processing_params.use_dead_time;
+    let mut effective_dead_time = processing_params.effective_dead_time;
 
+    ui.checkbox(&mut use_dead_time, "use dead time");
+    ui.add_enabled(use_dead_time, 
+        egui::Slider::new(&mut effective_dead_time, 0..=10000).text("ns")
+    );
+
+    let mut merge_close_events = processing_params.merge_close_events;
     ui.checkbox(&mut merge_close_events, "merge close events");
     
 
@@ -369,6 +382,8 @@ fn params_editor(ui: &mut Ui, processing_params: ProcessingParams) -> Processing
         convert_to_kev,
         hist_min,
         hist_max,
+        use_dead_time,
+        effective_dead_time,
         hist_bins,
         merge_close_events,
         merge_map,
@@ -397,18 +412,17 @@ impl eframe::App for DataViewerApp {
                 cache.opened
             }).collect::<Vec<_>>();
 
-
             #[cfg(not(target_arch = "wasm32"))]
+            let height = _frame.info().window_info.size.y;
+            #[cfg(target_arch = "wasm32")]
+            let height = window().unwrap().inner_height().unwrap().as_f64().unwrap() as f32;
+
+            
             let plot = Plot::new("Histogram Plot").legend(Legend { 
                 text_style: egui::TextStyle::Body, 
                 background_alpha: 1.0, position: egui::plot::Corner::RightTop 
             })
-            .height(_frame.info().window_info.size.y - 35.0);
-            #[cfg(target_arch = "wasm32")]
-            let plot = Plot::new("Histogram Plot").legend(Legend { 
-                text_style: egui::TextStyle::Body, 
-                background_alpha: 1.0, position: egui::plot::Corner::RightTop 
-            });
+            .height(height - 35.0);
 
             plot.show(ui, |plot_ui| {
 
@@ -465,11 +479,13 @@ impl eframe::App for DataViewerApp {
             });
 
             // TODO: move to separate function
-            #[cfg(not(target_arch = "wasm32"))]
+            
             ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
 
-                let point_viewer_in_path = which("point-viewer").is_ok();
-                let filtered_viewer_in_path = which("draw-filtered").is_ok();
+                #[cfg(not(target_arch = "wasm32"))]
+                let filtered_viewer_in_path = which("filtered-viewer").is_ok();
+                #[cfg(target_arch = "wasm32")]
+                let filtered_viewer_in_path = true;
                 
                 let algorithm_ok = {
                     let params = self.processing_params.lock();
@@ -482,7 +498,7 @@ impl eframe::App for DataViewerApp {
                     opened_files.len() == 1 && filtered_viewer_in_path && algorithm_ok,  
                     egui::Button::new("waveforms (in window)")).on_disabled_hover_ui(|ui| {
                     if !filtered_viewer_in_path {
-                        ui.colored_label(Color32::RED, "draw-filtered must be in PATH");
+                        ui.colored_label(Color32::RED, "filtered-viewer must be in PATH");
                     }
                     if opened_files.len() != 1 {
                         ui.colored_label(Color32::RED, "exact one file must be opened");
@@ -494,13 +510,26 @@ impl eframe::App for DataViewerApp {
 
                 if filtered_viewer_button.clicked() {
                     let (filepath, _) = opened_files[0];
-                    tokio::process::Command::new("draw-filtered").arg(filepath)
+                    #[cfg(not(target_arch = "wasm32"))] {
+                        tokio::process::Command::new("filtered-viewer").arg(filepath)
                         .arg("--min").arg(left_border.max(0.0).to_string())
                         .arg("--max").arg(right_border.max(0.0).to_string())
                         .spawn().unwrap();
+                    }
+                    #[cfg(target_arch = "wasm32")] {
+                        let search = serde_qs::to_string(&ProcessRequest::FilterEvents { 
+                            filepath: PathBuf::from(filepath), 
+                            range: left_border.max(0.0)..right_border.max(0.0), 
+                            neigborhood: 5000 }).unwrap();
+                        window().unwrap().open_with_url(&format!("/?{search}")).unwrap();
+                    }
                 }
 
-                let point_viewer_button = ui.add_enabled(opened_files.len() == 1 && point_viewer_in_path,  
+                #[cfg(not(target_arch = "wasm32"))] {
+
+                    let point_viewer_in_path = which("point-viewer").is_ok();
+
+                    let point_viewer_button = ui.add_enabled(opened_files.len() == 1 && point_viewer_in_path,  
                     egui::Button::new("waveforms (all)")).on_disabled_hover_ui(|ui| {
                     if !point_viewer_in_path {
                         ui.colored_label(Color32::RED, "point-viewer must be in PATH");
@@ -508,11 +537,12 @@ impl eframe::App for DataViewerApp {
                     if opened_files.len() != 1 {
                         ui.colored_label(Color32::RED, "exact one file must be opened");
                     }
-                });
+                    });
 
-                if point_viewer_button.clicked() {
-                    let (filepath, _) = opened_files[0];
-                    tokio::process::Command::new("point-viewer").arg(filepath).spawn().unwrap();
+                    if point_viewer_button.clicked() {
+                        let (filepath, _) = opened_files[0];
+                        tokio::process::Command::new("point-viewer").arg(filepath).spawn().unwrap();
+                    }
                 }
             });
         });

@@ -1,11 +1,11 @@
-use std::{path::PathBuf, time::SystemTime};
+use std::{path::PathBuf, time::SystemTime, collections::BTreeMap, ops::Range};
 
 #[cfg(not(target_arch = "wasm32"))] 
 use {
     dataforge::read_df_message,
     numass::{NumassMeta, protos::rsb_event, Reply},
     protobuf::Message,
-    processing::point_to_histogramm
+    processing::{frame_to_waveform, waveform_to_event, convert_to_kev, point_to_histogramm},
 };
 
 use processing::{ProcessingParams, histogram::PointHistogram};
@@ -30,9 +30,16 @@ pub struct FileCache {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProcessRequest {
-    pub filepath: PathBuf,
-    pub params: ProcessingParams
+pub enum ProcessRequest {
+    CalcHist {
+        filepath: PathBuf,
+        params: ProcessingParams
+    },
+    FilterEvents {
+        filepath: PathBuf,
+        range: Range<f32>, 
+        neigborhood: u64
+    } 
 }
 
 impl FSRepr {
@@ -91,4 +98,89 @@ pub fn expand_dir(path: PathBuf) -> FSRepr {
             panic!()
         }
     }
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceFrame {
+    pub time: u64,
+    pub waveforms: BTreeMap<u8, Vec<i16>>
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn filter_events(path: &PathBuf, range: &Range<f32>, neigborhood: u64) -> Vec<(DeviceFrame, Vec<DeviceFrame>)> {
+
+
+    let mut point_file = tokio::fs::File::open(&path).await.unwrap();
+    let message = read_df_message::<NumassMeta>(&mut point_file).await.unwrap();
+
+    let mut events: BTreeMap<u64, BTreeMap<u8, Vec<i16>>> = BTreeMap::new();
+
+    let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
+    for channel in &point.channels {
+        for block in &channel.blocks {
+            for frame in &block.frames {
+                let entry = events.entry(frame.time).or_default();
+                entry.insert(channel.id as u8, frame_to_waveform(frame));
+            }
+        }
+    }
+
+    let algorithm = processing::Algorithm::Likhovid { left: 6, right: 36 };
+
+    let events = events.iter().map(|(time, waveforms)| (*time, waveforms.clone())).collect::<Vec<_>>();
+
+    events.iter().enumerate().filter_map(|(idx, (time, waveforms))| {
+        
+        // if waveforms.len() != 1 || !waveforms.contains_key(&5) {
+        //     return None;
+        // }
+
+        if !waveforms.iter().map(|(ch_id, waveform)| {
+            let (_, amp) = waveform_to_event(waveform, &algorithm);
+            convert_to_kev(&amp, *ch_id, &algorithm)
+        }).any(|amp| range.contains(&amp)) {
+            return None;
+        }
+
+        let neighbors = {
+            let bounds = (*time - neigborhood)..(*time + neigborhood);
+            let mut neighbors = vec![];
+            let mut left = idx;
+            loop {
+                if left == 0 { break; }
+                if !bounds.contains(&events[left - 1].0) { break; }
+                neighbors.push(DeviceFrame {
+                    time: events[left - 1].0, 
+                    waveforms: events[left - 1].1.clone()
+                });
+                left -= 1;
+            }
+            let mut right = idx;
+            loop {
+                if right == events.len() - 1 { break; }
+                if !bounds.contains(&events[right + 1].0) { break; }
+                neighbors.push(DeviceFrame {
+                    time: events[right + 1].0, 
+                    waveforms: events[right + 1].1.clone()
+                });
+                right += 1;
+            }
+            neighbors
+        };
+        Some((DeviceFrame {
+            time: *time, 
+            waveforms: waveforms.clone()
+        }, neighbors))
+    }).collect::<Vec<_>>()
+
+}
+
+#[test]
+fn test() {
+    let buf = rmp_serde::to_vec(&vec![1i32,2,3]).unwrap();
+    println!("{buf:?}");
+
+    let out = rmp_serde::from_slice::<Vec<i32>>(&buf).unwrap();
+    println!("{out:?}");
 }

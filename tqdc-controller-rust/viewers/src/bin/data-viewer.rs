@@ -1,5 +1,6 @@
 #![warn(clippy::all, rust_2018_idioms)]
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] use std::path::PathBuf;
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] 
+use std::path::PathBuf;
 
 // hide console window on Windows in release
 use data_viewer_web::app;
@@ -41,22 +42,63 @@ async fn main() -> eframe::Result<()> {
 #[cfg(target_arch = "wasm32")]
 fn main() {
     // Make sure panics are logged using `console.error`.
+
+    use data_viewer_web::{backend::{DeviceFrame, ProcessRequest}, filtered_viewer};
+    use eframe::web_sys::window;
+    use gloo_net::http::Request;
+    use wasm_bindgen_futures::spawn_local;
     console_error_panic_hook::set_once();
 
     // Redirect tracing to console.log and friends:
     tracing_wasm::set_as_global_default();
 
+    let request = match window().unwrap()
+          .location()
+          .search() {
+        Ok(search) => {
+            let search = search.trim_start_matches('?');
+            serde_qs::from_str::<ProcessRequest>(search).ok()
+        },
+        _     => None,
+    };
+
     let web_options = eframe::WebOptions::default();
-    wasm_bindgen_futures::spawn_local(async {
-        eframe::start_web(
-            "the_canvas_id", // hardcode it
-            web_options,
-            Box::new(|_| {
-                let app = app::DataViewerApp::new();
-                Box::new(app)
-            }),
-        )
-        .await
-        .expect("failed to start eframe");
-    });
+    if let Some(ProcessRequest::FilterEvents { filepath, range, neigborhood }) = request {
+
+        window().unwrap().document().unwrap().set_title(format!("filtered {filepath:?} ({range:?} keV, {neigborhood} ns neigborhood)").as_str());
+
+        spawn_local(async move {
+            let independent = rmp_serde::from_slice::<Vec<(DeviceFrame, Vec<DeviceFrame>)>>(
+                &Request::post("/api/process").json(
+                &ProcessRequest::FilterEvents { filepath, range, neigborhood })
+                .unwrap().send().await.unwrap().binary().await.unwrap()).unwrap();
+
+                eframe::start_web(
+                    "the_canvas_id", // hardcode it
+                    web_options,
+                    Box::new(|_| {
+                        let app = filtered_viewer::FilteredViewer {
+                            current: 0,
+                            independent
+                        };
+                        Box::new(app)
+                    }),
+                )
+                .await
+                .expect("failed to start eframe");
+        })
+    } else {
+        spawn_local(async {
+            eframe::start_web(
+                "the_canvas_id", // hardcode it
+                web_options,
+                Box::new(|_| {
+                    let app = app::DataViewerApp::new();
+                    Box::new(app)
+                }),
+            )
+            .await
+            .expect("failed to start eframe");
+        });
+    }
 }

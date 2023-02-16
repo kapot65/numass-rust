@@ -1,16 +1,30 @@
 use std::{path::PathBuf, str::FromStr, net::SocketAddr};
 
-use actix_web::{web::{self, Data}, App, HttpServer, Responder, post};
+use actix_web::{web::{self, Data}, App, HttpServer, Responder, post, HttpResponse, http::header::ContentType, };
 #[cfg(not(debug_assertions))]
-use actix_web::{get, web::Bytes, HttpResponse, http::header::ContentType};
+use actix_web::{get, web::Bytes, };
 
-use data_viewer_web::backend::{expand_dir, ProcessRequest, process_file};
+use data_viewer_web::backend::{expand_dir, ProcessRequest, process_file, filter_events};
 
 #[post("/api/process")]
 async fn process(request: web::Json<ProcessRequest>) -> impl Responder {
-    let actix_web::web::Json(ProcessRequest { filepath, params }) = request;
-    web::Json(process_file(filepath, params).await)
+    let actix_web::web::Json(reqest) = request;
+
+    match reqest {
+        ProcessRequest::CalcHist { filepath, params } => {
+            HttpResponse::Ok()
+            .content_type(ContentType::json())
+            .body(serde_json::to_string(&process_file(filepath, params).await).unwrap())
+            // web::Json()
+        }
+        ProcessRequest::FilterEvents { filepath, range, neigborhood } => {
+            HttpResponse::Ok()
+            .content_type(mime::APPLICATION_MSGPACK)
+            .body(rmp_serde::to_vec(&filter_events(&filepath, &range, neigborhood).await).unwrap())
+        }
+    }
 }
+
 
 #[cfg(not(debug_assertions))]
 #[get("/")]

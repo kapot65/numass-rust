@@ -1,4 +1,4 @@
-#[cfg(feature = "desktop")]
+#[cfg(not(target_arch = "wasm32"))]
 use {
     std::collections::BTreeMap,
     numass::protos::rsb_event,
@@ -12,8 +12,10 @@ pub mod utils;
 pub struct ProcessingParams {
     pub algorithm: Algorithm,
     pub convert_to_kev: bool,
-    pub merge_close_events: bool,
+    pub merge_close_events: bool, // TODO: consider do in more idiomatic way
     pub merge_map: [[bool; 7]; 7],
+    pub use_dead_time: bool,
+    pub effective_dead_time: u64,
     // TODO: add to KeV corrections
     // TODO: refactor to separate struct and merge with PointHistogram
     pub hist_min: f32,
@@ -62,7 +64,7 @@ const KEV_COEFF_LIKHOVID: [[f32; 2]; 7] = [
     [0.21352, 0.039334297]
 ];
 
-#[cfg(feature = "desktop")]
+#[cfg(not(target_arch = "wasm32"))]
 pub fn point_to_histogramm(point: &rsb_event::Point, params: ProcessingParams) -> PointHistogram {
 
     let range = (params.hist_min, params.hist_max);
@@ -89,7 +91,14 @@ pub fn point_to_histogramm(point: &rsb_event::Point, params: ProcessingParams) -
         }
     }
 
-    for (_, mut channels) in frames {
+    let mut last_time: u64 = 0;
+    for (time, mut channels) in frames {
+
+        if params.use_dead_time && last_time.abs_diff(time) < params.effective_dead_time {
+            continue;
+        }
+        last_time = time;
+
         if params.merge_close_events {
             for ch_1 in 0..7 {
                 for ch_2 in 0..7 {
@@ -108,6 +117,14 @@ pub fn point_to_histogramm(point: &rsb_event::Point, params: ProcessingParams) -
     }
 
     histogram
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn frame_to_waveform(frame: &rsb_event::point::channel::block::Frame) -> Vec<i16>{
+    let waveform_len = frame.data.len() / 2;
+    (0..waveform_len).map(|idx| {
+        i16::from_le_bytes(frame.data[idx*2..idx*2+2].try_into().unwrap())
+    }).collect::<Vec<_>>()
 }
 
 pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 {
@@ -142,14 +159,6 @@ pub fn waveform_to_event(waveform: &Vec<i16>, algorithm: &Algorithm) -> (u64, f3
             (x as u64 * 8, amplitude - baseline)
         }
     }
-}
-
-#[cfg(feature = "desktop")]
-pub fn frame_to_waveform(frame: &rsb_event::point::channel::block::Frame) -> Vec<i16>{
-    let waveform_len = frame.data.len() / 2;
-    (0..waveform_len).map(|idx| {
-        i16::from_le_bytes(frame.data[idx*2..idx*2+2].try_into().unwrap())
-    }).collect::<Vec<_>>()
 }
 
 /// Parabolic event amplitude correction correction
