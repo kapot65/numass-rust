@@ -219,7 +219,7 @@ impl MlinkMessage {
                     regs.push(CtrlReg::Write16 { address, value: v1 })
                 }
             } else {
-                panic!("unknown register 0x{}", a1)
+                panic!("unknown register 0x{a1}")
             }
         }
 
@@ -260,14 +260,14 @@ impl MlinkMessage {
 
                 CtrlReg::Read32 { address, value } => {
                     let word1: u32 = 0x80000000 | ((*address as u32 & 0x7FFF) << 16) | (*value & 0xFFFF);
-                    let word2: u32 = 0x80000000 | (((*address as u32 + 1) as u32 & 0x7FFF) << 16) | (*value >> 16);
+                    let word2: u32 = 0x80000000 | (((*address as u32 + 1) & 0x7FFF) << 16) | (*value >> 16);
                     buffer.extend_from_slice(&word1.to_le_bytes());
                     buffer.extend_from_slice(&word2.to_le_bytes());
                 }
 
                 CtrlReg::Write32 { address, value} => {
                     let word1: u32 = ((*address as u32 & 0x7FFF) << 16) | (*value & 0xFFFF);
-                    let word2: u32 = (((*address as u32 + 1) as u32 & 0x7FFF) << 16) | (*value >> 16);
+                    let word2: u32 = (((*address as u32 + 1) & 0x7FFF) << 16) | (*value >> 16);
                     buffer.extend_from_slice(&word1.to_le_bytes());
                     buffer.extend_from_slice(&word2.to_le_bytes());
                 }
@@ -295,7 +295,7 @@ impl TryFrom<u16> for MessageType {
             code if code == MessageType::Stream as u16 => Ok(MessageType::Stream),
             code if code == MessageType::CtrlAck as u16 => Ok(MessageType::CtrlAck),
             code if code == MessageType::CtrlReq as u16 => Ok(MessageType::CtrlReq),
-            code => panic!("No message type for 0x{:x} code!", code),
+            code => panic!("No message type for 0x{code:x} code!"),
         }
     }
 }
@@ -311,7 +311,7 @@ impl TryFrom<u16> for MessageSync {
     fn try_from(v: u16) -> Result<Self, Self::Error> {
         match v {
             code if code == MessageSync::MlFrameSync as u16 => Ok(MessageSync::MlFrameSync),
-            code => panic!("No message sync for 0X{:x} code!", code),
+            code => panic!("No message sync for 0X{code:x} code!"),
         }
     }
 }
@@ -550,6 +550,6 @@ mod tests {
         ));
 
         let parsed = MlinkMessage::from_datagram(&packet);
-        println!("{:?}", parsed)
+        println!("{parsed:?}")
     }
 }

@@ -89,23 +89,23 @@ async fn check_run_state(host_control_addr: SocketAddr, tqdc_contol_addr: Socket
                         MlinkMessage::CtrlAck { header: _, regs } => {
                             if regs.len() != 1 { 
                                 Err(Report::msg(format!(
-                                    "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {:?}", regs)))
+                                    "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {regs:?}")))
                             } else {
                                 match &regs[0] {
                                     CtrlReg::Read16 { address, value } => {
                                         match address {
                                             Register16::RunState => Ok(as_run_state(*value).wrap_err_with(|| {"as_run_state failed"})?),
                                             _ => Err(Report::msg(format!(
-                                                "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {:?}", address)))
+                                                "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {address:?}")))
                                         }
                                     }
                                     other => Err(Report::msg(format!(
-                                        "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {:?}", other)))
+                                        "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {other:?}")))
                                 }
                             }
                         }
                         other => Err(Report::msg(format!(
-                            "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {:?}", other)))
+                            "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {other:?}")))
                     }
                 }
                 Err(err) => Err(err.into())

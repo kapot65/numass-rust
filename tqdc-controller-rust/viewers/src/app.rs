@@ -96,6 +96,7 @@ impl DataViewerApp {
             });
             if path.is_some() && ui.button("reload").clicked() {
                 #[cfg(not(target_arch = "wasm32"))]
+                #[allow(clippy::unnecessary_unwrap)]
                 {
                     *self.root.lock() = Some(expand_dir(path.unwrap()));
                 }

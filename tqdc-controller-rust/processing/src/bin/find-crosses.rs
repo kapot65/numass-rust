@@ -186,10 +186,11 @@ async fn main() {
     // println!("{crosses:?}");
 }
 
+type Waveform = (u8, Vec<i16>);
 
 struct CrossesViewer {
-    crosses: Vec<(u64, Vec<(u8, Vec<i16>)>)>,
-    filtered: Vec<(u64, Vec<(u8, Vec<i16>)>)>,
+    crosses: Vec<(u64, Vec<Waveform>)>,
+    filtered: Vec<(u64, Vec<Waveform>)>,
     ch_enabled: [bool; 7],
     colors: [Color32; 7],
     current: usize,

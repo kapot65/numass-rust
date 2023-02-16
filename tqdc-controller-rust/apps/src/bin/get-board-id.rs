@@ -53,7 +53,7 @@ async fn main() -> io::Result<()> {
 
     let acq = MlinkMessage::from_datagram(&buf[..len]);
 
-    println!("{:?}", acq);
+    println!("{acq:?}");
 
     Ok(())
 }

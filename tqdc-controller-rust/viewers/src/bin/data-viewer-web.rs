@@ -24,7 +24,7 @@ async fn index() -> impl Responder {
 #[get("/data-viewer.js")]
 async fn js() -> impl Responder {
     HttpResponse::Ok()
-        .content_type("text/javascript")
+        .content_type(ContentType(mime::APPLICATION_JAVASCRIPT))
         .body(include_str!("../../../dist/data-viewer.js"))
 }
 
@@ -32,7 +32,7 @@ async fn js() -> impl Responder {
 #[get("/data-viewer_bg.wasm")]
 async fn wasm() -> impl Responder {
     HttpResponse::Ok()
-        .content_type("application/wasm")
+        .content_type(ContentType(mime::APPLICATION_OCTET_STREAM))
         .body(Bytes::from_static(include_bytes!("../../../dist/data-viewer_bg.wasm")))
 }
 
