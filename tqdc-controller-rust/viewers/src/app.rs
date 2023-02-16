@@ -19,7 +19,14 @@ use {
     gloo_net::http::Request,
     crate::backend::ProcessRequest,
     eframe::web_sys::window,
+    wasm_bindgen::prelude::*
 };
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+extern "C" {
+    fn download(filename: &str, text: &str);
+}
 
 use eframe::egui::{self, Ui};
 use eframe::egui::plot::{Plot, Line, Legend};
@@ -120,49 +127,62 @@ impl DataViewerApp {
             if ui.button("clear").clicked() {
                 self.state.lock().clear()
             }
-    
-            #[cfg(not(target_arch = "wasm32"))]
+            
             if ui.button("save").clicked() {
-                let state = self.state.clone();
+                let state = self.state.lock().clone();
+
                 spawn(async move {
+                    #[cfg(not(target_arch = "wasm32"))]
                     let save_folder = rfd::FileDialog::new().set_directory(home_dir().unwrap()).pick_folder();
+                    #[cfg(target_arch = "wasm32")]
+                    let save_folder = Some(PathBuf::new());
+
                     if let Some(save_folder) = save_folder {
     
-                        let state = state.lock();
-    
                         for (name, cache) in state.iter() {
-    
+
                             if let Some(histogramm) = &cache.histogram {
+                                
                                 let point_name = {
                                     let temp = PathBuf::from(name);
                                     temp.file_name().unwrap().to_owned()
                                 };
-    
-                                let mut filepath = save_folder.clone();
-                                filepath.push(point_name);
-    
-                                let mut out_file = File::create(filepath).unwrap();
-    
-    
-                                let mut row = String::new();
-                                row.push_str("bin\t");
-                                for ch_num in histogramm.channels.keys() {
-                                    row.push_str(&format!("ch {}\t", *ch_num + 1));
-                                }
-                                row.push('\n');
-                                out_file.write_all(row.as_bytes()).unwrap();
-    
-                                for (idx, bin) in  histogramm.x.iter().enumerate() {
-    
+        
+                                let mut data = String::new();
+        
+                                {
                                     let mut row = String::new();
-    
+                                    row.push_str("bin\t");
+                                    for ch_num in histogramm.channels.keys() {
+                                        row.push_str(&format!("ch {}\t", *ch_num + 1));
+                                    }
+                                    row.push('\n');
+            
+                                    data.push_str(&row);
+                                }
+        
+                                for (idx, bin) in  histogramm.x.iter().enumerate() {
+        
+                                    let mut row = String::new();
+        
                                     row.push_str(&format!("{bin:.4}\t"));
                                     for val in histogramm.channels.values() {
                                         row.push_str(&format!("{}\t", val[idx]));
                                     }
                                     row.push('\n');
-                                    out_file.write_all(row.as_bytes()).unwrap();
+                                    data.push_str(&row);
                                 }
+        
+                                let mut filepath = save_folder.clone();
+                                filepath.push(point_name);
+
+                                #[cfg(not(target_arch = "wasm32"))]
+                                {
+                                    let mut out_file = File::create(filepath).unwrap();
+                                    out_file.write_all(data.as_bytes()).unwrap();
+                                }
+                                #[cfg(target_arch = "wasm32")]
+                                download(filepath.to_str().unwrap(), &data);
                             }
                         }
                     }
@@ -525,23 +545,31 @@ impl eframe::App for DataViewerApp {
                     }
                 }
 
-                #[cfg(not(target_arch = "wasm32"))] {
-
-                    let point_viewer_in_path = which("point-viewer").is_ok();
-
-                    let point_viewer_button = ui.add_enabled(opened_files.len() == 1 && point_viewer_in_path,  
-                    egui::Button::new("waveforms (all)")).on_disabled_hover_ui(|ui| {
+                #[cfg(not(target_arch = "wasm32"))]
+                let point_viewer_in_path = which("point-viewer").is_ok();
+                #[cfg(target_arch = "wasm32")]
+                let point_viewer_in_path = true;
+                
+                let point_viewer_button = ui.add_enabled(opened_files.len() == 1 && point_viewer_in_path,  
+                egui::Button::new("waveforms (all)")).on_disabled_hover_ui(|ui| {
                     if !point_viewer_in_path {
                         ui.colored_label(Color32::RED, "point-viewer must be in PATH");
                     }
                     if opened_files.len() != 1 {
                         ui.colored_label(Color32::RED, "exact one file must be opened");
                     }
-                    });
+                });
 
-                    if point_viewer_button.clicked() {
-                        let (filepath, _) = opened_files[0];
+                if point_viewer_button.clicked() {
+                    let (filepath, _) = opened_files[0];
+                    #[cfg(not(target_arch = "wasm32"))] {
                         tokio::process::Command::new("point-viewer").arg(filepath).spawn().unwrap();
+                    }
+                    #[cfg(target_arch = "wasm32")] {
+                        let search = serde_qs::to_string(&ProcessRequest::SplitTimeChunks {
+                            filepath: PathBuf::from(filepath)
+                        }).unwrap();
+                        window().unwrap().open_with_url(&format!("/?{search}")).unwrap();
                     }
                 }
             });

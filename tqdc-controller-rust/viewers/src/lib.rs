@@ -3,5 +3,6 @@
 pub mod app;
 
 pub mod filtered_viewer;
+pub mod point_viewer;
 
 pub mod backend;

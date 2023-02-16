@@ -4,7 +4,7 @@ use actix_web::{web::{self, Data}, App, HttpServer, Responder, post, HttpRespons
 #[cfg(not(debug_assertions))]
 use actix_web::{get, web::Bytes, };
 
-use data_viewer_web::backend::{expand_dir, ProcessRequest, process_file, filter_events};
+use data_viewer_web::backend::{expand_dir, ProcessRequest, process_file, filter_events, point_to_chunks};
 
 #[post("/api/process")]
 async fn process(request: web::Json<ProcessRequest>) -> impl Responder {
@@ -21,6 +21,11 @@ async fn process(request: web::Json<ProcessRequest>) -> impl Responder {
             HttpResponse::Ok()
             .content_type(mime::APPLICATION_MSGPACK)
             .body(rmp_serde::to_vec(&filter_events(&filepath, &range, neigborhood).await).unwrap())
+        }
+        ProcessRequest::SplitTimeChunks { filepath } => {
+            HttpResponse::Ok()
+            .content_type(mime::APPLICATION_MSGPACK)
+            .body(rmp_serde::to_vec(&point_to_chunks(&filepath).await).unwrap())
         }
     }
 }

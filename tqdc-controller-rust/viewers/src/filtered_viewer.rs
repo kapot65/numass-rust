@@ -9,7 +9,7 @@ pub struct FilteredViewer {
 }
 
 impl eframe::App for FilteredViewer {
-    #[allow(unused_variables)]
+   #[allow(unused_variables)]
    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {    
 
         ctx.input(|i| {

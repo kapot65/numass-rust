@@ -39,7 +39,10 @@ pub enum ProcessRequest {
         filepath: PathBuf,
         range: Range<f32>, 
         neigborhood: u64
-    } 
+    },
+    SplitTimeChunks {
+        filepath: PathBuf,
+    }
 }
 
 impl FSRepr {
@@ -174,6 +177,45 @@ pub async fn filter_events(path: &PathBuf, range: &Range<f32>, neigborhood: u64)
         }, neighbors))
     }).collect::<Vec<_>>()
 
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn point_to_chunks(path: &PathBuf) -> Vec<Vec<(u8, Vec<[f64; 2]>)>> {
+    let mut point_file = tokio::fs::File::open(path).await.unwrap();
+    let message = read_df_message::<NumassMeta>(&mut point_file).await.unwrap();
+
+    let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
+
+    let limit_ns = 1_000_000;
+
+    let mut chunks = vec![];
+    chunks.push(vec![]);
+
+    for channel in point.channels {
+        for block in channel.blocks {
+            for frame in block.frames {
+
+                let chunk_num = (frame.time / limit_ns) as usize;
+
+                while chunks.len() < chunk_num + 1 {
+                    chunks.push(vec![])
+                }
+
+                // TODO: Refactor with processing::frame_to_waveform
+                let waveform_len = frame.data.len() / 2;
+                let waveform = (0..waveform_len).map(|idx| {
+                    let x = (frame.time + 8u64 * (idx as u64) - (chunk_num as u64 * limit_ns)) as f64;
+                    let y = i16::from_le_bytes(frame.data[idx*2..idx*2+2].try_into().unwrap()) as f64;
+                    [x / 1000.0, y]
+                });
+
+                let baseline = waveform.clone().take(16).map(|[_, y]| y).sum::<f64>() / 16.0;
+                chunks[chunk_num].push((channel.id as u8, waveform.map(|[x,y]| [x, y - baseline]).collect::<Vec<_>>()))
+            }
+        }
+    }
+
+    chunks
 }
 
 #[test]

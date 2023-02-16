@@ -43,7 +43,7 @@ async fn main() -> eframe::Result<()> {
 fn main() {
     // Make sure panics are logged using `console.error`.
 
-    use data_viewer_web::{backend::{DeviceFrame, ProcessRequest}, filtered_viewer};
+    use data_viewer_web::{backend::{DeviceFrame, ProcessRequest}, filtered_viewer, point_viewer};
     use eframe::web_sys::window;
     use gloo_net::http::Request;
     use wasm_bindgen_futures::spawn_local;
@@ -73,19 +73,42 @@ fn main() {
                 &ProcessRequest::FilterEvents { filepath, range, neigborhood })
                 .unwrap().send().await.unwrap().binary().await.unwrap()).unwrap();
 
-                eframe::start_web(
-                    "the_canvas_id", // hardcode it
-                    web_options,
-                    Box::new(|_| {
-                        let app = filtered_viewer::FilteredViewer {
-                            current: 0,
-                            independent
-                        };
-                        Box::new(app)
-                    }),
-                )
-                .await
-                .expect("failed to start eframe");
+            eframe::start_web(
+                "the_canvas_id", // hardcode it
+                web_options,
+                Box::new(|_| {
+                    let app = filtered_viewer::FilteredViewer {
+                        current: 0,
+                        independent
+                    };
+                    Box::new(app)
+                }),
+            )
+            .await
+            .expect("failed to start eframe");
+        })
+    } else if let Some(ProcessRequest::SplitTimeChunks { filepath }) = request {
+        
+        window().unwrap().document().unwrap().set_title(filepath.to_str().unwrap());
+        spawn_local(async move {
+            let chunks = rmp_serde::from_slice::<Vec<Vec<(u8, Vec<[f64; 2]>)>>>(
+                &Request::post("/api/process").json(
+                &ProcessRequest::SplitTimeChunks { filepath })
+                .unwrap().send().await.unwrap().binary().await.unwrap()).unwrap();
+
+            eframe::start_web(
+                "the_canvas_id", // hardcode it
+                web_options,
+                Box::new(|_| {
+                    let app = point_viewer::PointViewer {
+                        current_chunk: 0,
+                        chunks
+                    };
+                    Box::new(app)
+                }),
+            )
+            .await
+            .expect("failed to start eframe");
         })
     } else {
         spawn_local(async {
