@@ -1,5 +1,5 @@
-use protobuf::Message;
 use clap::Parser;
+use protobuf::Message;
 
 use dataforge::read_df_message;
 use numass::{protos::rsb_event, NumassMeta};
@@ -15,12 +15,11 @@ struct Opt {
 
     /// Output path (if not set "${FILEPATH}.bin" will be used)
     #[clap(short, long)]
-    output: Option<std::path::PathBuf>
+    output: Option<std::path::PathBuf>,
 }
 
 #[tokio::main]
 async fn main() {
-
     let args = Opt::parse();
 
     let output_filepath = if let Some(filepath) = args.output {
@@ -30,10 +29,11 @@ async fn main() {
     };
 
     let mut point_file = tokio::fs::File::open(&args.filepath).await.unwrap();
-    let message = read_df_message::<NumassMeta>(&mut point_file).await.unwrap();
+    let message = read_df_message::<NumassMeta>(&mut point_file)
+        .await
+        .unwrap();
 
     let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
-
 
     let mut out_file = tokio::fs::File::create(output_filepath).await.unwrap();
 

@@ -8,10 +8,10 @@ fn main() -> Result<(), battery::Error> {
             let failure_timestamp = Local::now().naive_local();
             println!("Alert: power failure detected {failure_timestamp}!!!");
             loop {
-                std::process::Command::new("speaker-test").args([
-                    "-t", "sine",
-                    "-f", "1000", 
-                    "-l", "1"]).output().unwrap();
+                std::process::Command::new("speaker-test")
+                    .args(["-t", "sine", "-f", "1000", "-l", "1"])
+                    .output()
+                    .unwrap();
             }
         }
     }

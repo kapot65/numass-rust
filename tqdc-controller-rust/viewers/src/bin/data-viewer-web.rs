@@ -1,10 +1,15 @@
-use std::{path::PathBuf, str::FromStr, net::SocketAddr};
+use std::{net::SocketAddr, path::PathBuf, str::FromStr};
 
-use actix_web::{web::{self, Data}, App, HttpServer, Responder, post, HttpResponse, http::header::ContentType, };
 #[cfg(not(debug_assertions))]
-use actix_web::{get, web::Bytes, };
+use actix_web::{get, web::Bytes};
+use actix_web::{
+    http::header::ContentType,
+    post,
+    web::{self, Data},
+    App, HttpResponse, HttpServer, Responder,
+};
 
-use data_viewer_web::backend::{expand_dir, ProcessRequest, process_file, filter_events, point_to_chunks};
+use viewers::backend::{expand_dir, filter_events, point_to_chunks, process_file, ProcessRequest};
 
 #[post("/api/process")]
 async fn process(request: web::Json<ProcessRequest>) -> impl Responder {
@@ -13,23 +18,22 @@ async fn process(request: web::Json<ProcessRequest>) -> impl Responder {
     match reqest {
         ProcessRequest::CalcHist { filepath, params } => {
             HttpResponse::Ok()
-            .content_type(ContentType::json())
-            .body(serde_json::to_string(&process_file(filepath, params).await).unwrap())
+                .content_type(ContentType::json())
+                .body(serde_json::to_string(&process_file(filepath, params).await).unwrap())
             // web::Json()
         }
-        ProcessRequest::FilterEvents { filepath, range, neigborhood } => {
-            HttpResponse::Ok()
+        ProcessRequest::FilterEvents {
+            filepath,
+            range,
+            neigborhood,
+        } => HttpResponse::Ok()
             .content_type(mime::APPLICATION_MSGPACK)
-            .body(rmp_serde::to_vec(&filter_events(&filepath, &range, neigborhood).await).unwrap())
-        }
-        ProcessRequest::SplitTimeChunks { filepath } => {
-            HttpResponse::Ok()
+            .body(rmp_serde::to_vec(&filter_events(&filepath, &range, neigborhood).await).unwrap()),
+        ProcessRequest::SplitTimeChunks { filepath } => HttpResponse::Ok()
             .content_type(mime::APPLICATION_MSGPACK)
-            .body(rmp_serde::to_vec(&point_to_chunks(&filepath).await).unwrap())
-        }
+            .body(rmp_serde::to_vec(&point_to_chunks(&filepath).await).unwrap()),
     }
 }
-
 
 #[cfg(not(debug_assertions))]
 #[get("/")]
@@ -52,7 +56,9 @@ async fn js() -> impl Responder {
 async fn wasm() -> impl Responder {
     HttpResponse::Ok()
         .content_type(ContentType(mime::APPLICATION_OCTET_STREAM))
-        .body(Bytes::from_static(include_bytes!("../../../dist/data-viewer_bg.wasm")))
+        .body(Bytes::from_static(include_bytes!(
+            "../../../dist/data-viewer_bg.wasm"
+        )))
 }
 
 use clap::Parser;
@@ -61,7 +67,7 @@ use clap::Parser;
 struct Opt {
     directory: PathBuf,
     #[clap(long, default_value_t = SocketAddr::from_str("0.0.0.0:8085").unwrap())]
-    address: SocketAddr
+    address: SocketAddr,
 }
 
 #[actix_web::main]
@@ -69,19 +75,22 @@ async fn main() -> std::io::Result<()> {
     let args = Opt::parse();
     HttpServer::new(move || {
         let app = App::new()
-        .app_data(Data::new(args.directory.clone()))
-        .route("/api/files", web::get().to(|directory: web::Data<PathBuf>| async move {
-            let files = expand_dir(PathBuf::clone(&directory));
-            web::Json(files)
-        }))
-        .service(process);
+            .app_data(Data::new(args.directory.clone()))
+            .route(
+                "/api/files",
+                web::get().to(|directory: web::Data<PathBuf>| async move {
+                    let files = expand_dir(PathBuf::clone(&directory));
+                    web::Json(files)
+                }),
+            )
+            .service(process);
 
-        #[cfg(not(debug_assertions))] {
-            app.service(index)
-            .service(js)
-            .service(wasm)
+        #[cfg(not(debug_assertions))]
+        {
+            app.service(index).service(js).service(wasm)
         }
-        #[cfg(debug_assertions)] {
+        #[cfg(debug_assertions)]
+        {
             app
         }
     })

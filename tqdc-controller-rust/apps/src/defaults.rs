@@ -1,4 +1,3 @@
-
 // default values used in CLI parsers
 use std::net::{IpAddr, Ipv4Addr};
 

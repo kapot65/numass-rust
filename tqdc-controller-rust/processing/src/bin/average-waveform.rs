@@ -1,10 +1,9 @@
-
 use plotters::prelude::*;
 use protobuf::Message;
 
 use dataforge::read_df_message;
 use numass::{protos::rsb_event, NumassMeta};
-use processing::{frame_to_waveform, correct_amp, find_first_peak};
+use processing::{correct_amp, find_first_peak, frame_to_waveform};
 
 #[derive(Debug, Clone)]
 struct WaveformNormed {
@@ -12,12 +11,11 @@ struct WaveformNormed {
     baseline: f32,
     bin: usize,
     x: f32,
-    y: f32
+    y: f32,
 }
 
 #[tokio::main]
 async fn main() {
-
     // let filepath = "/data/2022_12/Electrode_4/set_1/p4(200s)(HV1=10000)";
     // let filepath = "/data/2022_12/Electrode_4/set_1/p4(200s)(HV1=10000)";
     let filepath = "/data/2022_12/Gun_16/set_1/p0(200s)(HV1=15990)";
@@ -28,14 +26,21 @@ async fn main() {
     let step = 10.0;
 
     let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
-    let message = read_df_message::<NumassMeta>(&mut point_file).await.unwrap();
+    let message = read_df_message::<NumassMeta>(&mut point_file)
+        .await
+        .unwrap();
 
     let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
 
-    let waveforms_ch6 = point.channels.iter()
-        .find(|ch| ch.id == channel - 1).unwrap().blocks[0].frames.iter()
+    let waveforms_ch6 = point
+        .channels
+        .iter()
+        .find(|ch| ch.id == channel - 1)
+        .unwrap()
+        .blocks[0]
+        .frames
+        .iter()
         .map(|frame| {
-
             let waveform = frame_to_waveform(frame);
             let baseline = waveform.iter().take(16).sum::<i16>() as f32 / 16.0;
 
@@ -53,7 +58,6 @@ async fn main() {
                 waveform[bin + 1] as f32
             };
 
-
             let (x, y) = correct_amp(left, center, right);
 
             WaveformNormed {
@@ -61,9 +65,9 @@ async fn main() {
                 baseline,
                 bin,
                 x,
-                y
+                y,
             }
-    });
+        });
 
     let mut groups = vec![vec![]; 40];
 
@@ -74,60 +78,76 @@ async fn main() {
         }
     });
 
+    let handles = groups
+        .iter()
+        .enumerate()
+        .map(|(idx, group)| {
+            let group = group.clone();
+            let filepath = filepath.to_owned();
+            tokio::spawn(async move {
+                let amp_min = idx as f32 * step;
+                let amp_max = (idx as f32 + 1.0) * step;
 
-    let handles =  groups.iter().enumerate().map(|(idx, group)| {
+                let caption = format!(
+                    "{filepath} (ch # {channel}) {amp_min} - {amp_max} : {} events",
+                    group.len()
+                );
 
-        let group = group.clone();
-        let filepath = filepath.to_owned();
-        tokio::spawn(async move {
+                let filename = format!("imgs/{idx}.png");
 
-            let amp_min = idx as f32 * step;
-            let amp_max = (idx as f32 + 1.0) * step;
+                let root = BitMapBackend::new(&filename, (1920, 1080)).into_drawing_area();
+                root.fill(&WHITE).unwrap();
+                let mut chart = ChartBuilder::on(&root)
+                    .caption(caption, ("sans-serif", 50).into_font())
+                    .margin(5)
+                    .x_label_area_size(50)
+                    .y_label_area_size(50)
+                    .build_cartesian_2d(-10f32..75f32, -20f32..400f32)
+                    .unwrap();
 
-            let caption = format!("{filepath} (ch # {channel}) {amp_min} - {amp_max} : {} events", group.len());
+                chart.configure_mesh().draw().unwrap();
 
-            let filename = format!("imgs/{idx}.png");
+                for WaveformNormed {
+                    waveform,
+                    baseline,
+                    bin,
+                    x,
+                    y: _,
+                } in group
+                {
+                    let offset_x = bin as f32 - 35.0 + x;
+                    // let scale_y = y / 195.0;
 
-            let root = BitMapBackend::new(&filename, (1920, 1080)).into_drawing_area();
-            root.fill(&WHITE).unwrap();
-            let mut chart = ChartBuilder::on(&root)
-                .caption(caption, ("sans-serif", 50).into_font())
-                .margin(5)
-                .x_label_area_size(50)
-                .y_label_area_size(50)
-                .build_cartesian_2d(-10f32..75f32, -20f32..400f32).unwrap();
+                    let x = (0..waveform.len())
+                        .map(|x| x as f32 - offset_x)
+                        .collect::<Vec<_>>();
 
-            chart.configure_mesh().draw().unwrap();
+                    let y = waveform
+                        .iter()
+                        .map(|y| (*y as f32 - baseline) /* / scale_y */)
+                        .collect::<Vec<_>>();
 
-            for WaveformNormed { waveform, baseline, bin, x, y: _ } in group {
+                    let vals = x.iter().zip(y.iter());
 
-                let offset_x = bin as f32 - 35.0 + x;
-                // let scale_y = y / 195.0;
-
-                let x = (0..waveform.len()).map(|x| x as f32 - offset_x)
-                    .collect::<Vec<_>>();
-
-                let y = waveform.iter().map(|y| (*y as f32 - baseline ) /* / scale_y */ ).collect::<Vec<_>>();
-
-                let vals = x.iter().zip(y.iter());
+                    chart
+                        .draw_series(LineSeries::new(
+                            vals.map(|(x, y)| (*x, *y)).collect::<Vec<_>>(),
+                            RED.to_rgba().mix(0.02),
+                        ))
+                        .unwrap();
+                }
 
                 chart
-                .draw_series(LineSeries::new(
-                    vals.map(|(x, y)| (*x, *y)).collect::<Vec<_>>(),
-                    RED.to_rgba().mix(0.02)
-                )).unwrap();
-            }
+                    .configure_series_labels()
+                    .background_style(WHITE.mix(0.8))
+                    .border_style(BLACK)
+                    .draw()
+                    .unwrap();
 
-            chart
-                .configure_series_labels()
-                .background_style(WHITE.mix(0.8))
-                .border_style(BLACK)
-                .draw().unwrap();
-
-            root.present().unwrap();
+                root.present().unwrap();
             })
-    }).collect::<Vec<_>>();
-
+        })
+        .collect::<Vec<_>>();
 
     for handle in handles {
         handle.await.unwrap();

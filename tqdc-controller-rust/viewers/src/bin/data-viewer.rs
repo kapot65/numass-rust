@@ -1,9 +1,9 @@
 #![warn(clippy::all, rust_2018_idioms)]
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] 
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use std::path::PathBuf;
 
 // hide console window on Windows in release
-use data_viewer_web::app;
+use viewers::app;
 
 use clap::Parser;
 #[derive(Parser, Debug)]
@@ -17,7 +17,7 @@ struct Opt {
 #[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() -> eframe::Result<()> {
-    use data_viewer_web::backend::expand_dir;
+    use viewers::backend::expand_dir;
 
     let opt = Opt::parse();
 
@@ -43,35 +43,54 @@ async fn main() -> eframe::Result<()> {
 fn main() {
     // Make sure panics are logged using `console.error`.
 
-    use data_viewer_web::{backend::{DeviceFrame, ProcessRequest}, filtered_viewer, point_viewer};
     use eframe::web_sys::window;
     use gloo_net::http::Request;
+    use viewers::{
+        backend::{DeviceFrame, ProcessRequest},
+        filtered_viewer, point_viewer,
+    };
     use wasm_bindgen_futures::spawn_local;
     console_error_panic_hook::set_once();
 
     // Redirect tracing to console.log and friends:
     tracing_wasm::set_as_global_default();
 
-    let request = match window().unwrap()
-          .location()
-          .search() {
+    let request = match window().unwrap().location().search() {
         Ok(search) => {
             let search = search.trim_start_matches('?');
             serde_qs::from_str::<ProcessRequest>(search).ok()
-        },
-        _     => None,
+        }
+        _ => None,
     };
 
     let web_options = eframe::WebOptions::default();
-    if let Some(ProcessRequest::FilterEvents { filepath, range, neigborhood }) = request {
-
-        window().unwrap().document().unwrap().set_title(format!("filtered {filepath:?} ({range:?} keV, {neigborhood} ns neigborhood)").as_str());
+    if let Some(ProcessRequest::FilterEvents {
+        filepath,
+        range,
+        neigborhood,
+    }) = request
+    {
+        window().unwrap().document().unwrap().set_title(
+            format!("filtered {filepath:?} ({range:?} keV, {neigborhood} ns neigborhood)").as_str(),
+        );
 
         spawn_local(async move {
             let independent = rmp_serde::from_slice::<Vec<(DeviceFrame, Vec<DeviceFrame>)>>(
-                &Request::post("/api/process").json(
-                &ProcessRequest::FilterEvents { filepath, range, neigborhood })
-                .unwrap().send().await.unwrap().binary().await.unwrap()).unwrap();
+                &Request::post("/api/process")
+                    .json(&ProcessRequest::FilterEvents {
+                        filepath,
+                        range,
+                        neigborhood,
+                    })
+                    .unwrap()
+                    .send()
+                    .await
+                    .unwrap()
+                    .binary()
+                    .await
+                    .unwrap(),
+            )
+            .unwrap();
 
             eframe::start_web(
                 "the_canvas_id", // hardcode it
@@ -79,7 +98,7 @@ fn main() {
                 Box::new(|_| {
                     let app = filtered_viewer::FilteredViewer {
                         current: 0,
-                        independent
+                        independent,
                     };
                     Box::new(app)
                 }),
@@ -88,13 +107,24 @@ fn main() {
             .expect("failed to start eframe");
         })
     } else if let Some(ProcessRequest::SplitTimeChunks { filepath }) = request {
-        
-        window().unwrap().document().unwrap().set_title(filepath.to_str().unwrap());
+        window()
+            .unwrap()
+            .document()
+            .unwrap()
+            .set_title(filepath.to_str().unwrap());
         spawn_local(async move {
             let chunks = rmp_serde::from_slice::<Vec<Vec<(u8, Vec<[f64; 2]>)>>>(
-                &Request::post("/api/process").json(
-                &ProcessRequest::SplitTimeChunks { filepath })
-                .unwrap().send().await.unwrap().binary().await.unwrap()).unwrap();
+                &Request::post("/api/process")
+                    .json(&ProcessRequest::SplitTimeChunks { filepath })
+                    .unwrap()
+                    .send()
+                    .await
+                    .unwrap()
+                    .binary()
+                    .await
+                    .unwrap(),
+            )
+            .unwrap();
 
             eframe::start_web(
                 "the_canvas_id", // hardcode it
@@ -102,7 +132,7 @@ fn main() {
                 Box::new(|_| {
                     let app = point_viewer::PointViewer {
                         current_chunk: 0,
-                        chunks
+                        chunks,
                     };
                     Box::new(app)
                 }),

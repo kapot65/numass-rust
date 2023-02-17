@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
-use plotly::{Histogram, histogram::Bins, Plot, Layout, common::Title, layout::Axis};
-use processing::{frame_to_waveform, waveform_to_event, convert_to_kev};
+use plotly::{common::Title, histogram::Bins, layout::Axis, Histogram, Layout, Plot};
+use processing::{convert_to_kev, frame_to_waveform, waveform_to_event};
 use protobuf::Message;
 
 use dataforge::read_df_message;
@@ -9,8 +9,6 @@ use numass::{protos::rsb_event, NumassMeta};
 
 #[tokio::main]
 async fn main() {
-
-
     // let filepath = "/data/numass-server/2022_12/Adiabacity_19_2/set_1/p4(200s)(HV1=15000)";
     // let range = 0.0..5.0;
 
@@ -22,10 +20,11 @@ async fn main() {
 
     // let filepath = "/data/numass-server/2022_12/Adiabacity_19_2/set_1/p7(200s)(HV1=12000)";
     // let range = 0.0..8.0;
-    
 
     let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
-    let message = read_df_message::<NumassMeta>(&mut point_file).await.unwrap();
+    let message = read_df_message::<NumassMeta>(&mut point_file)
+        .await
+        .unwrap();
 
     let mut independent: BTreeMap<u64, BTreeMap<u8, Vec<i16>>> = BTreeMap::new();
 
@@ -41,32 +40,37 @@ async fn main() {
 
     let algorithm = processing::Algorithm::Likhovid { left: 6, right: 36 };
 
-    let deltas = independent.iter().collect::<Vec<_>>().windows(2).filter_map(|pair| {
-        let (time_1, waveforms) = pair[0];
+    let deltas = independent
+        .iter()
+        .collect::<Vec<_>>()
+        .windows(2)
+        .filter_map(|pair| {
+            let (time_1, waveforms) = pair[0];
 
-        let mut amps = vec![];
+            let mut amps = vec![];
 
-        for (ch, waveform) in waveforms {
-            let (_, amp) = waveform_to_event(waveform, &algorithm);
-            amps.push(convert_to_kev(&amp, *ch, &algorithm));
-        }
-        
-        if !(amps.iter().any(|amp| range.contains(amp))) {
-            None
-        } else {
-
-            let (time_2, waveforms_2) = pair[1];
-            if (time_2 - time_1) > 8000 {
-                Some(amps)
-            } else {
-                for (ch, waveform) in waveforms_2 {
-                    let (_, amp) = waveform_to_event(waveform, &algorithm);
-                    amps.push(convert_to_kev(&amp, *ch, &algorithm));
-                }
-                Some(amps)
+            for (ch, waveform) in waveforms {
+                let (_, amp) = waveform_to_event(waveform, &algorithm);
+                amps.push(convert_to_kev(&amp, *ch, &algorithm));
             }
-        }
-    }).flatten().collect::<Vec<_>>();
+
+            if !(amps.iter().any(|amp| range.contains(amp))) {
+                None
+            } else {
+                let (time_2, waveforms_2) = pair[1];
+                if (time_2 - time_1) > 8000 {
+                    Some(amps)
+                } else {
+                    for (ch, waveform) in waveforms_2 {
+                        let (_, amp) = waveform_to_event(waveform, &algorithm);
+                        amps.push(convert_to_kev(&amp, *ch, &algorithm));
+                    }
+                    Some(amps)
+                }
+            }
+        })
+        .flatten()
+        .collect::<Vec<_>>();
 
     let trace2 = Histogram::new(deltas)
         .x_bins(Bins::new(0.0, 27.0, 0.1))
@@ -84,5 +88,4 @@ async fn main() {
     plot.add_trace(trace2);
 
     plot.show();
-
 }

@@ -1,4 +1,4 @@
-use eframe::epaint::{Color32, color::Hsva};
+use eframe::epaint::{color::Hsva, Color32};
 
 // copy-pasted from egui::widgets::plot::PlotUi::auto_color
 pub fn color_same_as_egui(idx: usize) -> Color32 {
@@ -7,14 +7,14 @@ pub fn color_same_as_egui(idx: usize) -> Color32 {
     Hsva::new(h, 0.85, 0.5, 1.0).into() // TODO(emilk): OkLab or some other perspective color space
 }
 
-pub fn channel_colors() -> [Color32; 7]{
+pub fn channel_colors() -> [Color32; 7] {
     [
-        color_same_as_egui(0), 
-        color_same_as_egui(1), 
-        color_same_as_egui(2), 
-        color_same_as_egui(3), 
+        color_same_as_egui(0),
+        color_same_as_egui(1),
+        color_same_as_egui(2),
+        color_same_as_egui(3),
         color_same_as_egui(4),
         color_same_as_egui(5),
-        color_same_as_egui(6)
+        color_same_as_egui(6),
     ]
 }

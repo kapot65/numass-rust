@@ -5,21 +5,18 @@ use eframe::epaint::{Color32, Hsva};
 
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    tokio:: spawn,
+    crate::backend::{expand_dir, process_file},
+    home::home_dir,
     std::fs::File,
     std::io::Write,
-    home::home_dir,
-    crate::backend::{process_file, expand_dir},
+    tokio::spawn,
     which::which,
 };
 
 #[cfg(target_arch = "wasm32")]
 use {
-    wasm_bindgen_futures::spawn_local as spawn,
-    gloo_net::http::Request,
-    crate::backend::ProcessRequest,
-    eframe::web_sys::window,
-    wasm_bindgen::prelude::*
+    crate::backend::ProcessRequest, eframe::web_sys::window, gloo_net::http::Request,
+    wasm_bindgen::prelude::*, wasm_bindgen_futures::spawn_local as spawn,
 };
 
 #[cfg(target_arch = "wasm32")]
@@ -28,9 +25,8 @@ extern "C" {
     fn download(filename: &str, text: &str);
 }
 
+use eframe::egui::plot::{Legend, Line, Plot};
 use eframe::egui::{self, Ui};
-use eframe::egui::plot::{Plot, Line, Legend};
-
 
 use egui::mutex::Mutex;
 use processing::{Algorithm, ProcessingParams};
@@ -38,7 +34,6 @@ use processing::{Algorithm, ProcessingParams};
 use crate::backend::{FSRepr, FileCache};
 
 pub const DEFAULT_LIKHOVID: Algorithm = Algorithm::Likhovid { left: 6, right: 36 };
-
 
 pub fn color_same_as_egui(idx: usize) -> Color32 {
     let golden_ratio = (5.0_f32.sqrt() - 1.0) / 2.0; // 0.61803398875
@@ -53,7 +48,6 @@ pub struct DataViewerApp {
 }
 
 impl DataViewerApp {
-
     pub fn new() -> Self {
         Self {
             root: Arc::new(Mutex::new(None)),
@@ -75,35 +69,34 @@ impl DataViewerApp {
                 ],
                 hist_min: 0.0,
                 hist_max: 27.0,
-                hist_bins: 270
-            }))
+                hist_bins: 270,
+            })),
         }
     }
 
     fn files_editor(&self, ui: &mut Ui) {
-    
         let root_lock = self.root.lock().clone();
-    
+
         ui.horizontal(|ui| {
-    
             if ui.button("open").clicked() {
                 let root = self.root.clone();
-                
+
                 spawn(async move {
                     #[cfg(not(target_arch = "wasm32"))]
                     if let Some(root_path) = rfd::FileDialog::new().pick_folder() {
                         *root.lock() = Some(expand_dir(root_path))
                     }
-                    #[cfg(target_arch = "wasm32")] {
+                    #[cfg(target_arch = "wasm32")]
+                    {
                         let resp = Request::get("/api/files").send().await.unwrap();
                         *root.lock() = Some(resp.json::<FSRepr>().await.unwrap())
                     }
                 });
             }
-    
+
             let path = root_lock.clone().map(|root| match root {
                 FSRepr::File { path } => path,
-                FSRepr::Directory { path, children: _ } => path
+                FSRepr::Directory { path, children: _ } => path,
             });
             if path.is_some() && ui.button("reload").clicked() {
                 #[cfg(not(target_arch = "wasm32"))]
@@ -111,7 +104,8 @@ impl DataViewerApp {
                 {
                     *self.root.lock() = Some(expand_dir(path.unwrap()));
                 }
-                #[cfg(target_arch = "wasm32")]{
+                #[cfg(target_arch = "wasm32")]
+                {
                     let root = self.root.clone();
                     spawn(async move {
                         let resp = Request::get("/api/files").send().await.unwrap();
@@ -119,37 +113,36 @@ impl DataViewerApp {
                     })
                 }
             }
-    
+
             if ui.button("apply").clicked() {
                 self.process()
             }
-    
+
             if ui.button("clear").clicked() {
                 self.state.lock().clear()
             }
-            
+
             if ui.button("save").clicked() {
                 let state = self.state.lock().clone();
 
                 spawn(async move {
                     #[cfg(not(target_arch = "wasm32"))]
-                    let save_folder = rfd::FileDialog::new().set_directory(home_dir().unwrap()).pick_folder();
+                    let save_folder = rfd::FileDialog::new()
+                        .set_directory(home_dir().unwrap())
+                        .pick_folder();
                     #[cfg(target_arch = "wasm32")]
                     let save_folder = Some(PathBuf::new());
 
                     if let Some(save_folder) = save_folder {
-    
                         for (name, cache) in state.iter() {
-
                             if let Some(histogramm) = &cache.histogram {
-                                
                                 let point_name = {
                                     let temp = PathBuf::from(name);
                                     temp.file_name().unwrap().to_owned()
                                 };
-        
+
                                 let mut data = String::new();
-        
+
                                 {
                                     let mut row = String::new();
                                     row.push_str("bin\t");
@@ -157,14 +150,13 @@ impl DataViewerApp {
                                         row.push_str(&format!("ch {}\t", *ch_num + 1));
                                     }
                                     row.push('\n');
-            
+
                                     data.push_str(&row);
                                 }
-        
-                                for (idx, bin) in  histogramm.x.iter().enumerate() {
-        
+
+                                for (idx, bin) in histogramm.x.iter().enumerate() {
                                     let mut row = String::new();
-        
+
                                     row.push_str(&format!("{bin:.4}\t"));
                                     for val in histogramm.channels.values() {
                                         row.push_str(&format!("{}\t", val[idx]));
@@ -172,7 +164,7 @@ impl DataViewerApp {
                                     row.push('\n');
                                     data.push_str(&row);
                                 }
-        
+
                                 let mut filepath = save_folder.clone();
                                 filepath.push(point_name);
 
@@ -189,7 +181,7 @@ impl DataViewerApp {
                 });
             }
         });
-    
+
         egui::containers::ScrollArea::new([false, true]).show(ui, |ui| {
             if let Some(root) = &root_lock {
                 file_tree_entry(ui, root, &mut self.state.lock());
@@ -198,7 +190,6 @@ impl DataViewerApp {
     }
 
     pub fn process(&self) {
-
         let params = *self.processing_params.lock();
         let state = Arc::clone(&self.state);
 
@@ -212,50 +203,60 @@ impl DataViewerApp {
                 // } else {
                 //     false
                 // };
-    
+
                 let files_to_processed = {
-                    state.lock().iter().filter_map(|(filepath, cache)| {
-                        if cache.opened {
-                            let need_recalc = true;
-                            if need_recalc {
-                                Some(filepath.clone())
-                            } else if let Some(processed) = cache.processed {
-                                let meta = std::fs::metadata(filepath).unwrap();
-                                if processed >= meta.modified().unwrap() {
-                                    None
+                    state
+                        .lock()
+                        .iter()
+                        .filter_map(|(filepath, cache)| {
+                            if cache.opened {
+                                let need_recalc = true;
+                                if need_recalc {
+                                    Some(filepath.clone())
+                                } else if let Some(processed) = cache.processed {
+                                    let meta = std::fs::metadata(filepath).unwrap();
+                                    if processed >= meta.modified().unwrap() {
+                                        None
+                                    } else {
+                                        Some(filepath.clone())
+                                    }
                                 } else {
                                     Some(filepath.clone())
                                 }
                             } else {
-                                Some(filepath.clone())
+                                None
                             }
-                        } else {
-                            None
-                        }
-                    }).collect::<Vec<_>>()
+                        })
+                        .collect::<Vec<_>>()
                 };
-    
+
                 for filepath in files_to_processed {
                     let configuration_local = state.clone();
                     spawn(async move {
-                        #[cfg(not(target_arch = "wasm32"))] let cache = {
-                            process_file(PathBuf::from(&filepath), params).await
-                        };
-                        #[cfg(target_arch = "wasm32")] let cache = {
-                            Request::post("/api/process").json(&ProcessRequest::CalcHist {
-                                filepath: PathBuf::from(&filepath),
-                                params
-                            }).unwrap().send().await.unwrap().json::<FileCache>().await.unwrap()
+                        #[cfg(not(target_arch = "wasm32"))]
+                        let cache = { process_file(PathBuf::from(&filepath), params).await };
+                        #[cfg(target_arch = "wasm32")]
+                        let cache = {
+                            Request::post("/api/process")
+                                .json(&ProcessRequest::CalcHist {
+                                    filepath: PathBuf::from(&filepath),
+                                    params,
+                                })
+                                .unwrap()
+                                .send()
+                                .await
+                                .unwrap()
+                                .json::<FileCache>()
+                                .await
+                                .unwrap()
                         };
                         let mut conf = configuration_local.lock();
                         conf.insert(filepath.to_owned(), cache);
                     });
                 }
-                
             });
         }
     }
-
 }
 
 impl Default for DataViewerApp {
@@ -265,18 +266,20 @@ impl Default for DataViewerApp {
 }
 
 fn file_tree_entry(
-    ui: &mut egui::Ui, 
-    entry: &FSRepr, 
+    ui: &mut egui::Ui,
+    entry: &FSRepr,
     opened_files: &mut HashMap<String, FileCache>,
 ) {
     match entry {
         FSRepr::File { path } => {
-            let cache =  opened_files.entry(path.to_str().unwrap().to_string()).or_insert(FileCache { 
-                opened: false, 
-                processed: None,
-                histogram: None 
-            });
-            
+            let cache = opened_files
+                .entry(path.to_str().unwrap().to_string())
+                .or_insert(FileCache {
+                    opened: false,
+                    processed: None,
+                    histogram: None,
+                });
+
             ui.horizontal(|ui| {
                 ui.checkbox(&mut cache.opened, "");
                 let filename = path.file_name().unwrap().to_str().unwrap();
@@ -286,34 +289,39 @@ fn file_tree_entry(
 
         FSRepr::Directory { path, children } => {
             egui::CollapsingHeader::new(path.file_name().unwrap().to_str().unwrap())
-            .id_source(path.to_str().unwrap())
-            .show(ui, |ui| {
-                for child in children {
-                    file_tree_entry(ui, child, opened_files) 
-                }
-            });
+                .id_source(path.to_str().unwrap())
+                .show(ui, |ui| {
+                    for child in children {
+                        file_tree_entry(ui, child, opened_files)
+                    }
+                });
         }
     }
 }
 
-
 fn params_editor(ui: &mut Ui, processing_params: ProcessingParams) -> ProcessingParams {
-
     let mut algorithm = processing_params.algorithm;
 
     ui.horizontal(|ui| {
-        if ui.add(egui::RadioButton::new(algorithm == Algorithm::Max, "Max")).clicked() {
+        if ui
+            .add(egui::RadioButton::new(algorithm == Algorithm::Max, "Max"))
+            .clicked()
+        {
             algorithm = Algorithm::Max
         }
-        
-        if ui.add(egui::RadioButton::new(
-            matches!(algorithm, Algorithm::Likhovid { .. }), "Likhovid")).clicked() {
+
+        if ui
+            .add(egui::RadioButton::new(
+                matches!(algorithm, Algorithm::Likhovid { .. }),
+                "Likhovid",
+            ))
+            .clicked()
+        {
             algorithm = DEFAULT_LIKHOVID
         }
     });
 
     if let Algorithm::Likhovid { left, right } = algorithm {
-
         ui.separator();
         ui.label("Algorithm params");
 
@@ -322,10 +330,7 @@ fn params_editor(ui: &mut Ui, processing_params: ProcessingParams) -> Processing
         let mut right = right;
         ui.add(egui::Slider::new(&mut right, 0..=40).text("right"));
 
-        algorithm = Algorithm::Likhovid { 
-            left, 
-            right
-        }
+        algorithm = Algorithm::Likhovid { left, right }
     }
 
     ui.separator();
@@ -338,60 +343,64 @@ fn params_editor(ui: &mut Ui, processing_params: ProcessingParams) -> Processing
     let mut hist_bins = processing_params.hist_bins;
     ui.add(egui::Slider::new(&mut hist_bins, 10..=2000).text("bins"));
 
-
     let mut convert_to_kev = processing_params.convert_to_kev;
     ui.checkbox(&mut convert_to_kev, "convert to keV");
 
-    
     let mut use_dead_time = processing_params.use_dead_time;
     let mut effective_dead_time = processing_params.effective_dead_time;
 
     ui.checkbox(&mut use_dead_time, "use dead time");
-    ui.add_enabled(use_dead_time, 
-        egui::Slider::new(&mut effective_dead_time, 0..=10000).text("ns")
+    ui.add_enabled(
+        use_dead_time,
+        egui::Slider::new(&mut effective_dead_time, 0..=10000).text("ns"),
     );
 
     let mut merge_close_events = processing_params.merge_close_events;
     ui.checkbox(&mut merge_close_events, "merge close events");
-    
 
     let mut merge_map = processing_params.merge_map;
     ui.collapsing("merge mapping", |ui| {
-
         egui_extras::TableBuilder::new(ui)
-        // .auto_shrink([false, false])
-        .columns(egui_extras::Column::initial(15.0), 8)
-        .header(20.0, |mut header| {
-            header.col(|_| {});
-            for idx in 0..7 {
-                header.col(|ui| {
-                    ui.label((idx + 1).to_string());
-                });
-            }
-        })
-        .body(|mut body| {
-            for ch_1 in 0usize..7 {
-                body.row(20.0, |mut row| {
-                    row.col(|ui| { ui.label(format!("{}<", ch_1 + 1));});
-                    for ch_2 in 0usize..7 {
+            // .auto_shrink([false, false])
+            .columns(egui_extras::Column::initial(15.0), 8)
+            .header(20.0, |mut header| {
+                header.col(|_| {});
+                for idx in 0..7 {
+                    header.col(|ui| {
+                        ui.label((idx + 1).to_string());
+                    });
+                }
+            })
+            .body(|mut body| {
+                for ch_1 in 0usize..7 {
+                    body.row(20.0, |mut row| {
                         row.col(|ui| {
-                            if ch_1 == ch_2 {
-                                let checkbox = egui::Checkbox::new(&mut merge_map[ch_1][ch_2], "");
-                                ui.add_enabled(false, checkbox);
-                            } else if ui.checkbox(&mut merge_map[ch_1][ch_2], "").changed() && merge_map[ch_1][ch_2] {
-                                merge_map[ch_2][ch_1] = false;
-                            }
+                            ui.label(format!("{}<", ch_1 + 1));
                         });
-                    }
-                });
-            }
-        });
+                        for ch_2 in 0usize..7 {
+                            row.col(|ui| {
+                                if ch_1 == ch_2 {
+                                    let checkbox =
+                                        egui::Checkbox::new(&mut merge_map[ch_1][ch_2], "");
+                                    ui.add_enabled(false, checkbox);
+                                } else if ui.checkbox(&mut merge_map[ch_1][ch_2], "").changed()
+                                    && merge_map[ch_1][ch_2]
+                                {
+                                    merge_map[ch_2][ch_1] = false;
+                                }
+                            });
+                        }
+                    });
+                }
+            });
         #[cfg(not(target_arch = "wasm32"))]
         {
             // TODO: add image to web
             let image = egui_extras::image::RetainedImage::from_image_bytes(
-            "Detector.drawio.png", 
-            include_bytes!("../resources/Detector.drawio.png")).unwrap();
+                "Detector.drawio.png",
+                include_bytes!("../resources/Detector.drawio.png"),
+            )
+            .unwrap();
             image.show(ui);
         }
     });
@@ -412,7 +421,6 @@ fn params_editor(ui: &mut Ui, processing_params: ProcessingParams) -> Processing
 
 impl eframe::App for DataViewerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-
         ctx.request_repaint_after(std::time::Duration::from_secs(1));
 
         egui::SidePanel::left("left").show(ctx, |ui| {

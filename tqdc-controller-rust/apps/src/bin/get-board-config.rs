@@ -16,21 +16,19 @@
 
 #[tokio::main]
 async fn main() -> tokio::io::Result<()> {
-    
     Ok(())
-
 
     // let val: toml::Value = toml::from_str(&str).unwrap();
     // println!("{val}");
 
     // let msg = MlinkMessage::new_ctrl_req(
-    //     0x0000, 
-    //     0x0001, 
-    //     0xFEFE, 
+    //     0x0000,
+    //     0x0001,
+    //     0xFEFE,
     //     vec![
-    //         CtrlReg::Read16 { 
-    //             address: Register16::DeviceId, 
-    //             value: 0x0000 
+    //         CtrlReg::Read16 {
+    //             address: Register16::DeviceId,
+    //             value: 0x0000
     //         },
     //         CtrlReg::Read32 {
     //             address: Register32::TimeLimit,
@@ -101,7 +99,6 @@ async fn main() -> tokio::io::Result<()> {
     // let mut buf = [0; 4096 * 10];
     // let (len, _) = sock.recv_from(&mut buf).await?;
 
-
     // let acq = MlinkMessage::from_datagram(&buf[..len]);
 
     // println!("{:?}", &acq);
@@ -115,14 +112,12 @@ async fn main() -> tokio::io::Result<()> {
 
     // if let MlinkMessage::CtrlAck { header, regs } = acq {
 
-        
     //     for reg in regs {
     //         match reg {
     //             CtrlReg::Read16 { address, value } => {
 
-
     //                 match address {
-                        
+
     //                     Register16::DeviceId => {
 
     //                     }
@@ -184,16 +179,14 @@ async fn main() -> tokio::io::Result<()> {
     //                         match_window = (value >> 12) / TQDC_HPTDC_SCALE;
     //                         latency = ((value & 0xFFF) - 5) / TQDC_HPTDC_SCALE;
 
-
     //                         // const int TQDC_CH_TO_DAC_CH_MAP[16] = {
     //                         //     3,2,1,0, 4,5,6,7, 0,1,2,3, 7,6,5,4
     //                         // };
-                            
+
     //                         // quint32 mW = tqdc_hptdc_scale*setup.matchWin;
     //                         // quint32 lat = tqdc16vs_hptdc_lat_offset + tqdc_hptdc_scale*setup.latency;
     //                         // regOp << RegWrite32(REG32_TDC_TRIG_WIN_SETUP,
     //                         //                     (mW&0xFFF)<<12 | (lat & 0xFFF));
-
 
     //                         // regOp << RegWrite32(REG32_TDC_TRIG_WIN_SETUP,
     //                         //     (mW&0xFFF)<<12 | (lat & 0xFFF));

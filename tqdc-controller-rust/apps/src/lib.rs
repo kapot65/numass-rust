@@ -4,30 +4,33 @@ use std::collections::HashMap;
 
 use tokio::io::AsyncWriteExt;
 
-use tqdc::mlink::MStreamFragment;
 use numass::{protos::rsb_event, ZeroSuppressionParams};
+use tqdc::mlink::MStreamFragment;
 
-pub async fn events_to_point(events: Vec<MStreamFragment>, zero_suppression: Option<ZeroSuppressionParams>) -> tokio::io::Result<rsb_event::Point> {
-
-    let mut frames_per_channel: HashMap<u8, Vec<rsb_event::point::channel::block::Frame>> = HashMap::new();
+pub async fn events_to_point(
+    events: Vec<MStreamFragment>,
+    zero_suppression: Option<ZeroSuppressionParams>,
+) -> tokio::io::Result<rsb_event::Point> {
+    let mut frames_per_channel: HashMap<u8, Vec<rsb_event::point::channel::block::Frame>> =
+        HashMap::new();
     let mut begin_time: Option<u128> = None;
 
     for frame in events {
         for channel in frame.channels {
-
             let append = match zero_suppression {
                 Some(params) => {
-                    let baseline = channel.waveform.iter().take(params.baseline).sum::<i16>() / params.baseline as i16;
+                    let baseline = channel.waveform.iter().take(params.baseline).sum::<i16>()
+                        / params.baseline as i16;
                     let max = *channel.waveform.iter().max().unwrap() - baseline;
                     max > params.threshold * 4
                 }
-                None => true
+                None => true,
             };
 
             if append {
-                let tai_nsec = (frame.tai_sec as u128) * (1e9 as u128) + ((frame.tai_nano_sec as u128) / 4u128);
-                let begin = begin_time.get_or_insert(
-                    tai_nsec - 1_000_000); // TODO: make offset to metadata
+                let tai_nsec = (frame.tai_sec as u128) * (1e9 as u128)
+                    + ((frame.tai_nano_sec as u128) / 4u128);
+                let begin = begin_time.get_or_insert(tai_nsec - 1_000_000); // TODO: make offset to metadata
 
                 let mut frame = rsb_event::point::channel::block::Frame::new();
                 frame.time = (tai_nsec - *begin) as u64;
@@ -37,16 +40,17 @@ pub async fn events_to_point(events: Vec<MStreamFragment>, zero_suppression: Opt
                     frame.data.write_i16_le(bin / 4).await?;
                 }
 
-                frames_per_channel.entry(channel.channel_number).or_default().push(
-                    frame
-                );
-            } 
+                frames_per_channel
+                    .entry(channel.channel_number)
+                    .or_default()
+                    .push(frame);
+            }
         }
     }
 
     let point = {
         let mut point = rsb_event::Point::new();
-        
+
         for (id, frames) in frames_per_channel {
             let mut channel = rsb_event::point::Channel::new();
             channel.id = id as u64;
@@ -61,7 +65,7 @@ pub async fn events_to_point(events: Vec<MStreamFragment>, zero_suppression: Opt
             channel.blocks.push(block);
 
             point.channels.push(channel);
-        } 
+        }
         point
     };
 
