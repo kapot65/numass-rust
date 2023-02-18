@@ -1,11 +1,14 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-use std::path::PathBuf;
 
-// hide console window on Windows in release
 use viewers::app;
 
-use clap::Parser;
+#[cfg(not(target_arch = "wasm32"))]
+use {
+    std::path::PathBuf,
+    clap::Parser
+};
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Opt {

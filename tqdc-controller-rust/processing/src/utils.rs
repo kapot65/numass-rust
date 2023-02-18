@@ -1,5 +1,7 @@
+#[cfg(not(target_arch = "wasm32"))]
 use eframe::epaint::{color::Hsva, Color32};
 
+#[cfg(not(target_arch = "wasm32"))]
 // copy-pasted from egui::widgets::plot::PlotUi::auto_color
 pub fn color_same_as_egui(idx: usize) -> Color32 {
     let golden_ratio = (5.0_f32.sqrt() - 1.0) / 2.0; // 0.61803398875
@@ -7,6 +9,7 @@ pub fn color_same_as_egui(idx: usize) -> Color32 {
     Hsva::new(h, 0.85, 0.5, 1.0).into() // TODO(emilk): OkLab or some other perspective color space
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn channel_colors() -> [Color32; 7] {
     [
         color_same_as_egui(0),
