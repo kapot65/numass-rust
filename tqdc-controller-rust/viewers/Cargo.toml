@@ -20,9 +20,10 @@ rmp-serde = "1.1.1"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tracing-subscriber = "0.3"
 
-numass = { git = "ssh://git@bitbucket.org/Kapot/dataforge-parser-numass.git", tag = "0.1.0" }
-dataforge = { git = "ssh://git@bitbucket.org/Kapot/dataforge-parser-rust.git", tag = "0.1.0" }
-processing = { path = "../processing"}
+numass = { git = "ssh://git@bitbucket.org/Kapot/dataforge-parser-numass.git", tag = "0.1.1" }
+dataforge = { git = "ssh://git@bitbucket.org/Kapot/dataforge-parser-rust.git", tag = "0.1.1", features = ["tokio"]  }
+
+processing = { path = "../processing" }
 
 tokio = { version = "1.21.2", features = ["full"] }
 natord = "1.0.9"
