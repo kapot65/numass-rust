@@ -1,8 +1,5 @@
 use crate::{app::color_same_as_egui, backend::DeviceFrame};
 
-#[cfg(target_arch = "wasm32")]
-use eframe::web_sys::window;
-
 pub struct FilteredViewer {
     pub independent: Vec<(DeviceFrame, Vec<DeviceFrame>)>,
     pub current: usize,
@@ -28,7 +25,7 @@ impl eframe::App for FilteredViewer {
             #[cfg(not(target_arch = "wasm32"))]
             let width = frame.info().window_info.size.x;
             #[cfg(target_arch = "wasm32")]
-            let width = window().unwrap().inner_width().unwrap().as_f64().unwrap() as f32;
+            let width = eframe::web_sys::window().unwrap().inner_width().unwrap().as_f64().unwrap() as f32;
 
             ui.style_mut().spacing.slider_width = width - 200.0;
 

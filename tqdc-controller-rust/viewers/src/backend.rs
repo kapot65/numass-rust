@@ -3,12 +3,13 @@ use std::{collections::BTreeMap, ops::Range, path::PathBuf, time::SystemTime};
 #[cfg(not(target_arch = "wasm32"))]
 use {
     dataforge::read_df_message,
-    numass::{protos::rsb_event, NumassMeta, Reply},
+     numass::{NumassMeta, Reply},
     processing::{convert_to_kev, frame_to_waveform, point_to_histogramm, waveform_to_event},
     protobuf::Message,
 };
 
 use processing::{histogram::PointHistogram, ProcessingParams};
+use numass::protos::rsb_event;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -202,14 +203,8 @@ pub async fn filter_events(
         .collect::<Vec<_>>()
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-pub async fn point_to_chunks(path: &PathBuf) -> Vec<Vec<(u8, Vec<[f64; 2]>)>> {
-    let mut point_file = tokio::fs::File::open(path).await.unwrap();
-    let message = read_df_message::<NumassMeta>(&mut point_file)
-        .await
-        .unwrap();
 
-    let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
+pub fn point_to_chunks(point: rsb_event::Point) -> Vec<Vec<(u8, Vec<[f64; 2]>)>> {
 
     let limit_ns = 1_000_000;
 
@@ -245,13 +240,4 @@ pub async fn point_to_chunks(path: &PathBuf) -> Vec<Vec<(u8, Vec<[f64; 2]>)>> {
     }
 
     chunks
-}
-
-#[test]
-fn test() {
-    let buf = rmp_serde::to_vec(&vec![1i32, 2, 3]).unwrap();
-    println!("{buf:?}");
-
-    let out = rmp_serde::from_slice::<Vec<i32>>(&buf).unwrap();
-    println!("{out:?}");
 }

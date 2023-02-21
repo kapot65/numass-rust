@@ -7,18 +7,17 @@ edition = "2021"
 
 [dependencies]
 serde = "1.0.152"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+eframe = "0.19.0"
 serde_json = "1.0.91"
 
+tokio = { version = "1.21.2", features = ["full"] }
 protobuf = "3.2.0"
+numass = { git = "ssh://git@bitbucket.org/Kapot/dataforge-parser-numass.git", tag = "0.1.1" }
+dataforge = { git = "ssh://git@bitbucket.org/Kapot/dataforge-parser-rust.git", tag = "0.1.1", features = ["tokio"]  }
+
 linreg = "0.2.0"
 
 plotters = "0.3.1"
 plotly = "0.8.3"
-
-eframe = "0.19.0"
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-numass = { git = "ssh://git@bitbucket.org/Kapot/dataforge-parser-numass.git", tag = "0.1.1" }
-dataforge = { git = "ssh://git@bitbucket.org/Kapot/dataforge-parser-rust.git", tag = "0.1.1", features = ["tokio"]  }
-
-tokio = { version = "1.21.2", features = ["full"] }

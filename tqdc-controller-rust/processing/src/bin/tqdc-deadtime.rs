@@ -1,11 +1,15 @@
-use plotly::{common::Title, histogram::Bins, layout::Axis, Histogram, Layout, Plot};
-use protobuf::Message;
+#[cfg(target_arch = "wasm32")]
+fn main() {todo!()}
 
-use dataforge::read_df_message;
-use numass::{protos::rsb_event, NumassMeta};
-
+#[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() {
+    use plotly::{common::Title, histogram::Bins, layout::Axis, Histogram, Layout, Plot};
+    use protobuf::Message;
+
+    use dataforge::read_df_message;
+    use numass::{protos::rsb_event, NumassMeta};
+
     let filepath = "/data/2022_12/Tritium_7/set_1/p120(30s)(HV1=12000)";
     // let filepath = "/data/2022_12/Tritium_7/set_1/p0(30s)(HV1=14000)";
     // let filepath = "/data/2022_12/Tritium_7/set_1/p6(30s)(HV1=18100)";

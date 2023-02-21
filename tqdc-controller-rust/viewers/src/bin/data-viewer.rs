@@ -1,11 +1,15 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-use std::path::PathBuf;
 
 // hide console window on Windows in release
 use viewers::app;
 
-use clap::Parser;
+#[cfg(not(target_arch = "wasm32"))]
+use {
+    clap::Parser, 
+    std::path::PathBuf
+};
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Opt {
@@ -43,6 +47,9 @@ async fn main() -> eframe::Result<()> {
 fn main() {
     // Make sure panics are logged using `console.error`.
 
+    use std::io::Cursor;
+
+    use dataforge::{read_df_message, DFMessage};
     use eframe::web_sys::window;
     use gloo_net::http::Request;
     use viewers::{
@@ -113,18 +120,15 @@ fn main() {
             .unwrap()
             .set_title(filepath.to_str().unwrap());
         spawn_local(async move {
-            let chunks = rmp_serde::from_slice::<Vec<Vec<(u8, Vec<[f64; 2]>)>>>(
-                &Request::post("/api/process")
-                    .json(&ProcessRequest::SplitTimeChunks { filepath })
-                    .unwrap()
-                    .send()
-                    .await
-                    .unwrap()
-                    .binary()
-                    .await
-                    .unwrap(),
-            )
-            .unwrap();
+
+            use numass::{protos::rsb_event, NumassMeta};
+            use protobuf::Message;
+            let point_data = Request::get(&format!("/files{}", filepath.to_str().unwrap())).send().await.unwrap().binary().await.unwrap();
+
+            let mut buf = Cursor::new(point_data);
+            let message: DFMessage<NumassMeta> = read_df_message::<NumassMeta>(&mut buf).unwrap();
+            let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
+            let chunks = viewers::backend::point_to_chunks(point);
 
             eframe::start_web(
                 "the_canvas_id", // hardcode it

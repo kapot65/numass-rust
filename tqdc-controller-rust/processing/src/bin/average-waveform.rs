@@ -1,21 +1,27 @@
-use plotters::prelude::*;
-use protobuf::Message;
+#[cfg(target_arch = "wasm32")]
+fn main() {todo!()}
 
-use dataforge::read_df_message;
-use numass::{protos::rsb_event, NumassMeta};
-use processing::{correct_amp, find_first_peak, frame_to_waveform};
-
-#[derive(Debug, Clone)]
-struct WaveformNormed {
-    waveform: Vec<i16>,
-    baseline: f32,
-    bin: usize,
-    x: f32,
-    y: f32,
-}
-
+#[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() {
+    use {
+        plotters::prelude::*,
+        protobuf::Message,
+    
+        dataforge::read_df_message,
+        numass::{protos::rsb_event, NumassMeta},
+        processing::{correct_amp, find_first_peak, frame_to_waveform}
+    };
+
+    #[derive(Debug, Clone)]
+    struct WaveformNormed {
+        waveform: Vec<i16>,
+        baseline: f32,
+        bin: usize,
+        x: f32,
+        y: f32,
+    }
+
     // let filepath = "/data/2022_12/Electrode_4/set_1/p4(200s)(HV1=10000)";
     // let filepath = "/data/2022_12/Electrode_4/set_1/p4(200s)(HV1=10000)";
     let filepath = "/data/2022_12/Gun_16/set_1/p0(200s)(HV1=15990)";

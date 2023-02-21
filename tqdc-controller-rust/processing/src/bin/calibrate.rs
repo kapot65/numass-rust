@@ -1,12 +1,21 @@
-use processing::{histogram::PointHistogram, waveform_to_event, Algorithm};
-use protobuf::Message;
-use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
+#[cfg(target_arch = "wasm32")]
+fn main() {todo!()}
 
-use numass::{protos::rsb_event, NumassMeta};
-
+#[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() {
+
+    use {
+        std::{collections::HashMap, sync::Arc},
+    
+        protobuf::Message,
+        tokio::sync::Mutex,
+    
+        numass::{protos::rsb_event, NumassMeta},
+        processing::{histogram::PointHistogram, waveform_to_event, Algorithm}
+    };
+    
+
     let algorithm = Algorithm::Max;
     // let algorithm = Algorithm::Likhovid { left: 6, right: 36 };
 
@@ -15,15 +24,7 @@ async fn main() {
             6.0,
             "/data/numass-server/2022_12/Electrode_4/set_1/p2(200s)(HV1=6000)",
         ),
-        (
-            8.0,
-            "/data/numass-server/2022_12/Electrode_4/set_1/p3(200s)(HV1=8000)",
-        ),
-        (
-            10.0,
-            "/data/numass-server/2022_12/Electrode_4/set_1/p4(200s)(HV1=10000)",
-        ),
-        (
+        (#[cfg(not(target_arch = "wasm32"))]
             12.0,
             "/data/numass-server/2022_12/Electrode_4/set_1/p5(200s)(HV1=12000)",
         ),

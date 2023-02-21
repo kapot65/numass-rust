@@ -1,13 +1,18 @@
-use std::collections::HashMap;
+#[cfg(target_arch = "wasm32")]
+fn main() {todo!()}
 
-use processing::{convert_to_kev, waveform_to_event, Algorithm};
-use protobuf::Message;
-
-use dataforge::read_df_message;
-use numass::{protos::rsb_event, NumassMeta};
-
+#[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() {
+
+    use std::collections::HashMap;
+
+    use processing::{convert_to_kev, waveform_to_event, Algorithm};
+    use protobuf::Message;
+
+    use dataforge::read_df_message;
+    use numass::{protos::rsb_event, NumassMeta};
+
     // let files = [
     //     "/data/numass-server/2022_12/Tritium_7/set_1/p52(30s)(HV1=15000)",
     //     "/data/numass-server/2022_12/Tritium_7/set_2/p52(30s)(HV1=15000)",

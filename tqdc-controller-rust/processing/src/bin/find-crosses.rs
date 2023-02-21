@@ -1,14 +1,16 @@
-use std::collections::BTreeMap;
+#[cfg(target_arch = "wasm32")]
+fn main() {todo!()}
 
-use eframe::epaint::Color32;
-use processing::utils::channel_colors;
-use protobuf::Message;
-
-use dataforge::read_df_message;
-use numass::{protos::rsb_event, NumassMeta};
-
+#[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() {
+    use std::collections::BTreeMap;
+    use protobuf::Message;
+
+    use dataforge::read_df_message;
+    use numass::{protos::rsb_event, NumassMeta};
+
+
     // let files = [
     //     "/data/numass-server/2022_12/Tritium_7/set_1/p52(30s)(HV1=15000)",
     //     "/data/numass-server/2022_12/Tritium_7/set_2/p52(30s)(HV1=15000)",
@@ -189,7 +191,6 @@ async fn main() {
                 crosses: double_crosses,
                 filtered: vec![],
                 ch_enabled: [false; 7],
-                colors: channel_colors(),
                 current: 0,
             })
         }),
@@ -198,18 +199,23 @@ async fn main() {
     // println!("{crosses:?}");
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 type Waveform = (u8, Vec<i16>);
 
+#[cfg(not(target_arch = "wasm32"))]
 struct CrossesViewer {
     crosses: Vec<(u64, Vec<Waveform>)>,
     filtered: Vec<(u64, Vec<Waveform>)>,
     ch_enabled: [bool; 7],
-    colors: [Color32; 7],
     current: usize,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl eframe::App for CrossesViewer {
     fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
+
+        use processing::utils::color_same_as_egui;
+
         if ctx.input().key_pressed(eframe::egui::Key::ArrowRight)
             && self.current < self.filtered.len() - 1
         {
@@ -281,7 +287,7 @@ impl eframe::App for CrossesViewer {
                                         .map(|(x, y)| [x as f64, *y as f64])
                                         .collect::<Vec<_>>(),
                                 )
-                                .color(self.colors[(*ch_num) as usize])
+                                .color(color_same_as_egui((*ch_num) as usize))
                                 .name(format!("ch #{}", ch_num + 1)),
                             );
                         }

@@ -303,7 +303,7 @@ pub async fn get_tqdc_configuration(path_to_config: &PathBuf) -> Value {
         let mut entry = config.as_object_mut().unwrap();
         let keys = path
             .split('\\')
-            .map(|s| String::from(s))
+            .map(String::from)
             .collect::<Vec<_>>();
         for key in keys[..keys.len() - 1].iter() {
             entry = entry

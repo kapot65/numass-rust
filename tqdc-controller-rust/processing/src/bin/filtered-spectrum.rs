@@ -1,14 +1,18 @@
-use std::collections::BTreeMap;
+#[cfg(target_arch = "wasm32")]
+fn main() {todo!()}
 
-use plotly::{common::Title, histogram::Bins, layout::Axis, Histogram, Layout, Plot};
-use processing::{convert_to_kev, frame_to_waveform, waveform_to_event};
-use protobuf::Message;
-
-use dataforge::read_df_message;
-use numass::{protos::rsb_event, NumassMeta};
-
+#[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() {
+    use std::collections::BTreeMap;
+
+    use plotly::{common::Title, histogram::Bins, layout::Axis, Histogram, Layout, Plot};
+    use processing::{convert_to_kev, frame_to_waveform, waveform_to_event};
+    use protobuf::Message;
+
+    use dataforge::read_df_message;
+    use numass::{protos::rsb_event, NumassMeta};
+
     // let filepath = "/data/numass-server/2022_12/Adiabacity_19_2/set_1/p4(200s)(HV1=15000)";
     // let range = 0.0..5.0;
 

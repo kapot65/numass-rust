@@ -1,19 +1,26 @@
-use std::collections::BTreeMap;
+#[cfg(target_arch = "wasm32")]
+fn main() {todo!()}
 
-use dataforge::read_df_message;
-use numass::{protos::rsb_event, NumassMeta};
-use plotly::{
-    common::{Line, LineShape},
-    Plot, Scatter,
-};
-use protobuf::Message;
-
-use processing::{
-    convert_to_kev, frame_to_waveform, histogram::PointHistogram, waveform_to_event, Algorithm,
-};
-
+#[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() {
+
+    use {
+        std::collections::BTreeMap,
+    
+        protobuf::Message,
+        plotly::{
+            common::{Line, LineShape},
+            Plot, Scatter,
+        },
+    
+        numass::{protos::rsb_event, NumassMeta},
+        dataforge::read_df_message,
+        processing::{
+            convert_to_kev, frame_to_waveform, histogram::PointHistogram, waveform_to_event, Algorithm,
+        }
+    };
+
     // let filepath = "/data/numass-server/2022_12/Tritium_7/set_1/p7(30s)(HV1=18000)";
     // let filepath = "/data/numass-server/2022_12/Tritium_7/set_1/p5(30s)(HV1=18200)"; // substract with overflow!
     let filepath = "/data/numass-server/2022_12/Tritium_7/set_1/p98(30s)(HV1=13000)";
