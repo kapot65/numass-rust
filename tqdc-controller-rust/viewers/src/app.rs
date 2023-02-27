@@ -33,8 +33,6 @@ use processing::{Algorithm, ProcessingParams};
 
 use crate::backend::{FSRepr, FileCache};
 
-pub const DEFAULT_LIKHOVID: Algorithm = Algorithm::Likhovid { left: 6, right: 36 };
-
 pub fn color_same_as_egui(idx: usize) -> Color32 {
     let golden_ratio = (5.0_f32.sqrt() - 1.0) / 2.0; // 0.61803398875
     let h = idx as f32 * golden_ratio;
@@ -52,25 +50,8 @@ impl DataViewerApp {
         Self {
             root: Arc::new(Mutex::new(None)),
             state: Arc::new(Mutex::new(HashMap::new())),
-            processing_params: Arc::new(Mutex::new(processing::ProcessingParams {
-                algorithm: DEFAULT_LIKHOVID,
-                convert_to_kev: true,
-                merge_close_events: true,
-                use_dead_time: true,
-                effective_dead_time: 4000,
-                merge_map: [
-                    [false, true, false, false, false, false, false],
-                    [false, false, false, true, false, false, false],
-                    [false, false, false, false, true, false, false],
-                    [false, false, false, false, false, false, true],
-                    [true, false, false, false, false, false, false],
-                    [true, true, true, true, true, false, true],
-                    [false, false, true, false, false, false, false],
-                ],
-                hist_min: 0.0,
-                hist_max: 27.0,
-                hist_bins: 270,
-            })),
+            processing_params: Arc::new(Mutex::new(
+                processing::ProcessingParams::default())),
         }
     }
 
@@ -317,7 +298,7 @@ fn params_editor(ui: &mut Ui, processing_params: ProcessingParams) -> Processing
             ))
             .clicked()
         {
-            algorithm = DEFAULT_LIKHOVID
+            algorithm = Algorithm::default()
         }
     });
 

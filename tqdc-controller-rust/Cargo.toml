@@ -4,5 +4,6 @@ members = [
   "apps",
   "processing",
   "tqdc",
-  "viewers"
+  "viewers",
+  "py_numass"
 ]

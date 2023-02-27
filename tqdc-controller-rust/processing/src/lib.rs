@@ -19,10 +19,40 @@ pub struct ProcessingParams {
     pub hist_bins: usize,
 }
 
+impl Default for ProcessingParams {
+    fn default() -> Self {
+        Self {
+            algorithm: Algorithm::default(),
+            convert_to_kev: true,
+            merge_close_events: true,
+            use_dead_time: true,
+            effective_dead_time: 4000,
+            merge_map: [
+                [false, true, false, false, false, false, false],
+                [false, false, false, true, false, false, false],
+                [false, false, false, false, true, false, false],
+                [false, false, false, false, false, false, true],
+                [true, false, false, false, false, false, false],
+                [true, true, true, true, true, false, true],
+                [false, false, true, false, false, false, false],
+            ],
+            hist_min: 0.0,
+            hist_max: 27.0,
+            hist_bins: 270,
+        }
+    }
+}
+
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum Algorithm {
     Max,
     Likhovid { left: usize, right: usize },
+}
+
+impl Default for Algorithm {
+    fn default() -> Self {
+        Self::Likhovid { left: 6, right: 36 }
+    }
 }
 
 // TODO remove hardcode
@@ -58,24 +88,20 @@ const KEV_COEFF_LIKHOVID: [[f32; 2]; 7] = [
 ];
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn point_to_histogramm(point: &rsb_event::Point, params: ProcessingParams) -> PointHistogram {
-    let range = (params.hist_min, params.hist_max);
-    let bins = params.hist_bins;
+pub fn extract_amplitudes(point: &rsb_event::Point, algorithm: &Algorithm, to_kev: bool) -> BTreeMap<u64, BTreeMap<usize, f32>> {
 
-    let mut histogram = PointHistogram::new(range, bins);
-
-    let mut frames = BTreeMap::new();
+    let mut amplitudes = BTreeMap::new();
 
     for channel in &point.channels {
         for block in &channel.blocks {
             for frame in &block.frames {
-                let entry = frames.entry(frame.time).or_insert(BTreeMap::new());
+                let entry = amplitudes.entry(frame.time).or_insert(BTreeMap::new());
 
                 let waveform = frame_to_waveform(frame);
-                let amp = waveform_to_event(&waveform, &params.algorithm).1;
+                let amp = waveform_to_event(&waveform, algorithm).1;
 
-                let amp = if params.convert_to_kev {
-                    convert_to_kev(&amp, channel.id as u8, &params.algorithm)
+                let amp = if to_kev {
+                    convert_to_kev(&amp, channel.id as u8, algorithm)
                 } else {
                     amp
                 };
@@ -85,12 +111,22 @@ pub fn point_to_histogramm(point: &rsb_event::Point, params: ProcessingParams) -
         }
     }
 
+    amplitudes
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn point_to_histogramm(point: &rsb_event::Point, params: ProcessingParams) -> PointHistogram {
+    let mut amplitudes = extract_amplitudes(point, &params.algorithm, params.convert_to_kev);
+
+    
     let mut last_time: u64 = 0;
-    for (time, mut channels) in frames {
-        if params.use_dead_time && last_time.abs_diff(time) < params.effective_dead_time {
-            continue;
+    let filtered = amplitudes.iter_mut().filter_map(|(time, channels)| {
+
+        if params.use_dead_time && last_time.abs_diff(*time) < params.effective_dead_time {
+            return None;
         }
-        last_time = time;
+
+        last_time = *time;
 
         if params.merge_close_events {
             for ch_1 in 0..7 {
@@ -107,11 +143,18 @@ pub fn point_to_histogramm(point: &rsb_event::Point, params: ProcessingParams) -
             }
         }
 
-        for (ch_num, amplitude) in channels {
-            histogram.add(ch_num as u8, amplitude)
-        }
-    }
+        Some((time, channels))
+    });
 
+    let range = (params.hist_min, params.hist_max);
+    let bins = params.hist_bins;
+
+    let mut histogram = PointHistogram::new(range, bins);
+    filtered.for_each(|(_, channels)| {
+        for (ch_num, amplitude) in channels {
+            histogram.add(*ch_num as u8, *amplitude)
+        }
+    });
     histogram
 }
 
