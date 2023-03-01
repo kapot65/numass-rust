@@ -50,8 +50,7 @@ impl DataViewerApp {
         Self {
             root: Arc::new(Mutex::new(None)),
             state: Arc::new(Mutex::new(HashMap::new())),
-            processing_params: Arc::new(Mutex::new(
-                processing::ProcessingParams::default())),
+            processing_params: Arc::new(Mutex::new(processing::ProcessingParams::default())),
         }
     }
 

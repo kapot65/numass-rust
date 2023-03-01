@@ -1,10 +1,11 @@
 #[cfg(target_arch = "wasm32")]
-fn main() {todo!()}
+fn main() {
+    todo!()
+}
 
 #[cfg(not(target_arch = "wasm32"))]
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-
     use std::{net::SocketAddr, path::PathBuf, str::FromStr};
 
     #[cfg(not(debug_assertions))]
@@ -35,8 +36,11 @@ async fn main() -> std::io::Result<()> {
                 neigborhood,
             } => HttpResponse::Ok()
                 .content_type(mime::APPLICATION_MSGPACK)
-                .body(rmp_serde::to_vec(&filter_events(&filepath, &range, neigborhood).await).unwrap()),
-            _ => HttpResponse::BadRequest().body("")
+                .body(
+                    rmp_serde::to_vec(&filter_events(&filepath, &range, neigborhood).await)
+                        .unwrap(),
+                ),
+            _ => HttpResponse::BadRequest().body(""),
         }
     }
 
@@ -87,7 +91,13 @@ async fn main() -> std::io::Result<()> {
                 }),
             )
             .service(process)
-            .service(actix_files::Files::new(&format!("/files{}", args.directory.to_str().unwrap()), &args.directory).show_files_listing());
+            .service(
+                actix_files::Files::new(
+                    &format!("/files{}", args.directory.to_str().unwrap()),
+                    &args.directory,
+                )
+                .show_files_listing(),
+            );
         #[cfg(not(debug_assertions))]
         {
             app.service(index).service(js).service(wasm)

@@ -1,12 +1,11 @@
 #[tokio::main]
 async fn main() {
     use {
-        plotters::prelude::*,
-        protobuf::Message,
-    
         dataforge::read_df_message,
         numass::{protos::rsb_event, NumassMeta},
-        processing::{correct_amp, find_first_peak, frame_to_waveform}
+        plotters::prelude::*,
+        processing::{correct_amp, find_first_peak, frame_to_waveform},
+        protobuf::Message,
     };
 
     #[derive(Debug, Clone)]

@@ -1,20 +1,18 @@
 #[tokio::main]
 async fn main() {
-
     use {
-        std::collections::BTreeMap,
-    
-        protobuf::Message,
+        dataforge::read_df_message,
+        numass::{protos::rsb_event, NumassMeta},
         plotly::{
             common::{Line, LineShape},
             Plot, Scatter,
         },
-    
-        numass::{protos::rsb_event, NumassMeta},
-        dataforge::read_df_message,
         processing::{
-            convert_to_kev, frame_to_waveform, histogram::PointHistogram, waveform_to_event, Algorithm,
-        }
+            convert_to_kev, frame_to_waveform, histogram::PointHistogram, waveform_to_event,
+            Algorithm,
+        },
+        protobuf::Message,
+        std::collections::BTreeMap,
     };
 
     // let filepath = "/data/numass-server/2022_12/Tritium_7/set_1/p7(30s)(HV1=18000)";

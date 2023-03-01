@@ -1,6 +1,5 @@
 #[tokio::main]
 async fn main() {
-
     use std::collections::HashMap;
 
     use processing::{convert_to_kev, waveform_to_event, Algorithm};

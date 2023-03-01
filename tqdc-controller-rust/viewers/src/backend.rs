@@ -3,13 +3,13 @@ use std::{collections::BTreeMap, ops::Range, path::PathBuf, time::SystemTime};
 #[cfg(not(target_arch = "wasm32"))]
 use {
     dataforge::read_df_message,
-     numass::{NumassMeta, Reply},
+    numass::{NumassMeta, Reply},
     processing::{convert_to_kev, frame_to_waveform, point_to_histogramm, waveform_to_event},
     protobuf::Message,
 };
 
-use processing::{histogram::PointHistogram, ProcessingParams};
 use numass::protos::rsb_event;
+use processing::{histogram::PointHistogram, ProcessingParams};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -203,9 +203,7 @@ pub async fn filter_events(
         .collect::<Vec<_>>()
 }
 
-
 pub fn point_to_chunks(point: rsb_event::Point) -> Vec<Vec<(u8, Vec<[f64; 2]>)>> {
-
     let limit_ns = 1_000_000;
 
     let mut chunks = vec![];

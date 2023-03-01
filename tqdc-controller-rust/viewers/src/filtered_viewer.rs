@@ -25,7 +25,12 @@ impl eframe::App for FilteredViewer {
             #[cfg(not(target_arch = "wasm32"))]
             let width = frame.info().window_info.size.x;
             #[cfg(target_arch = "wasm32")]
-            let width = eframe::web_sys::window().unwrap().inner_width().unwrap().as_f64().unwrap() as f32;
+            let width = eframe::web_sys::window()
+                .unwrap()
+                .inner_width()
+                .unwrap()
+                .as_f64()
+                .unwrap() as f32;
 
             ui.style_mut().spacing.slider_width = width - 200.0;
 

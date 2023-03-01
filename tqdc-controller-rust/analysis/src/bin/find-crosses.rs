@@ -8,8 +8,8 @@ fn color_same_as_egui(idx: usize) -> Color32 {
 
 #[tokio::main]
 async fn main() {
-    use std::collections::BTreeMap;
     use protobuf::Message;
+    use std::collections::BTreeMap;
 
     use dataforge::read_df_message;
     use numass::{protos::rsb_event, NumassMeta};
@@ -216,8 +216,6 @@ struct CrossesViewer {
 #[cfg(not(target_arch = "wasm32"))]
 impl eframe::App for CrossesViewer {
     fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
-
-
         if ctx.input().key_pressed(eframe::egui::Key::ArrowRight)
             && self.current < self.filtered.len() - 1
         {

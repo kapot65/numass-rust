@@ -550,9 +550,9 @@ mod tests {
     async fn compare_fast() -> tokio::io::Result<()> {
         let mut file = tokio::fs::File::open(
             "../resources/test/frames/0l.bin", // "./resources/test/frames/subs-overflow.bin"
-                                          // "./resources/test/frames/trash-3.bin"
-                                          // "../resources/test/frames/0l-cropped-2.bin"
-                                          // "./resources/test/frames/408ns-7ch.bin"
+                                               // "./resources/test/frames/trash-3.bin"
+                                               // "../resources/test/frames/0l-cropped-2.bin"
+                                               // "./resources/test/frames/408ns-7ch.bin"
         )
         .await?;
 

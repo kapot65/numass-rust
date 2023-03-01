@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #[cfg(target_arch = "wasm32")]
-fn main() {todo!()}
+fn main() {
+    todo!()
+}
 
 #[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
@@ -9,7 +11,7 @@ async fn main() {
     use protobuf::Message;
 
     use dataforge::read_df_message;
-    use numass::{NumassMeta, protos::rsb_event };
+    use numass::{protos::rsb_event, NumassMeta};
 
     use viewers::{backend::point_to_chunks, point_viewer::PointViewer};
 
@@ -30,7 +32,7 @@ async fn main() {
         let message = read_df_message::<NumassMeta>(&mut point_file)
             .await
             .unwrap();
-       rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap()
+        rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap()
     };
 
     let chunks = point_to_chunks(point);

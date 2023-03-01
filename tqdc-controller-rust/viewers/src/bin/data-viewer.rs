@@ -4,10 +4,7 @@
 use viewers::app;
 
 #[cfg(not(target_arch = "wasm32"))]
-use {
-    clap::Parser, 
-    std::path::PathBuf
-};
+use {clap::Parser, std::path::PathBuf};
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -119,10 +116,15 @@ fn main() {
             .unwrap()
             .set_title(filepath.to_str().unwrap());
         spawn_local(async move {
-
             use numass::{protos::rsb_event, NumassMeta};
             use protobuf::Message;
-            let point_data = Request::get(&format!("/files{}", filepath.to_str().unwrap())).send().await.unwrap().binary().await.unwrap();
+            let point_data = Request::get(&format!("/files{}", filepath.to_str().unwrap()))
+                .send()
+                .await
+                .unwrap()
+                .binary()
+                .await
+                .unwrap();
 
             let mut buf = Cursor::new(point_data);
             let message: DFMessage<NumassMeta> = read_df_message::<NumassMeta>(&mut buf).unwrap();
