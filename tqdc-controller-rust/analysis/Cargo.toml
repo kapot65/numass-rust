@@ -14,7 +14,7 @@ protobuf = "3.2.0"
 
 numass = { git = "ssh://git@bitbucket.org/Kapot/dataforge-parser-numass.git", tag = "0.1.1" }
 dataforge = { git = "ssh://git@bitbucket.org/Kapot/dataforge-parser-rust.git", tag = "0.1.1"  }
-processing = { path = "../processing"  }
+processing = { git = "ssh://git@bitbucket.org/Kapot/numass-processing", tag = "0.1.0" }
 
 linreg = "0.2.0"
 
