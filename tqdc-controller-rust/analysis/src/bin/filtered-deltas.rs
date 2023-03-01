@@ -1,7 +1,3 @@
-#[cfg(target_arch = "wasm32")]
-fn main() {todo!()}
-
-#[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() {
     use std::collections::BTreeMap;
@@ -13,11 +9,11 @@ async fn main() {
     use dataforge::read_df_message;
     use numass::{protos::rsb_event, NumassMeta};
 
-    // let filepath = "/data/numass-server/2022_12/Adiabacity_19_2/set_1/p4(200s)(HV1=15000)";
-    // let range = 0.0..5.0;
+    let filepath = "/data/numass-server/2022_12/Adiabacity_19_2/set_1/p4(200s)(HV1=15000)";
+    let range = 0.0..5.0;
 
-    let filepath = "/data/numass-server/2022_12/Adiabacity_19_2/set_1/p5(200s)(HV1=14000)";
-    let range = 0.0..6.0;
+    // let filepath = "/data/numass-server/2022_12/Adiabacity_19_2/set_1/p5(200s)(HV1=14000)";
+    // let range = 0.0..6.0;
 
     // let filepath = "/data/numass-server/2022_12/Adiabacity_19_2/set_1/p6(200s)(HV1=13000)";
     // let range = 0.0..7.0;
@@ -51,42 +47,37 @@ async fn main() {
         .filter_map(|pair| {
             let (time_1, waveforms) = pair[0];
 
-            let mut amps = vec![];
-
-            for (ch, waveform) in waveforms {
-                let (_, amp) = waveform_to_event(waveform, &algorithm);
-                amps.push(convert_to_kev(&amp, *ch, &algorithm));
+            if !(waveforms.len() == 1 && waveforms.contains_key(&5)) {
+                return None;
             }
 
-            if !(amps.iter().any(|amp| range.contains(amp))) {
+            let (_, amp) = waveform_to_event(&waveforms[&5], &algorithm);
+
+            let amp_kev = convert_to_kev(&amp, 5, &algorithm);
+
+            if !(range.contains(&amp_kev)) {
                 None
             } else {
-                let (time_2, waveforms_2) = pair[1];
-                if (time_2 - time_1) > 8000 {
-                    Some(amps)
-                } else {
-                    for (ch, waveform) in waveforms_2 {
-                        let (_, amp) = waveform_to_event(waveform, &algorithm);
-                        amps.push(convert_to_kev(&amp, *ch, &algorithm));
-                    }
-                    Some(amps)
-                }
+                let (time_2, _) = pair[1];
+                Some(time_2 - time_1)
             }
         })
-        .flatten()
         .collect::<Vec<_>>();
 
     let trace2 = Histogram::new(deltas)
-        .x_bins(Bins::new(0.0, 27.0, 0.1))
+        .x_bins(Bins::new(0.0, 20e3, 24.0 * 2.0))
         .opacity(0.6);
 
     let mut plot = Plot::new();
 
     let layout = Layout::new()
-    .title(Title::new(format!("(event within ({range:?} keV) -> next event + time delta < 8 μs) spectrum for {filepath}").as_str()))
-    .x_axis(Axis::new().title(Title::new("Amplitude, keV")))
-    
-    .height(1000);
+        .title(Title::new(
+            format!("(event within ({range:?} keV) -> next event) time deltas for {filepath}")
+                .as_str(),
+        ))
+        .x_axis(Axis::new().title(Title::new("time delta, ns")))
+        .y_axis(Axis::new().type_(plotly::layout::AxisType::Log))
+        .height(1000);
 
     plot.set_layout(layout);
     plot.add_trace(trace2);

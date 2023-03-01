@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "apps",
+  "analysis",
   "processing",
   "tqdc",
   "viewers",

@@ -1,7 +1,11 @@
-#[cfg(target_arch = "wasm32")]
-fn main() {todo!()}
+use eframe::epaint::{color::Hsva, Color32};
 
-#[cfg(not(target_arch = "wasm32"))]
+fn color_same_as_egui(idx: usize) -> Color32 {
+    let golden_ratio = (5.0_f32.sqrt() - 1.0) / 2.0; // 0.61803398875
+    let h = idx as f32 * golden_ratio;
+    Hsva::new(h, 0.85, 0.5, 1.0).into() // TODO(emilk): OkLab or some other perspective color space
+}
+
 #[tokio::main]
 async fn main() {
     use std::collections::BTreeMap;
@@ -9,7 +13,6 @@ async fn main() {
 
     use dataforge::read_df_message;
     use numass::{protos::rsb_event, NumassMeta};
-
 
     // let files = [
     //     "/data/numass-server/2022_12/Tritium_7/set_1/p52(30s)(HV1=15000)",
@@ -214,7 +217,6 @@ struct CrossesViewer {
 impl eframe::App for CrossesViewer {
     fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
 
-        use processing::utils::color_same_as_egui;
 
         if ctx.input().key_pressed(eframe::egui::Key::ArrowRight)
             && self.current < self.filtered.len() - 1

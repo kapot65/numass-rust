@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
-#[cfg(not(target_arch = "wasm32"))]
 use {histogram::PointHistogram, numass::protos::rsb_event, std::collections::BTreeMap};
 pub mod histogram;
-pub mod utils;
 
 #[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct ProcessingParams {
@@ -87,7 +85,7 @@ const KEV_COEFF_LIKHOVID: [[f32; 2]; 7] = [
     [0.21352, 0.039334297],
 ];
 
-#[cfg(not(target_arch = "wasm32"))]
+
 pub fn extract_amplitudes(point: &rsb_event::Point, algorithm: &Algorithm, to_kev: bool) -> BTreeMap<u64, BTreeMap<usize, f32>> {
 
     let mut amplitudes = BTreeMap::new();
@@ -114,7 +112,7 @@ pub fn extract_amplitudes(point: &rsb_event::Point, algorithm: &Algorithm, to_ke
     amplitudes
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+
 pub fn point_to_histogramm(point: &rsb_event::Point, params: ProcessingParams) -> PointHistogram {
     let mut amplitudes = extract_amplitudes(point, &params.algorithm, params.convert_to_kev);
 
@@ -158,7 +156,7 @@ pub fn point_to_histogramm(point: &rsb_event::Point, params: ProcessingParams) -
     histogram
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+
 pub fn frame_to_waveform(frame: &rsb_event::point::channel::block::Frame) -> Vec<i16> {
     let waveform_len = frame.data.len() / 2;
     (0..waveform_len)
