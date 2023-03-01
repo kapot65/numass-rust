@@ -4,6 +4,5 @@ members = [
   "apps",
   "analysis",
   "tqdc",
-  "viewers",
-  "py_numass"
+  "viewers"
 ]

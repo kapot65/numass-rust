@@ -101,7 +101,7 @@ async fn handle_stream_port(
     });
 
     let tx_handler = tokio::spawn(async move {
-        let mut file = tokio::fs::File::open("./test-data/frames-408ns-7ch.bin")
+        let mut file = tokio::fs::File::open("./resources/test/frames/408ns-7ch.bin")
             .await
             .unwrap();
         let mut contents = [0u8; 2048];

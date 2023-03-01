@@ -525,10 +525,10 @@ mod tests {
     #[tokio::test]
     async fn parse_mstream_data_samples() -> tokio::io::Result<()> {
         let mut file = tokio::fs::File::open(
-            // "../test-data/frames/0l.bin"
-            // "./test-data/frames/subs-overflow.bin"
-            // "./test-data/frames/trash-3.bin"
-            "../test-data/frames/0l-cropped-2.bin", // "./test-data/frames/408ns-7ch.bin"
+            // "../resources/test/frames/0l.bin"
+            // "./resources/test/frames/subs-overflow.bin"
+            // "./resources/test/frames/trash-3.bin"
+            "../resources/test/frames/0l-cropped-2.bin", // "./resources/test/frames/408ns-7ch.bin"
         )
         .await?;
 
@@ -549,10 +549,10 @@ mod tests {
     #[tokio::test]
     async fn compare_fast() -> tokio::io::Result<()> {
         let mut file = tokio::fs::File::open(
-            "../test-data/frames/0l.bin", // "./test-data/frames/subs-overflow.bin"
-                                          // "./test-data/frames/trash-3.bin"
-                                          // "../test-data/frames/0l-cropped-2.bin"
-                                          // "./test-data/frames/408ns-7ch.bin"
+            "../resources/test/frames/0l.bin", // "./resources/test/frames/subs-overflow.bin"
+                                          // "./resources/test/frames/trash-3.bin"
+                                          // "../resources/test/frames/0l-cropped-2.bin"
+                                          // "./resources/test/frames/408ns-7ch.bin"
         )
         .await?;
 
