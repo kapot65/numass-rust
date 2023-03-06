@@ -64,7 +64,7 @@ impl DataViewerApp {
                 spawn(async move {
                     #[cfg(not(target_arch = "wasm32"))]
                     if let Some(root_path) = rfd::FileDialog::new().pick_folder() {
-                        *root.lock() = Some(expand_dir(root_path))
+                        *root.lock() = expand_dir(root_path)
                     }
                     #[cfg(target_arch = "wasm32")]
                     {
@@ -82,7 +82,7 @@ impl DataViewerApp {
                 #[cfg(not(target_arch = "wasm32"))]
                 #[allow(clippy::unnecessary_unwrap)]
                 {
-                    *self.root.lock() = Some(expand_dir(path.unwrap()));
+                    *self.root.lock() = expand_dir(path.unwrap());
                 }
                 #[cfg(target_arch = "wasm32")]
                 {
@@ -173,69 +173,70 @@ impl DataViewerApp {
         let params = *self.processing_params.lock();
         let state = Arc::clone(&self.state);
 
-        {
-            spawn(async move {
-                // TODO: add conditional recalculation
-                // let mut last_params = *processing_params.lock().await;
-                // let need_recalc = if last_params != params {
-                //     last_params = params;
-                //     true
-                // } else {
-                //     false
-                // };
+        spawn(async move {
+            // TODO: add conditional recalculation
+            // let mut last_params = *processing_params.lock().await;
+            // let need_recalc = if last_params != params {
+            //     last_params = params;
+            //     true
+            // } else {
+            //     false
+            // };
 
-                let files_to_processed = {
-                    state
-                        .lock()
-                        .iter()
-                        .filter_map(|(filepath, cache)| {
-                            if cache.opened {
-                                let need_recalc = true;
-                                if need_recalc {
-                                    Some(filepath.clone())
-                                } else if let Some(processed) = cache.processed {
-                                    let meta = std::fs::metadata(filepath).unwrap();
-                                    if processed >= meta.modified().unwrap() {
-                                        None
-                                    } else {
-                                        Some(filepath.clone())
-                                    }
+            let files_to_processed = {
+                state
+                    .lock()
+                    .iter()
+                    .filter_map(|(filepath, cache)| {
+                        if cache.opened {
+                            let need_recalc = true;
+                            if need_recalc {
+                                Some(filepath.clone())
+                            } else if let Some(processed) = cache.processed {
+                                let meta = std::fs::metadata(filepath).unwrap();
+                                if processed >= meta.modified().unwrap() {
+                                    None
                                 } else {
                                     Some(filepath.clone())
                                 }
                             } else {
-                                None
+                                Some(filepath.clone())
                             }
-                        })
-                        .collect::<Vec<_>>()
-                };
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            };
 
-                for filepath in files_to_processed {
-                    let configuration_local = state.clone();
-                    spawn(async move {
-                        #[cfg(not(target_arch = "wasm32"))]
-                        let cache = { process_file(PathBuf::from(&filepath), params).await };
-                        #[cfg(target_arch = "wasm32")]
-                        let cache = {
-                            Request::post("/api/process")
-                                .json(&ProcessRequest::CalcHist {
-                                    filepath: PathBuf::from(&filepath),
-                                    params,
-                                })
-                                .unwrap()
-                                .send()
-                                .await
-                                .unwrap()
-                                .json::<FileCache>()
-                                .await
-                                .unwrap()
-                        };
-                        let mut conf = configuration_local.lock();
+            for filepath in files_to_processed {
+                let configuration_local = state.clone();
+                spawn(async move {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let cache = { process_file(PathBuf::from(&filepath), params) };
+                    #[cfg(target_arch = "wasm32")]
+                    let cache = {
+                        let value = Request::post("/api/process")
+                            .json(&ProcessRequest::CalcHist {
+                                filepath: PathBuf::from(&filepath),
+                                params,
+                            })
+                            .unwrap()
+                            .send()
+                            .await
+                            .unwrap()
+                            .json::<serde_json::Value>()
+                            .await
+                            .unwrap();
+                        serde_json::from_value::<Option<FileCache>>(value).unwrap()
+                    };
+                    let mut conf = configuration_local.lock();
+                    if let Some(cache) = cache {
                         conf.insert(filepath.to_owned(), cache);
-                    });
-                }
-            });
-        }
+                    }
+                });
+            }
+        });
     }
 }
 

@@ -19,6 +19,13 @@ struct Opt {
 async fn main() -> eframe::Result<()> {
     use viewers::backend::expand_dir;
 
+    // abort programm if any of threads panic
+    let orig_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        orig_hook(panic_info);
+        std::process::exit(1);
+    }));
+
     let opt = Opt::parse();
 
     // Log to stdout (if you run with `RUST_LOG=debug`).
@@ -31,7 +38,7 @@ async fn main() -> eframe::Result<()> {
         Box::new(|_| {
             let app = app::DataViewerApp::new();
             if let Some(directory) = opt.directory {
-                *app.root.lock() = Some(expand_dir(directory))
+                *app.root.lock() = expand_dir(directory)
             }
             Box::new(app)
         }),
@@ -45,7 +52,7 @@ fn main() {
 
     use std::io::Cursor;
 
-    use dataforge::{read_df_message, DFMessage};
+    use dataforge::{DFMessage, read_df_message_sync};
     use eframe::web_sys::window;
     use gloo_net::http::Request;
     use viewers::{
@@ -127,7 +134,7 @@ fn main() {
                 .unwrap();
 
             let mut buf = Cursor::new(point_data);
-            let message: DFMessage<NumassMeta> = read_df_message::<NumassMeta>(&mut buf).unwrap();
+            let message: DFMessage<NumassMeta> = read_df_message_sync::<NumassMeta>(&mut buf).unwrap();
             let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
             let chunks = viewers::backend::point_to_chunks(point);
 

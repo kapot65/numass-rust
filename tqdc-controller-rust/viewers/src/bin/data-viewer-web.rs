@@ -19,6 +19,7 @@ async fn main() -> std::io::Result<()> {
 
     use viewers::backend::{expand_dir, filter_events, process_file, ProcessRequest};
 
+
     #[post("/api/process")]
     async fn process(request: web::Json<ProcessRequest>) -> impl Responder {
         let actix_web::web::Json(reqest) = request;
@@ -27,8 +28,7 @@ async fn main() -> std::io::Result<()> {
             ProcessRequest::CalcHist { filepath, params } => {
                 HttpResponse::Ok()
                     .content_type(ContentType::json())
-                    .body(serde_json::to_string(&process_file(filepath, params).await).unwrap())
-                // web::Json()
+                    .body(serde_json::to_string(&process_file(filepath, params)).unwrap())
             }
             ProcessRequest::FilterEvents {
                 filepath,

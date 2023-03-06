@@ -57,50 +57,45 @@ impl FSRepr {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub async fn process_file(filepath: PathBuf, params: ProcessingParams) -> FileCache {
-    let mut point_file = tokio::fs::File::open(&filepath).await.unwrap();
-    let message = read_df_message::<NumassMeta>(&mut point_file)
-        .await
-        .unwrap();
-    match message.meta {
-        numass::NumassMeta::Reply(Reply::AcquirePoint { .. }) => {
-            let data = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
-            let processed = std::fs::metadata(&filepath).unwrap().modified().unwrap();
+pub fn process_file(filepath: PathBuf, params: ProcessingParams) -> Option<FileCache> {
+    use dataforge::{DFMessage, read_df_message_sync};
 
-            FileCache {
-                opened: true,
-                histogram: Some(point_to_histogramm(&data, params)),
-                processed: Some(processed),
-            }
-        }
-        _ => {
-            panic!()
-        }
+    let mut point_file = std::fs::File::open(&filepath).unwrap();
+
+    if let Ok(DFMessage {meta: NumassMeta::Reply(Reply::AcquirePoint { .. }), data}) = read_df_message_sync::<NumassMeta>(&mut point_file) {
+        let data = rsb_event::Point::parse_from_bytes(&data.unwrap()[..]).unwrap();
+        let processed = std::fs::metadata(&filepath).unwrap().modified().unwrap();
+
+        Some(FileCache {
+            opened: true,
+            histogram: Some(point_to_histogramm(&data, params)),
+            processed: Some(processed),
+        })
+    } else {
+        None
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn expand_dir(path: PathBuf) -> FSRepr {
-    {
-        let meta = std::fs::metadata(&path).unwrap();
-        if meta.is_file() {
-            FSRepr::File { path }
-        } else if meta.is_dir() {
-            let children = std::fs::read_dir(&path).unwrap();
+pub fn expand_dir(path: PathBuf) -> Option<FSRepr> {
+    let meta = std::fs::metadata(&path).unwrap();
+    if meta.is_file() {
+        Some(FSRepr::File { path })
+    } else if meta.is_dir() {
+        let children = std::fs::read_dir(&path).unwrap();
 
-            let mut children = children
-                .map(|child| {
-                    let entry = child.unwrap();
-                    expand_dir(entry.path())
-                })
-                .collect::<Vec<_>>();
+        let mut children = children
+            .filter_map(|child| {
+                let entry = child.unwrap();
+                expand_dir(entry.path())
+            })
+            .collect::<Vec<_>>();
 
-            children.sort_by(|a, b| natord::compare(a.to_filename(), b.to_filename()));
+        children.sort_by(|a, b| natord::compare(a.to_filename(), b.to_filename()));
 
-            FSRepr::Directory { path, children }
-        } else {
-            panic!()
-        }
+        Some(FSRepr::Directory { path, children })
+    } else {
+        panic!()
     }
 }
 
