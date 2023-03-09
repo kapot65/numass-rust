@@ -29,6 +29,8 @@ use eframe::egui::plot::{Legend, Line, Plot};
 use eframe::egui::{self, Ui};
 
 use egui::mutex::Mutex;
+use egui::plot::Points;
+use numass::{NumassMeta, Reply};
 use processing::{Algorithm, ProcessingParams};
 
 use crate::backend::{FSRepr, FileCache};
@@ -39,9 +41,17 @@ pub fn color_same_as_egui(idx: usize) -> Color32 {
     Hsva::new(h, 0.85, 0.5, 1.0).into() // TODO(emilk): OkLab or some other perspective color space
 }
 
+#[derive(PartialEq)]
+pub enum PlotMode {
+    Histogram,
+    PPT,
+    PPV,
+}
+
 pub struct DataViewerApp {
-    pub processing_params: Arc<Mutex<ProcessingParams>>,
     pub root: Arc<Mutex<Option<FSRepr>>>,
+    plot_mode: PlotMode,
+    processing_params: Arc<Mutex<ProcessingParams>>,
     state: Arc<Mutex<HashMap<String, FileCache>>>,
 }
 
@@ -51,6 +61,7 @@ impl DataViewerApp {
             root: Arc::new(Mutex::new(None)),
             state: Arc::new(Mutex::new(HashMap::new())),
             processing_params: Arc::new(Mutex::new(processing::ProcessingParams::default())),
+            plot_mode: PlotMode::Histogram,
         }
     }
 
@@ -231,9 +242,12 @@ impl DataViewerApp {
                         serde_json::from_value::<Option<FileCache>>(value).unwrap()
                     };
                     let mut conf = configuration_local.lock();
-                    if let Some(cache) = cache {
-                        conf.insert(filepath.to_owned(), cache);
-                    }
+                    conf.insert(filepath.to_owned(), cache.unwrap_or(FileCache {
+                        opened: false,
+                        processed: None,
+                        histogram: None,
+                        meta: None
+                    }));
                 });
             }
         });
@@ -259,13 +273,26 @@ fn file_tree_entry(
                     opened: false,
                     processed: None,
                     histogram: None,
+                    meta: None
                 });
 
+            let mut change_set = None;
+
             ui.horizontal(|ui| {
-                ui.checkbox(&mut cache.opened, "");
+                if ui.checkbox(&mut cache.opened, "").changed() && path.ends_with("meta") {
+                    change_set = Some(cache.opened);  
+                };
                 let filename = path.file_name().unwrap().to_str().unwrap();
                 ui.label(filename);
             });
+
+            if let Some(opened) = change_set {
+                let parent_folder = path.parent().unwrap().to_str().unwrap();
+                let filtered_keys = opened_files.keys().filter(|key| key.contains(parent_folder)).cloned().collect::<Vec<_>>();
+                for key in filtered_keys {
+                    opened_files.get_mut(&key).unwrap().opened = opened;
+                }
+            }
         }
 
         FSRepr::Directory { path, children } => {
@@ -426,68 +453,117 @@ impl eframe::App for DataViewerApp {
             #[cfg(target_arch = "wasm32")]
             let height = window().unwrap().inner_height().unwrap().as_f64().unwrap() as f32;
 
-            
-            let plot = Plot::new("Histogram Plot").legend(Legend { 
-                text_style: egui::TextStyle::Body, 
-                background_alpha: 1.0, position: egui::plot::Corner::RightTop 
-            })
-            .height(height - 35.0);
-
-            plot.show(ui, |plot_ui| {
-
-                let bounds = plot_ui.plot_bounds();
-                left_border = bounds.min()[0] as f32;
-                right_border = bounds.max()[0] as f32;
-            
-                let lines = if opened_files.len() == 1 {
-                    let (_, cache) = opened_files[0];
-                    if !(cache.opened && cache.histogram.is_some()) {
-                        return;
-                    }
-                    let hist = cache.histogram.clone().unwrap();
-                    hist.channels.iter().map(|(ch_num, y)| {
-                        (format!("ch #{}", ch_num + 1), color_same_as_egui(*ch_num as usize), hist.step, hist.x.clone(), y.clone())
-                    }).collect::<Vec<_>>()
-                } else {
-                    opened_files.iter().enumerate()
-                    .filter(|(_, (_, cache))| {cache.histogram.is_some()})
-                    .map(|(idx, (filepath, cache))| {
-                        let hist = cache.histogram.clone().unwrap();
-
-                        let mut y_all = vec![0.0; hist.x.len()];
-                        for (_, y) in hist.channels {
-                            for (idx, val) in y.iter().enumerate() {
-                                y_all[idx] += val;
+        
+            match self.plot_mode {
+                PlotMode::Histogram => {
+                    let plot = Plot::new("Histogram Plot").legend(Legend { 
+                        text_style: egui::TextStyle::Body, 
+                        background_alpha: 1.0, position: egui::plot::Corner::RightTop 
+                    })
+                    .height(height - 35.0);
+        
+                    plot.show(ui, |plot_ui| {
+        
+                        let bounds = plot_ui.plot_bounds();
+                        left_border = bounds.min()[0] as f32;
+                        right_border = bounds.max()[0] as f32;
+                    
+                        let lines = if opened_files.len() == 1 {
+                            let (_, cache) = opened_files[0];
+                            if !(cache.opened && cache.histogram.is_some()) {
+                                return;
                             }
+                            let hist = cache.histogram.clone().unwrap();
+                            hist.channels.iter().map(|(ch_num, y)| {
+                                (format!("ch #{}", ch_num + 1), color_same_as_egui(*ch_num as usize), hist.step, hist.x.clone(), y.clone())
+                            }).collect::<Vec<_>>()
+                        } else {
+                            opened_files.iter().enumerate()
+                            .filter(|(_, (_, cache))| {cache.histogram.is_some()}) // TODO change to filtermap
+                            .map(|(idx, (filepath, cache))| {
+                                let hist = cache.histogram.clone().unwrap();
+        
+                                let mut y_all = vec![0.0; hist.x.len()];
+                                for (_, y) in hist.channels {
+                                    for (idx, val) in y.iter().enumerate() {
+                                        y_all[idx] += val;
+                                    }
+                                }
+        
+                                (filepath.to_string(), color_same_as_egui(idx), hist.step, hist.x, y_all)
+                            }).collect::<Vec<_>>()
+                        };
+        
+                        for (name, color, step, x, y) in lines {
+                            let mut events_in_window = 0;
+        
+                            let line_data = y.iter().enumerate().flat_map(|(idx, y)| {
+                                if x[idx] > left_border && x[idx] < right_border {
+                                    events_in_window += *y as i32;
+                                }
+                                [
+                                    [(x[idx] - step / 2.0)  as f64, *y as f64],
+                                    [(x[idx] + step / 2.0)  as f64, *y as f64]
+                                ]
+                            }).collect::<Vec<_>>();
+        
+                            plot_ui.line(Line::new(line_data)
+                            .width(if ctx.style().visuals.dark_mode { 1.0 } else { 2.0 })
+                            .color(color)
+                            .name(
+                                format!("{name}\t({events_in_window})")
+                            ))
                         }
-
-                        (filepath.to_string(), color_same_as_egui(idx), hist.step, hist.x, y_all)
-                    }).collect::<Vec<_>>()
-                };
-
-                for (name, color, step, x, y) in lines {
-                    let mut events_in_window = 0;
-
-                    let line_data = y.iter().enumerate().flat_map(|(idx, y)| {
-                        if x[idx] > left_border && x[idx] < right_border {
-                            events_in_window += *y as i32;
-                        }
-                        [
-                            [(x[idx] - step / 2.0)  as f64, *y as f64],
-                            [(x[idx] + step / 2.0)  as f64, *y as f64]
-                        ]
-                    }).collect::<Vec<_>>();
-
-                    plot_ui.line(Line::new(line_data)
-                    .width(if ctx.style().visuals.dark_mode { 1.0 } else { 2.0 })
-                    .color(color)
-                    .name(
-                        format!("{name}\t({events_in_window})")
-                    ))
+                    });
                 }
-            });
+                PlotMode::PPT => {
+                    let plot = Plot::new("Point/Time").legend(Legend { 
+                        text_style: egui::TextStyle::Body, 
+                        background_alpha: 1.0, position: egui::plot::Corner::RightTop 
+                    })
+                    .x_axis_formatter(|value, _| chrono::NaiveDateTime::from_timestamp_millis(value as i64).unwrap().to_string())
+                    .height(height - 35.0);
 
-            // TODO: move to separate function
+                    plot.show(ui, |plot_ui| {
+                        let points = opened_files.iter().filter_map(|(_, cache)| {
+                            if let FileCache { meta: Some(
+                                NumassMeta::Reply(Reply::AcquirePoint { 
+                                    start_time, .. }) ), histogram: Some(histogram), .. } = cache {
+                                
+                                let counts = histogram.channels.values().map(|ch| ch.iter().sum::<f32>()).sum::<f32>();
+                                Some([start_time.timestamp_millis() as f64, counts as f64])
+                            } else {
+                                None
+                            }
+                        }).collect::<Vec<_>>();
+ 
+                        plot_ui.points(Points::new(points).radius(3.0));
+                    });
+                }
+                PlotMode::PPV => {
+                    let plot = Plot::new("Point/Voltage").legend(Legend { 
+                        text_style: egui::TextStyle::Body, 
+                        background_alpha: 1.0, position: egui::plot::Corner::RightTop 
+                    })
+                    .height(height - 35.0);
+
+                    plot.show(ui, |plot_ui| {
+                        let points = opened_files.iter().filter_map(|(_, cache)| {
+                            if let FileCache { meta: Some(
+                                NumassMeta::Reply(Reply::AcquirePoint { 
+                                    external_meta: Some(external_meta), .. }) ), histogram: Some(histogram), .. } = cache {
+                                let voltage =  external_meta.get("HV1_value").unwrap().as_str().unwrap().parse::<f64>().unwrap();
+                                let counts = histogram.channels.values().map(|ch| ch.iter().sum::<f32>()).sum::<f32>();
+                                Some([voltage, counts as f64])
+                            } else {
+                                None
+                            }
+                        }).collect::<Vec<_>>();
+ 
+                        plot_ui.points(Points::new(points).radius(3.0));
+                    });
+                }
+            }
             
             ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
 
@@ -561,6 +637,11 @@ impl eframe::App for DataViewerApp {
                         window().unwrap().open_with_url(&format!("/?{search}")).unwrap();
                     }
                 }
+
+                // let mut plo = processing_params.algorithm;
+                ui.radio_value(&mut self.plot_mode, PlotMode::Histogram, "Hist");
+                ui.radio_value(&mut self.plot_mode, PlotMode::PPT, "PPT");
+                ui.radio_value(&mut self.plot_mode, PlotMode::PPV, "PPV");
             });
         });
     }

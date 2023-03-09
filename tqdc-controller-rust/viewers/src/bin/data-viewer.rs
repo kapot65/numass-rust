@@ -1,23 +1,22 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
 use viewers::app;
-
-#[cfg(not(target_arch = "wasm32"))]
-use {clap::Parser, std::path::PathBuf};
-#[cfg(not(target_arch = "wasm32"))]
-#[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
-struct Opt {
-    #[clap(long)]
-    directory: Option<PathBuf>,
-}
 
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() -> eframe::Result<()> {
-    use viewers::backend::expand_dir;
+    use viewers::{backend::expand_dir, CACHE_DIRECTORY};
+    use {clap::Parser, std::path::PathBuf};
+
+    #[derive(Parser, Debug)]
+    #[clap(author, version, about, long_about = None)]
+    struct Opt {
+        #[clap(long)]
+        directory: Option<PathBuf>,
+        #[clap(long)]
+        cache_directory: Option<String>,
+    }
 
     // abort programm if any of threads panic
     let orig_hook = std::panic::take_hook();
@@ -27,6 +26,13 @@ async fn main() -> eframe::Result<()> {
     }));
 
     let opt = Opt::parse();
+    if let Some(cache_directory) = opt.cache_directory {
+        if std::env::var(CACHE_DIRECTORY).is_err() {
+            std::env::set_var(CACHE_DIRECTORY, cache_directory)
+        } else {
+            panic!("cache directory is set via CLI and ENV at the same time!")
+        }
+    }
 
     // Log to stdout (if you run with `RUST_LOG=debug`).
     tracing_subscriber::fmt::init();

@@ -3,6 +3,8 @@ fn main() {
     todo!()
 }
 
+
+
 #[cfg(not(target_arch = "wasm32"))]
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -16,9 +18,19 @@ async fn main() -> std::io::Result<()> {
         web::{self, Data},
         App, HttpResponse, HttpServer, Responder,
     };
+    use clap::Parser;
 
-    use viewers::backend::{expand_dir, filter_events, process_file, ProcessRequest};
+    use viewers::{backend::{expand_dir, filter_events, process_file, ProcessRequest}, CACHE_DIRECTORY};
 
+    #[derive(Parser, Debug, Clone)]
+    #[clap(author, version, about, long_about = None)]
+    struct Opt {
+        directory: PathBuf,
+        #[clap(long, default_value_t = SocketAddr::from_str("0.0.0.0:8085").unwrap())]
+        address: SocketAddr,
+        #[clap(long)]
+        cache_directory: Option<String>,
+    }
 
     #[post("/api/process")]
     async fn process(request: web::Json<ProcessRequest>) -> impl Responder {
@@ -70,16 +82,16 @@ async fn main() -> std::io::Result<()> {
             )))
     }
 
-    use clap::Parser;
-    #[derive(Parser, Debug, Clone)]
-    #[clap(author, version, about, long_about = None)]
-    struct Opt {
-        directory: PathBuf,
-        #[clap(long, default_value_t = SocketAddr::from_str("0.0.0.0:8085").unwrap())]
-        address: SocketAddr,
+    let args = Opt::parse();
+
+    if let Some(cache_directory) = args.cache_directory {
+        if std::env::var(CACHE_DIRECTORY).is_err() {
+            std::env::set_var(CACHE_DIRECTORY, cache_directory)
+        } else {
+            panic!("cache directory is set via CLI and ENV at the same time!")
+        }
     }
 
-    let args = Opt::parse();
     HttpServer::new(move || {
         let app = App::new()
             .app_data(Data::new(args.directory.clone()))
