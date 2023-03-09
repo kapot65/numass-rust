@@ -58,7 +58,7 @@ fn main() {
 
     use std::io::Cursor;
 
-    use dataforge::{DFMessage, read_df_message_sync};
+    use dataforge::{read_df_message_sync, DFMessage};
     use eframe::web_sys::window;
     use gloo_net::http::Request;
     use viewers::{
@@ -140,7 +140,8 @@ fn main() {
                 .unwrap();
 
             let mut buf = Cursor::new(point_data);
-            let message: DFMessage<NumassMeta> = read_df_message_sync::<NumassMeta>(&mut buf).unwrap();
+            let message: DFMessage<NumassMeta> =
+                read_df_message_sync::<NumassMeta>(&mut buf).unwrap();
             let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
             let chunks = viewers::backend::point_to_chunks(point);
 

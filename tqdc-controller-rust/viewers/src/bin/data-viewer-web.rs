@@ -3,8 +3,6 @@ fn main() {
     todo!()
 }
 
-
-
 #[cfg(not(target_arch = "wasm32"))]
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -20,7 +18,10 @@ async fn main() -> std::io::Result<()> {
     };
     use clap::Parser;
 
-    use viewers::{backend::{expand_dir, filter_events, process_file, ProcessRequest}, CACHE_DIRECTORY};
+    use viewers::{
+        backend::{expand_dir, filter_events, process_file, ProcessRequest},
+        CACHE_DIRECTORY,
+    };
 
     #[derive(Parser, Debug, Clone)]
     #[clap(author, version, about, long_about = None)]
@@ -37,11 +38,9 @@ async fn main() -> std::io::Result<()> {
         let actix_web::web::Json(reqest) = request;
 
         match reqest {
-            ProcessRequest::CalcHist { filepath, params } => {
-                HttpResponse::Ok()
-                    .content_type(ContentType::json())
-                    .body(serde_json::to_string(&process_file(filepath, params)).unwrap())
-            }
+            ProcessRequest::CalcHist { filepath, params } => HttpResponse::Ok()
+                .content_type(ContentType::json())
+                .body(serde_json::to_string(&process_file(filepath, params)).unwrap()),
             ProcessRequest::FilterEvents {
                 filepath,
                 range,

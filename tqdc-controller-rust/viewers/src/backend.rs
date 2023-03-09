@@ -1,12 +1,15 @@
 use std::{collections::BTreeMap, ops::Range, path::PathBuf, time::SystemTime};
 
-#[cfg(not(target_arch = "wasm32"))] use {
+#[cfg(not(target_arch = "wasm32"))]
+use {
     dataforge::read_df_message,
-    processing::{convert_to_kev, frame_to_waveform, amplitudes_to_histogramm, waveform_to_event, extract_amplitudes},
+    processing::{
+        amplitudes_to_histogramm, convert_to_kev, extract_amplitudes, frame_to_waveform,
+        waveform_to_event,
+    },
     protobuf::Message,
-    std::path::Path
+    std::path::Path,
 };
-
 
 use numass::protos::rsb_event;
 use processing::{histogram::PointHistogram, ProcessingParams};
@@ -59,10 +62,11 @@ impl FSRepr {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn get_cache_key(root: &Path, filepath: &Path, params: &ProcessingParams) -> PathBuf {
-    let raw_key = format!("process_file-{}-{}-{}", 
-    filepath.as_os_str().to_str().unwrap(), 
-    serde_json::to_string(&params.algorithm).unwrap(),
-    params.convert_to_kev
+    let raw_key = format!(
+        "process_file-{}-{}-{}",
+        filepath.as_os_str().to_str().unwrap(),
+        serde_json::to_string(&params.algorithm).unwrap(),
+        params.convert_to_kev
     );
     let digest = md5::compute(raw_key);
     let key = hex::encode(digest.as_slice());
@@ -74,8 +78,7 @@ fn get_cache_key(root: &Path, filepath: &Path, params: &ProcessingParams) -> Pat
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn process_file(filepath: PathBuf, params: ProcessingParams) -> Option<FileCache> {
-
-    use dataforge::{DFMessage, read_df_message_sync, read_df_header_and_meta_sync};
+    use dataforge::{read_df_header_and_meta_sync, read_df_message_sync, DFMessage};
 
     use crate::CACHE_DIRECTORY;
 
@@ -86,17 +89,27 @@ pub fn process_file(filepath: PathBuf, params: ProcessingParams) -> Option<FileC
         get_cache_key(&root, &filepath, &params)
     });
 
-    let cached = cache_key.clone().filter(|cache_key| cache_key.exists()).map(|cache_key| {
-        let data = std::fs::read(cache_key).unwrap();
-        rmp_serde::from_slice::<Option<BTreeMap<u64, BTreeMap<usize, f32>>>>(&data).unwrap()
-    });
+    let cached = cache_key
+        .clone()
+        .filter(|cache_key| cache_key.exists())
+        .map(|cache_key| {
+            let data = std::fs::read(cache_key).unwrap();
+            rmp_serde::from_slice::<Option<BTreeMap<u64, BTreeMap<usize, f32>>>>(&data).unwrap()
+        });
 
     let amplitudes = cached.unwrap_or_else(|| {
         let mut point_file = std::fs::File::open(&filepath).unwrap();
-        if let Ok(DFMessage {meta: numass::NumassMeta::Reply(numass::Reply::AcquirePoint { .. }), data}) = read_df_message_sync::<numass::NumassMeta>(&mut point_file) {
-            
+        if let Ok(DFMessage {
+            meta: numass::NumassMeta::Reply(numass::Reply::AcquirePoint { .. }),
+            data,
+        }) = read_df_message_sync::<numass::NumassMeta>(&mut point_file)
+        {
             let point = rsb_event::Point::parse_from_bytes(&data.unwrap()[..]).unwrap(); // return None for bad parsing
-            let out = Some(extract_amplitudes(&point, &params.algorithm, params.convert_to_kev));
+            let out = Some(extract_amplitudes(
+                &point,
+                &params.algorithm,
+                params.convert_to_kev,
+            ));
 
             if let Some(cache_key) = &cache_key {
                 std::fs::write(cache_key, rmp_serde::to_vec(&out).unwrap()).unwrap()
@@ -108,16 +121,16 @@ pub fn process_file(filepath: PathBuf, params: ProcessingParams) -> Option<FileC
     });
 
     amplitudes.map(|amps| {
-
         // TODO: make all in a single file read
         let mut point_file = std::fs::File::open(&filepath).unwrap();
-        let (_, meta) = read_df_header_and_meta_sync::<numass::NumassMeta>(&mut point_file).unwrap();
+        let (_, meta) =
+            read_df_header_and_meta_sync::<numass::NumassMeta>(&mut point_file).unwrap();
 
         FileCache {
             opened: true,
             histogram: Some(amplitudes_to_histogramm(amps, params)),
             processed: Some(processed),
-            meta: Some(meta)
+            meta: Some(meta),
         }
     })
 }

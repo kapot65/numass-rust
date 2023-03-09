@@ -96,7 +96,7 @@ async fn check_run_state(
                 let acq = MlinkMessage::from_datagram(&buf[..len]);
                 match acq {
                         MlinkMessage::CtrlAck { header: _, regs } => {
-                            if regs.len() != 1 { 
+                            if regs.len() != 1 {
                                 Err(Report::msg(format!(
                                     "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {regs:?}")))
                             } else {

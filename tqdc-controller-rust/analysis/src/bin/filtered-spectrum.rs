@@ -81,7 +81,7 @@ async fn main() {
     let layout = Layout::new()
     .title(Title::new(format!("(event within ({range:?} keV) -> next event + time delta < 8 μs) spectrum for {filepath}").as_str()))
     .x_axis(Axis::new().title(Title::new("Amplitude, keV")))
-    
+
     .height(1000);
 
     plot.set_layout(layout);
