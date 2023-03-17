@@ -13,10 +13,14 @@ tokio = { version = "1.21.2", features = ["full"] }
 protobuf = "3.2.0"
 
 numass = { git = "ssh://git@bitbucket.org/Kapot/dataforge-parser-numass.git", tag = "0.1.1" }
-dataforge = { git = "ssh://git@bitbucket.org/Kapot/dataforge-parser-rust.git", tag = "0.1.1"  }
+dataforge = { git = "ssh://git@bitbucket.org/Kapot/dataforge-parser-rust.git", tag = "0.1.1", features = ["tokio"] }
 processing = { git = "ssh://git@bitbucket.org/Kapot/numass-processing", tag = "0.1.0" }
 
 linreg = "0.2.0"
 
+statrs = "0.16.0"
+
 plotters = "0.3.1"
 plotly = "0.8.3"
+unzip3 = "1.0.0"
+indicatif = "0.17.3"
