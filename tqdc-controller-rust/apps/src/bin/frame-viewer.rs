@@ -66,7 +66,11 @@ fn main() {
 
         sock.send_to(
             &MlinkMessage::to_datagram(&MlinkMessage::new_stream_acq(
-                0x0000, 0x0101, 0x0001, 0xFFFF, 0xFFFF,
+                0x0000, 
+                0x0001,
+                0xfefe,
+                0xFFFF, 
+                0xFFFF,
             )),
             tqdc_address,
         )
@@ -74,6 +78,8 @@ fn main() {
 
         let mut start = Instant::now();
         let mut counts = BTreeMap::new();
+        
+        let mut seq = 0;
 
         loop {
             let mut buf = [0; 4096 * 10];
@@ -85,15 +91,17 @@ fn main() {
                     if let Some(frame) = frames.first() {
                         sock.send_to(
                             &MlinkMessage::to_datagram(&MlinkMessage::new_stream_acq(
-                                header.seq,
-                                0x0101,
+                                seq,
                                 0x0001,
+                                0xfefe,
                                 frame.fragment_offset,
                                 frame.fragment_id,
                             )),
                             to_addr,
                         )
                         .unwrap();
+                        
+                        seq +=1;
 
                         let channels = frames
                             .iter()

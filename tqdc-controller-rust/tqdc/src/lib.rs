@@ -12,7 +12,7 @@ use tokio::net::UdpSocket;
 use tokio::time::{self, sleep, Duration};
 
 use mlink::{stream_to_acq_fast, CtrlReg, MStreamFragment, MlinkMessage};
-use regs::{as_run_state, DeviceCtrl, Register16, Register32, RunMode, RunState, TriggerCSR};
+use regs::{as_run_state, DeviceCtrl, Register16, Register32, RunMode, RunState, TriggerCSR, RunLogicControl};
 
 async fn start_acquisition(
     millis: u32,
@@ -20,37 +20,47 @@ async fn start_acquisition(
     tqdc_contol_addr: SocketAddr,
 ) -> Result<()> {
     let sock = UdpSocket::bind(host_control_addr).await?;
-
+    
     sock.send_to(
         &MlinkMessage::to_datagram(&MlinkMessage::new_ctrl_req(
             0x0000,
             0x0001,
             0xFEFE,
             vec![
-                CtrlReg::Write32 {
-                    address: Register32::TriggerEventNumLoad,
-                    value: 0,
-                },
-                CtrlReg::Write16 {
-                    address: Register16::TriggerCSR,
-                    value: TriggerCSR::CountReset as u16,
-                },
-                CtrlReg::Write16 {
-                    address: Register16::TriggerCSR,
-                    value: TriggerCSR::Exec as u16,
-                },
-                CtrlReg::Write32 {
-                    address: Register32::RunMode,
-                    value: RunMode::Time as u32,
-                },
-                CtrlReg::Write32 {
-                    address: Register32::TimeLimit,
-                    value: millis,
-                },
-                CtrlReg::Write16 {
-                    address: Register16::DeviceCtrl,
-                    value: DeviceCtrl::Run as u16,
-                },
+                
+            CtrlReg::Write16 {
+                address: Register16::RunLogicControl,
+                value: RunLogicControl::SoftClear as u16,
+            }, 
+            CtrlReg::Write16 {
+                address: Register16::RunLogicControl,
+                value: RunLogicControl::Stop as u16,
+            }, 
+            
+            CtrlReg::Write16 {
+                address: Register16::RunLogicRunMode,
+                value: RunMode::Time as u16,
+            },
+            CtrlReg::Write32 {
+                address: Register32::RunTimeLimit,
+                value: millis,
+            },
+            
+            
+            CtrlReg::Write16 {
+                address: Register16::RunLogicControl,
+                value: RunLogicControl::SoftClear as u16,
+            }, 
+            CtrlReg::Write16 {
+                address: Register16::RunLogicControl,
+                value: RunLogicControl::Stop as u16,
+            },
+            
+            
+            CtrlReg::Write16 {
+                address: Register16::RunLogicControl,
+                value: RunLogicControl::Run as u16,
+            },
             ],
         )),
         tqdc_contol_addr,
@@ -80,7 +90,7 @@ async fn check_run_state(
             0x0001,
             0xFEFE,
             vec![CtrlReg::Read16 {
-                address: Register16::RunState,
+                address: Register16::RunLogicRunState,
                 value: 0x0000,
             }],
         )),
@@ -103,7 +113,7 @@ async fn check_run_state(
                                 match &regs[0] {
                                     CtrlReg::Read16 { address, value } => {
                                         match address {
-                                            Register16::RunState => Ok(as_run_state(*value).wrap_err_with(|| {"as_run_state failed"})?),
+                                            Register16::RunLogicRunState => Ok(as_run_state(*value).wrap_err_with(|| {"as_run_state failed"})?),
                                             _ => Err(Report::msg(format!(
                                                 "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {address:?}")))
                                         }
@@ -135,8 +145,8 @@ async fn stop_acquisition(
             0x0001,
             0xFEFE,
             vec![CtrlReg::Write16 {
-                address: Register16::DeviceCtrl,
-                value: DeviceCtrl::Stop as u16,
+                address: Register16::RunLogicControl,
+                value: RunLogicControl::Stop as u16,
             }],
         )),
         tqdc_contol_addr,
@@ -177,19 +187,34 @@ async fn gather_frames(
         match tokio::time::timeout(
             Duration::from_millis(500),
             stream_socket.recv_from(&mut buf),
-        )
-        .await
+        ).await
         {
             Ok(received) => {
-                received?;
-                stream_socket
-                    .send_to(&stream_to_acq_fast(&buf), tqdc_stream_addr)
+                let message = MlinkMessage::from_datagram(&buf[..received?.0]);
+                
+                if let MlinkMessage::StreamReq { header, frames } = message {
+                    let frame = frames.first().unwrap();
+                    stream_socket
+                    .send_to(
+                        // &stream_to_acq_fast(&buf)
+                        &MlinkMessage::to_datagram(&MlinkMessage::new_stream_acq(
+                                header.seq,
+                                0x0001,
+                                0xfefe,
+                                frame.fragment_offset,
+                                frame.fragment_id,
+                        ))
+                        , 
+                        tqdc_stream_addr)
                     .await?;
+                }
                 frames.push(buf);
             }
             Err(_) => {
                 let state = check_run_state(host_control_addr, tqdc_contol_addr).await?;
 
+                println!("state: {state:?}");
+                
                 match state {
                     RunState::Finished => break,
                     RunState::InRun => {}

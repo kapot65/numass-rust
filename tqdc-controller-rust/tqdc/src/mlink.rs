@@ -39,7 +39,7 @@ impl MlinkMessage {
                 type_: MessageType::Stream,
                 sync: MessageSync::MlFrameSync,
                 seq,
-                len: 5,
+                len: 6,
                 src,
                 dst,
             },
@@ -128,7 +128,7 @@ impl MlinkMessage {
 
                 MlinkMessage::write_header(header, &mut buffer);
 
-                let word1 = (1 << 24 | 1 << 22) as u32;
+                let word1 = (1 << 24 | 1 << 18) as u32;
                 buffer.extend_from_slice(&word1.to_le_bytes());
 
                 let word2 = (*id as u32) << 16 | (*offset as u32);
@@ -295,7 +295,7 @@ impl MlinkMessage {
     }
 
     fn write_crc(buffer: &mut Vec<u8>) {
-        buffer.extend_from_slice(&[0, 0, 0, 0]);
+        buffer.extend_from_slice(&[0x49, 0x62, 0x20, 0x12]);
     }
 }
 
@@ -495,7 +495,7 @@ pub fn stream_to_acq_fast(datagram: &[u8]) -> [u8; 24] {
         0x2a, // sync
         datagram[4],
         datagram[5], // seq
-        5,
+        6,
         0, // size
         1,
         1, // src

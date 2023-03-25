@@ -1,6 +1,8 @@
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
+const RUN_LOGIC: isize = 0x0060;
+
 #[derive(EnumIter, Debug, Clone, Copy)]
 pub enum Register16 {
     // TODO: implement registers in rust enum way
@@ -15,7 +17,23 @@ pub enum Register16 {
     AdcMode = 0x305,
     Dac1Ctrl = 0x4200,
     Dac2Ctrl = 0x4201,
+    
+    
+    // new registes
+    RunLogicControl = RUN_LOGIC + 0x02,
+    RunLogicRunMode = RUN_LOGIC + 0x04,
+    
+    RunLogicRunState = RUN_LOGIC + 0x05 // TODO: remove runstate
+    
 }
+
+#[derive(Debug, Clone, Copy)]
+pub enum RunLogicControl {
+    Run = 0x8000,
+    SoftClear = 0x0001,
+    Stop = 0x0000, // TODO: better name?
+}
+
 
 #[derive(EnumIter, Debug, Clone, Copy)]
 pub enum Register32 {
@@ -27,6 +45,12 @@ pub enum Register32 {
     TdcChannelEnable1 = 0x200,
     TdcChannelEnable2 = 0x202,
     TdcTrigWinSetup = 0x226,
+    
+    
+    // New registers
+    RunTimeLimit = RUN_LOGIC + 0x06,
+    TriggerInfoLocalEventNumberLoadValue2 = 0x0a00 + 0x11,
+    
 }
 
 #[derive(Debug, Clone, Copy)]

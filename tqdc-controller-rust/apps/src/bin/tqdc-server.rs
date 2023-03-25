@@ -107,9 +107,10 @@ async fn acquire_point(
         afi_config
     } else {
         let home = home::home_dir().wrap_err_with(|| "unable to get home directory")?;
-        home.join::<std::path::PathBuf>(".config/AFI Electronics/TQDC2/TQDC2_default.ini".into())
+        home.join::<std::path::PathBuf>(".config/AFI Electronics/TQDC2/default/default.json".into())
     };
-    let config = Some(tqdc::get_tqdc_configuration(&config_filepath).await);
+
+    let config : Option<Value>= Some(serde_json::from_reader(std::fs::File::open(config_filepath).unwrap()).unwrap());
 
     let zero_suppression = if args.zero_suppression {
         Some(ZeroSuppressionParams {
