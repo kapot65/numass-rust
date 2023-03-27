@@ -41,6 +41,9 @@ struct Args {
 
     #[arg(long, default_value_t = 25)]
     count_rate_threshold: i16,
+
+    #[clap(long, short, action)]
+    correct_baseline: bool,
 }
 
 fn main() {
@@ -58,6 +61,7 @@ fn main() {
     let count_rate_bg = Arc::new(Mutex::new(BTreeMap::new()));
     let count_rate = Arc::clone(&count_rate_bg);
 
+    let correct_baseline = args.correct_baseline;
     std::thread::spawn(move || {
         let bind_address = SocketAddr::new(args.host_ip, args.host_stream_port);
         let tqdc_address = SocketAddr::new(args.tqdc_ip, args.tqdc_stream_port);
@@ -107,7 +111,9 @@ fn main() {
                             .iter()
                             .flat_map(|fragment| {
                                 fragment.channels.iter().map(|channel| {
-                                    let first = channel.waveform.iter().take(16).sum::<i16>() / 16;
+                                    let first = if correct_baseline {
+                                        channel.waveform.iter().take(16).sum::<i16>() / 16
+                                    } else { 0 };
 
                                     Waveform {
                                         ch_num: channel.channel_number,
