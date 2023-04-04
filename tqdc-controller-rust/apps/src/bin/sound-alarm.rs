@@ -27,7 +27,15 @@ struct Args {
     
     /// Maximum interval without new points (seconds)
     #[arg(long, default_value_t = 60)]
-    interval: i64
+    detector_interval: i64,
+    
+    /// Ignore detector last point  checking
+    #[arg(long)]
+    ignore_detector: bool,
+    
+    /// Ignore power failure check
+    #[arg(long)]
+    ignore_battery: bool
 }
 
 fn infinite_alarm_sound(err: &str) -> ! {
@@ -51,6 +59,11 @@ fn main() {
     let args = Args::parse();
     
     let last_point_hanler = std::thread::spawn(move || {
+        
+        if args.ignore_detector {
+            return;
+        }
+        
         let tcp = TcpStream::connect(args.detector_ssh_addr)
             .expect("failed to create TCP connection to detector");
         let mut sess = Session::new()
@@ -76,8 +89,8 @@ fn main() {
             };
             
             let delta_seconds = (Local::now().naive_local() - last_point_timestamp).num_seconds();    
-            if  delta_seconds > args.interval {
-                panic!("no new point in {} seconds", args.interval)
+            if  delta_seconds > args.detector_interval {
+                panic!("no new point in {} seconds", args.detector_interval)
             }
             
             std::thread::sleep(Duration::from_secs(10))
@@ -85,6 +98,10 @@ fn main() {
     });
     
     let battery_handler = std::thread::spawn(move || {
+        
+        if args.ignore_battery {
+            return;
+        }
         
         let manager = battery::Manager::new().expect("failed to create battery manager");
         
