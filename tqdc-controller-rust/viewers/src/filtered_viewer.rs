@@ -1,5 +1,22 @@
 use crate::{app::color_same_as_egui, backend::DeviceFrame};
 
+#[cfg(not(target_arch = "wasm32"))]
+use {
+    home::home_dir,
+    tokio::spawn,
+};
+
+#[cfg(target_arch = "wasm32")]
+use {
+    wasm_bindgen::prelude::*, wasm_bindgen_futures::spawn_local as spawn,
+};
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+extern "C" {
+    fn download(filename: &str, text: &str);
+}
+
 pub struct FilteredViewer {
     pub independent: Vec<(DeviceFrame, Vec<DeviceFrame>)>,
     pub current: usize,
@@ -32,7 +49,7 @@ impl eframe::App for FilteredViewer {
                 .as_f64()
                 .unwrap() as f32;
 
-            ui.style_mut().spacing.slider_width = width - 200.0;
+            ui.style_mut().spacing.slider_width = width - 250.0;
 
             ui.horizontal(|ui| {
                 ui.add(
@@ -46,8 +63,32 @@ impl eframe::App for FilteredViewer {
                     self.current += 1;
                 }
 
-                ui.label(format!("{:.3} ms", current.time as f64 / 1e6))
+                ui.label(format!("{:.3} ms", current.time as f64 / 1e6));
+
+                if ui.button("save").clicked() {
+
+
+                    let current = self.current;
+                    let independent = self.independent[self.current].clone();
+                    spawn(async move {
+
+                        let filepath = format!("filtered-{}.json", current);
+
+                        #[cfg(not(target_arch = "wasm32"))] {
+                            if let Some(save_folder) = rfd::FileDialog::new().set_directory(home_dir().unwrap()).pick_folder() {
+                                tokio::fs::write(
+                                    save_folder.join(filepath), 
+                                    serde_json::to_string_pretty(&independent).unwrap()).await.unwrap()
+                            }       
+                        }
+
+                        #[cfg(target_arch = "wasm32")] {
+                            download(filepath.as_str(), &serde_json::to_string_pretty(&independent).unwrap());
+                        }
+                    });
+                }
             });
+            
 
             eframe::egui::plot::Plot::new("waveforms")
                 .legend(eframe::egui::plot::Legend {
