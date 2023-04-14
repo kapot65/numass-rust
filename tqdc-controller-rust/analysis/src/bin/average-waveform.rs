@@ -2,9 +2,10 @@
 async fn main() {
     use {
         dataforge::read_df_message,
-        numass::{protos::rsb_event, NumassMeta},
         plotters::prelude::*,
-        processing::{correct_amp, find_first_peak, frame_to_waveform},
+        processing::{
+            numass::{protos::rsb_event, NumassMeta},
+            correct_amp, find_first_peak, frame_to_waveform},
         protobuf::Message,
     };
 

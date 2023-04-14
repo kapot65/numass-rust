@@ -31,8 +31,7 @@ use eframe::egui::{self, Ui};
 
 use egui::mutex::Mutex;
 use egui::plot::Points;
-use numass::{NumassMeta, Reply};
-use processing::{Algorithm, ProcessingParams};
+use processing::{Algorithm, ProcessingParams, numass::{NumassMeta, Reply}};
 
 use crate::backend::{FSRepr, FileCache};
 

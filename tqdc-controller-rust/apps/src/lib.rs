@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use tokio::io::AsyncWriteExt;
 
-use numass::{protos::rsb_event, ZeroSuppressionParams};
+use processing::numass::{protos::rsb_event, ZeroSuppressionParams};
 use tqdc::mlink::MStreamFragment;
 
 pub async fn events_to_point(

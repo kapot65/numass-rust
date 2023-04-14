@@ -3,9 +3,8 @@
 use std::path::{Path, PathBuf};
 
 use dataforge::read_df_message_sync;
-use numass::{NumassMeta, protos::rsb_event};
 use plotly::{Plot, Histogram, Layout, histogram::Bins, layout::BarMode};
-use processing::frame_to_waveform;
+use processing::{frame_to_waveform, numass::{NumassMeta, protos::rsb_event}};
 use protobuf::Message;
 
 use unzip_n::unzip_n;

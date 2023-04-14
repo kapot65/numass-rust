@@ -4,7 +4,7 @@ use clap::Parser;
 use protobuf::Message;
 
 use dataforge::{read_df_message_sync};
-use numass::{protos::rsb_event, NumassMeta};
+use processing::numass::{protos::rsb_event, NumassMeta};
 
 /// Converts DataForge point to raw binary format.
 /// Binary format: [time u64 le (2 bytes), channel_number u8 le (1 byte), waveform i16 le (150 bytes)]

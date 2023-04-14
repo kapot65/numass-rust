@@ -1,9 +1,8 @@
 use std::{path::PathBuf, sync::{Arc, Mutex}, collections::BTreeMap};
 
 use dataforge::DFMessage;
-use numass::protos::rsb_event::Point;
 use plotly::{Scatter, common::{ErrorData, ErrorType}, Plot};
-use processing::frame_to_waveform;
+use processing::{frame_to_waveform, numass::{self, protos::rsb_event::Point}};
 use protobuf::Message;
 
 use statrs::statistics::Statistics;

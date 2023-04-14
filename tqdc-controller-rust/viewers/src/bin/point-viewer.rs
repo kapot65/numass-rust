@@ -11,7 +11,7 @@ async fn main() {
     use protobuf::Message;
 
     use dataforge::read_df_message;
-    use numass::{protos::rsb_event, NumassMeta};
+    use processing::numass::{protos::rsb_event, NumassMeta};
 
     use viewers::{backend::point_to_chunks, point_viewer::PointViewer};
 

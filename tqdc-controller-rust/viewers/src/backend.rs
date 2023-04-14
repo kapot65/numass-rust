@@ -11,8 +11,7 @@ use {
     std::path::Path,
 };
 
-use numass::protos::rsb_event;
-use processing::{histogram::PointHistogram, ProcessingParams};
+use processing::{histogram::PointHistogram, ProcessingParams, numass::{self, protos::rsb_event}};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

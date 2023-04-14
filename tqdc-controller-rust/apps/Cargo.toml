@@ -10,10 +10,8 @@ tokio-timerfd = "0.2.0"
 
 [dependencies]
 tqdc = {path = "../tqdc"}
-numass = { git = "ssh://git@bitbucket.org/Kapot/dataforge-parser-numass.git", tag = "0.1.1" }
-dataforge = { git = "ssh://git@bitbucket.org/Kapot/dataforge-parser-rust.git", tag = "0.1.3", features = ["tokio"]  }
-
-processing = { git = "ssh://git@bitbucket.org/Kapot/numass-processing", tag = "0.1.0" }
+dataforge = { git = "https://bitbucket.org/Kapot/dataforge-parser-rust.git", tag = "0.1.3", features = ["tokio"]  }
+processing = { git = "https://bitbucket.org/Kapot/numass-processing", tag = "0.1.1" }
 
 tokio = { version = "1.21.2", features = ["full"] }
 

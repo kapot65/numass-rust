@@ -2,12 +2,13 @@
 async fn main() {
     use {
         dataforge::read_df_message,
-        numass::{protos::rsb_event, NumassMeta},
+        
         plotly::{
             common::{Line, LineShape},
             Plot, Scatter,
         },
         processing::{
+            numass::{protos::rsb_event, NumassMeta},
             convert_to_kev, frame_to_waveform, histogram::PointHistogram, waveform_to_event,
             Algorithm,
         },

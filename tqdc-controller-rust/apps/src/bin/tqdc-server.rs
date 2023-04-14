@@ -14,7 +14,7 @@ use serde_json::Value;
 
 use apps::events_to_point;
 use dataforge::{read_df_message, write_df_message};
-use numass::{NumassMeta, ZeroSuppressionParams};
+use processing::numass::{self, NumassMeta, ZeroSuppressionParams};
 
 use apps::defaults::{
     BOARD_IP, CONTROL_PORT, HOST_CONTROL_PORT, HOST_IP, HOST_STREAM_PORT, STREAM_PORT,

@@ -4,7 +4,7 @@ async fn main() {
     use protobuf::Message;
 
     use dataforge::read_df_message;
-    use numass::{protos::rsb_event, NumassMeta};
+    use processing::numass::{protos::rsb_event, NumassMeta};
 
     let filepath = "/data/2022_12/Tritium_7/set_1/p120(30s)(HV1=12000)";
     // let filepath = "/data/2022_12/Tritium_7/set_1/p0(30s)(HV1=14000)";

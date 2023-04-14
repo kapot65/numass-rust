@@ -1,8 +1,10 @@
 #[tokio::main]
 async fn main() {
     use {
-        numass::{protos::rsb_event, NumassMeta},
-        processing::{histogram::PointHistogram, waveform_to_event, Algorithm},
+        processing::{
+            histogram::PointHistogram, waveform_to_event, Algorithm,
+            numass::{protos::rsb_event, NumassMeta}
+        },
         protobuf::Message,
         std::{collections::HashMap, sync::Arc},
         tokio::sync::Mutex,
