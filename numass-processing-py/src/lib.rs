@@ -2,7 +2,7 @@ use {
     numpy::{ndarray::Dim, PyArray, PyArray2, PyArray1},
     pyo3::{prelude::*, exceptions::PyValueError},
     protobuf::Message,
-    numass::protos::rsb_event,
+    processing::numass::protos::rsb_event,
     processing::Algorithm
 };
 
