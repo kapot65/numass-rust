@@ -11,8 +11,8 @@ use tokio::io::AsyncReadExt;
 use tokio::net::UdpSocket;
 use tokio::time::{self, sleep, Duration};
 
-use mlink::{stream_to_acq_fast, CtrlReg, MStreamFragment, MlinkMessage};
-use regs::{as_run_state, DeviceCtrl, Register16, Register32, RunMode, RunState, TriggerCSR, RunLogicControl};
+use mlink::{CtrlReg, MStreamFragment, MlinkMessage};
+use regs::{as_run_state, Register16, Register32, RunMode, RunState, RunLogicControl};
 
 async fn start_acquisition(
     millis: u32,

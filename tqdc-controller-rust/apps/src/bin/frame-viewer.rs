@@ -91,7 +91,7 @@ fn main() {
             let message = MlinkMessage::from_datagram(&buf[..len]);
 
             match message {
-                MlinkMessage::StreamReq { header, frames } => {
+                MlinkMessage::StreamReq { frames, ..} => {
                     if let Some(frame) = frames.first() {
                         sock.send_to(
                             &MlinkMessage::to_datagram(&MlinkMessage::new_stream_acq(

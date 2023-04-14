@@ -1,5 +1,6 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use eframe::epaint::{Color32, Hsva};
 
@@ -41,7 +42,7 @@ pub fn color_same_as_egui(idx: usize) -> Color32 {
     Hsva::new(h, 0.85, 0.5, 1.0).into() // TODO(emilk): OkLab or some other perspective color space
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 pub enum PlotMode {
     Histogram,
     PPT,
@@ -52,14 +53,14 @@ pub struct DataViewerApp {
     pub root: Arc<Mutex<Option<FSRepr>>>,
     plot_mode: PlotMode,
     processing_params: Arc<Mutex<ProcessingParams>>,
-    state: Arc<Mutex<HashMap<String, FileCache>>>,
+    state: Arc<Mutex<BTreeMap<String, FileCache>>>,
 }
 
 impl DataViewerApp {
     pub fn new() -> Self {
         Self {
             root: Arc::new(Mutex::new(None)),
-            state: Arc::new(Mutex::new(HashMap::new())),
+            state: Arc::new(Mutex::new(BTreeMap::new())),
             processing_params: Arc::new(Mutex::new(processing::ProcessingParams::default())),
             plot_mode: PlotMode::Histogram,
         }
@@ -115,6 +116,7 @@ impl DataViewerApp {
 
             if ui.button("save").clicked() {
                 let state = self.state.lock().clone();
+                let plot_mode = self.plot_mode;
 
                 spawn(async move {
                     #[cfg(not(target_arch = "wasm32"))]
@@ -125,39 +127,123 @@ impl DataViewerApp {
                     let save_folder = Some(PathBuf::new());
 
                     if let Some(save_folder) = save_folder {
-                        for (name, cache) in state.iter() {
-                            if let Some(histogramm) = &cache.histogram {
-                                let point_name = {
-                                    let temp = PathBuf::from(name);
-                                    temp.file_name().unwrap().to_owned()
-                                };
+
+                        let state_sorted = {
+                            let mut state = state.iter().collect::<Vec<_>>();
+                            state.sort_by(|(key_1, _), (key_2, _)| natord::compare(key_1, key_2));
+                            state
+                        };
+
+                        match plot_mode {
+
+                            PlotMode::Histogram => {
+                                for (name, cache) in state_sorted.iter() {
+                                    if let Some(histogramm) = &cache.histogram {
+                                        let point_name = {
+                                            let temp = PathBuf::from(name);
+                                            temp.file_name().unwrap().to_owned()
+                                        };
+    
+                                        let mut data = String::new();
+                                        {
+                                            let mut row = String::new();
+                                            row.push_str("bin\t");
+                                            for ch_num in histogramm.channels.keys() {
+                                                row.push_str(&format!("ch {}\t", *ch_num + 1));
+                                            }
+                                            row.push('\n');
+    
+                                            data.push_str(&row);
+                                        }
+    
+                                        for (idx, bin) in histogramm.x.iter().enumerate() {
+                                            let mut row = String::new();
+    
+                                            row.push_str(&format!("{bin:.4}\t"));
+                                            for val in histogramm.channels.values() {
+                                                row.push_str(&format!("{}\t", val[idx]));
+                                            }
+                                            row.push('\n');
+                                            data.push_str(&row);
+                                        }
+    
+                                        let mut filepath = save_folder.clone();
+                                        filepath.push(point_name);
+    
+                                        #[cfg(not(target_arch = "wasm32"))]
+                                        {
+                                            let mut out_file = File::create(filepath).unwrap();
+                                            out_file.write_all(data.as_bytes()).unwrap();
+                                        }
+                                        #[cfg(target_arch = "wasm32")]
+                                        download(filepath.to_str().unwrap(), &data);
+                                    }
+                                }
+                            }
+
+                            PlotMode::PPT => {
 
                                 let mut data = String::new();
-
                                 {
-                                    let mut row = String::new();
-                                    row.push_str("bin\t");
-                                    for ch_num in histogramm.channels.keys() {
-                                        row.push_str(&format!("ch {}\t", *ch_num + 1));
-                                    }
-                                    row.push('\n');
-
-                                    data.push_str(&row);
+                                    data.push_str("path\ttime\tcounts\n");
                                 }
 
-                                for (idx, bin) in histogramm.x.iter().enumerate() {
-                                    let mut row = String::new();
+                                for (name, cache) in state_sorted.iter() {
 
-                                    row.push_str(&format!("{bin:.4}\t"));
-                                    for val in histogramm.channels.values() {
-                                        row.push_str(&format!("{}\t", val[idx]));
+                                    if let FileCache { meta: Some(
+                                        NumassMeta::Reply(Reply::AcquirePoint {
+                                            start_time, .. }) ), histogram: Some(histogram), .. } = cache {
+        
+                                            let point_name = {
+                                                let temp = PathBuf::from(name);
+                                                temp.file_name().unwrap().to_owned()
+                                            };
+
+                                            let counts = histogram.channels.values().map(|ch| ch.iter().sum::<f32>()).sum::<f32>();
+
+                                            data.push_str(&format!("{point_name:?}\t{start_time:?}\t{counts}\n"));
                                     }
-                                    row.push('\n');
-                                    data.push_str(&row);
                                 }
 
-                                let mut filepath = save_folder.clone();
-                                filepath.push(point_name);
+                                let mut filepath = save_folder;
+                                filepath.push("PPT.tsv");
+
+                                #[cfg(not(target_arch = "wasm32"))]
+                                {
+                                    let mut out_file = File::create(filepath).unwrap();
+                                    out_file.write_all(data.as_bytes()).unwrap();
+                                }
+                                #[cfg(target_arch = "wasm32")]
+                                download(filepath.to_str().unwrap(), &data);
+                            }
+                            PlotMode::PPV => {
+
+                                let mut data = String::new();
+                                {
+                                    data.push_str("path\tvoltage\tcounts\n");
+                                }
+    
+                                for (name, cache) in state_sorted.iter() {
+
+
+                                    if let FileCache { meta: Some(
+                                        NumassMeta::Reply(Reply::AcquirePoint {
+                                            external_meta: Some(external_meta), .. }) ), histogram: Some(histogram), .. } = cache {
+                                        let voltage =  external_meta.get("HV1_value").unwrap().as_str().unwrap().parse::<f64>().unwrap();
+                                        let counts = histogram.channels.values().map(|ch| ch.iter().sum::<f32>()).sum::<f32>();
+
+                                        let point_name = {
+                                            let temp = PathBuf::from(name);
+                                            temp.file_name().unwrap().to_owned()
+                                        };
+    
+                                        data.push_str(&format!("{point_name:?}\t{voltage}\t{counts}\n"));
+                                    }
+
+                                }
+
+                                let mut filepath = save_folder;
+                                filepath.push("PPV.tsv");
 
                                 #[cfg(not(target_arch = "wasm32"))]
                                 {
@@ -266,7 +352,7 @@ impl Default for DataViewerApp {
 fn file_tree_entry(
     ui: &mut egui::Ui,
     entry: &FSRepr,
-    opened_files: &mut HashMap<String, FileCache>,
+    opened_files: &mut BTreeMap<String, FileCache>,
 ) {
     match entry {
         FSRepr::File { path } => {

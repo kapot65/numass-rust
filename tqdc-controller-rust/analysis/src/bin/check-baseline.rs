@@ -39,7 +39,7 @@ async fn main() {
                         let mean = baseline.mean();
 
                         let mut baseline_plot =  baseline_plot.lock().unwrap();
-                        baseline_plot.entry(ch.id as u8).or_insert(vec![]).push((start_time, mean, dev / 2.0))
+                        baseline_plot.entry(ch.id as u8).or_insert(vec![]).push((start_time, mean, dev))
                     }
                 });
                 pb.lock().unwrap().inc(1)
