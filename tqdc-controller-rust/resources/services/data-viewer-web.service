@@ -2,7 +2,7 @@
 Description=Data Viewer
 
 [Service]
-ExecStart=/usr/local/bin/data-viewer-web /data/numass-server/2022_12 --address 0.0.0.0:80 --cache-directory /data/cache
+ExecStart=/usr/local/bin/data-viewer-web /data/numass-server/ --address 0.0.0.0:80 --cache-directory /data/cache
 Restart=on-failure
 RestartSec=1
 
