@@ -4,5 +4,6 @@ members = [
   "apps",
   "analysis",
   "tqdc",
-  "viewers"
+  "viewers",
+  "backend"
 ]

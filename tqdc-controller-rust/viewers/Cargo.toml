@@ -16,6 +16,8 @@ serde_json = "1.0.91"
 tracing = "0.1.37"
 rmp-serde = "1.1.1"
 
+backend = { path = "../backend" }
+
 processing = { git = "https://bitbucket.org/Kapot/numass-processing.git", tag = "0.1.1" }
 protobuf = "3.2.0"
 
@@ -32,13 +34,6 @@ dataforge = { git = "https://bitbucket.org/Kapot/dataforge-parser-rust.git", tag
 rfd = "0.11.1"
 home = "0.5.4"
 which = "4.4.0"
-
-actix-web = "4.3.0"
-actix-files = "0.6.2"
-mime = "0.3.16"
-
-md5 = "0.7.0"
-hex = "0.4.3"
 
 clap = "4.1.4"
 

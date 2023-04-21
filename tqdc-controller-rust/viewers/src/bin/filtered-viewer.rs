@@ -8,7 +8,8 @@ fn main() {
 #[tokio::main]
 async fn main() {
     use clap::Parser;
-    use viewers::{backend::filter_events, filtered_viewer::FilteredViewer};
+    use backend::filter_events;
+    use viewers::filtered_viewer::FilteredViewer;
 
     #[derive(Parser, Debug)]
     #[clap(author, version, about, long_about = None)]

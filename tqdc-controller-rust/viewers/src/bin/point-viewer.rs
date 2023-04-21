@@ -13,7 +13,8 @@ async fn main() {
     use dataforge::read_df_message;
     use processing::numass::{protos::rsb_event, NumassMeta};
 
-    use viewers::{backend::point_to_chunks, point_viewer::PointViewer};
+    use backend::point_to_chunks;
+    use viewers::point_viewer::PointViewer;
 
     #[derive(Parser, Debug)]
     #[clap(author, version, about, long_about = None)]

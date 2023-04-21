@@ -1,4 +1,5 @@
-use crate::{app::color_same_as_egui, backend::DeviceFrame};
+use crate::app::color_same_as_egui;
+use backend::DeviceFrame;
 
 #[cfg(not(target_arch = "wasm32"))]
 use {

@@ -6,7 +6,7 @@ use viewers::app;
 #[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() -> eframe::Result<()> {
-    use viewers::{backend::expand_dir, CACHE_DIRECTORY};
+    use backend::{expand_dir, CACHE_DIRECTORY};
     use {clap::Parser, std::path::PathBuf};
 
     #[derive(Parser, Debug)]
@@ -61,8 +61,8 @@ fn main() {
     use dataforge::{read_df_message_sync, DFMessage};
     use eframe::web_sys::window;
     use gloo_net::http::Request;
+    use backend::{DeviceFrame, ProcessRequest};
     use viewers::{
-        backend::{DeviceFrame, ProcessRequest},
         filtered_viewer, point_viewer,
     };
     use wasm_bindgen_futures::spawn_local;
@@ -143,7 +143,7 @@ fn main() {
             let message: DFMessage<NumassMeta> =
                 read_df_message_sync::<NumassMeta>(&mut buf).unwrap();
             let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
-            let chunks = viewers::backend::point_to_chunks(point);
+            let chunks = backend::point_to_chunks(point);
 
             eframe::start_web(
                 "the_canvas_id", // hardcode it

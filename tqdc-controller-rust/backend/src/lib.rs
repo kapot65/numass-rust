@@ -1,5 +1,7 @@
 use std::{collections::BTreeMap, ops::Range, path::PathBuf, time::SystemTime};
 
+pub const CACHE_DIRECTORY: &str = "CACHE_DIRECTORY";
+
 #[cfg(not(target_arch = "wasm32"))]
 use {
     dataforge::read_df_message,
@@ -78,8 +80,6 @@ fn get_cache_key(root: &Path, filepath: &Path, params: &ProcessingParams) -> Pat
 #[cfg(not(target_arch = "wasm32"))]
 pub fn process_file(filepath: PathBuf, params: ProcessingParams) -> Option<FileCache> {
     use dataforge::{read_df_header_and_meta_sync, read_df_message_sync, DFMessage};
-
-    use crate::CACHE_DIRECTORY;
 
     let processed = std::fs::metadata(&filepath).unwrap().modified().unwrap();
 

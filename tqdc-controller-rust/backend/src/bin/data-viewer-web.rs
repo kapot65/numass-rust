@@ -18,8 +18,8 @@ async fn main() -> std::io::Result<()> {
     };
     use clap::Parser;
 
-    use viewers::{
-        backend::{expand_dir, filter_events, process_file, ProcessRequest},
+    use backend::{
+        expand_dir, filter_events, process_file, ProcessRequest,
         CACHE_DIRECTORY,
     };
 

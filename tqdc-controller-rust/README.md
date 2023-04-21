@@ -9,18 +9,19 @@ sudo apt install libgtk-3-dev # (rfd)
 sudo apt install libfontconfig-dev
 sudo apt install build-essential
 
+## cross compilation
+1. install prerequirements
+    ```shell
+    sudo apt install podman
+    cargo install cross --locked
+    ```
+2. cross compile server
+    ```shell
+    cd viewers && trunk build --release --dist ../dist && cd ..
+    cross build --target x86_64-unknown-linux-gnu --release --bin data-viewer-web
+    scp target/x86_64-unknown-linux-gnu/release/data-viewer-web 192.168.111.1:~/
 
-зависимости для openSuse
-
-sudo zypper install gcc cmake
-sudo zypper install gcc-c++
-sudo zypper install libopenssl-devel
-libfontconfig1
-glib2-devel
-fontconfig-devel
-atk-devel
-gdk-pixbuf-devel (не нужно)
-gtk3-devel
-pango-devel
+    #move executable from home folder to /usr/local/bin and restart data-viewer-web service
+    ```
 
 

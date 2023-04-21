@@ -6,7 +6,7 @@ use eframe::epaint::{Color32, Hsva};
 
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    crate::backend::{expand_dir, process_file},
+    backend::{expand_dir, process_file},
     home::home_dir,
     std::fs::File,
     std::io::Write,
@@ -16,7 +16,7 @@ use {
 
 #[cfg(target_arch = "wasm32")]
 use {
-    crate::backend::ProcessRequest, eframe::web_sys::window, gloo_net::http::Request,
+    backend::ProcessRequest, eframe::web_sys::window, gloo_net::http::Request,
     wasm_bindgen::prelude::*, wasm_bindgen_futures::spawn_local as spawn,
 };
 
@@ -33,7 +33,7 @@ use egui::mutex::Mutex;
 use egui::plot::Points;
 use processing::{Algorithm, ProcessingParams, numass::{NumassMeta, Reply}};
 
-use crate::backend::{FSRepr, FileCache};
+use backend::{FSRepr, FileCache};
 
 pub fn color_same_as_egui(idx: usize) -> Color32 {
     let golden_ratio = (5.0_f32.sqrt() - 1.0) / 2.0; // 0.61803398875
