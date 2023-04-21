@@ -48,9 +48,17 @@ pub enum PlotMode {
     PPV,
 }
 
+#[derive(Clone, Copy)]
+struct ProcessingStatus {
+    pub running: bool,
+    pub total: usize,
+    pub processed: usize
+}
+
 pub struct DataViewerApp {
     pub root: Arc<Mutex<Option<FSRepr>>>,
     plot_mode: PlotMode,
+    processing_status: Arc<Mutex<ProcessingStatus>>,
     processing_params: Arc<Mutex<ProcessingParams>>,
     state: Arc<Mutex<BTreeMap<String, FileCache>>>,
 }
@@ -60,6 +68,8 @@ impl DataViewerApp {
         Self {
             root: Arc::new(Mutex::new(None)),
             state: Arc::new(Mutex::new(BTreeMap::new())),
+            processing_status: Arc::new(Mutex::new(ProcessingStatus { 
+                running: false, total: 0, processed: 0 })),
             processing_params: Arc::new(Mutex::new(processing::ProcessingParams::default())),
             plot_mode: PlotMode::Histogram,
         }
@@ -105,9 +115,20 @@ impl DataViewerApp {
                 }
             }
 
-            if ui.button("apply").clicked() {
+            let ProcessingStatus {
+                running, total, processed
+            } =  *self.processing_status.lock();
+
+            if running {
+                ui.horizontal(|ui| {
+                    ui.label(format!("{processed}/{total}"));
+                    ui.spinner();
+                });
+            } else if ui.button("apply").clicked() {
                 self.process()
             }
+
+            
 
             if ui.button("clear").clicked() {
                 self.state.lock().clear()
@@ -269,6 +290,8 @@ impl DataViewerApp {
         let params = *self.processing_params.lock();
         let state = Arc::clone(&self.state);
 
+        let status = Arc::clone(&self.processing_status);
+
         spawn(async move {
             // TODO: add conditional recalculation
             // let mut last_params = *processing_params.lock().await;
@@ -305,8 +328,16 @@ impl DataViewerApp {
                     .collect::<Vec<_>>()
             };
 
+            {
+                let mut status = status.lock();
+                status.total = files_to_processed.len();
+                status.processed = 0;
+                status.running = true
+            }
+
             for filepath in files_to_processed {
                 let configuration_local = state.clone();
+                let status = Arc::clone(&status);
                 spawn(async move {
                     #[cfg(not(target_arch = "wasm32"))]
                     let cache = { process_file(PathBuf::from(&filepath), params) };
@@ -336,6 +367,16 @@ impl DataViewerApp {
                             meta: None,
                         }),
                     );
+
+                    let mut status = status.lock();
+                    status.processed += 1;
+                    if status.processed == status.total {
+                        *status = ProcessingStatus {
+                            running: false,
+                            total: 0,
+                            processed: 0
+                        }
+                    }
                 });
             }
         });

@@ -129,7 +129,7 @@ fn main() {
             .unwrap()
             .set_title(filepath.to_str().unwrap());
         spawn_local(async move {
-            use numass::{protos::rsb_event, NumassMeta};
+            use processing::numass::{protos::rsb_event, NumassMeta};
             use protobuf::Message;
             let point_data = Request::get(&format!("/files{}", filepath.to_str().unwrap()))
                 .send()
