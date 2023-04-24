@@ -6,7 +6,7 @@ fn main() {
 #[cfg(not(target_arch = "wasm32"))]
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    use std::{net::SocketAddr, path::PathBuf, str::FromStr};
+    use std::{net::SocketAddr, path::PathBuf, str::FromStr, time::Duration};
 
     #[cfg(not(debug_assertions))]
     use actix_web::{get, web::Bytes};
@@ -118,6 +118,7 @@ async fn main() -> std::io::Result<()> {
             app
         }
     })
+    .keep_alive(Duration::from_secs(600))
     .bind(args.address)?
     .run()
     .await
