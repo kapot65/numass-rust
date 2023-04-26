@@ -1,20 +1,19 @@
-use std::{collections::BTreeMap, ops::Range, path::PathBuf, time::SystemTime};
+use std::{ops::Range, path::PathBuf, time::SystemTime};
 
-pub const CACHE_DIRECTORY: &str = "CACHE_DIRECTORY";
+use serde::{Deserialize, Serialize};
+
+use processing::{histogram::PointHistogram, ProcessingParams, numass, Algorithm};
 
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    dataforge::read_df_message,
     processing::{
-        amplitudes_to_histogramm, convert_to_kev, extract_amplitudes, frame_to_waveform,
-        waveform_to_event,
+        amplitudes_to_histogram, extract_amplitudes, numass::protos::rsb_event
     },
     protobuf::Message,
     std::path::Path,
 };
 
-use processing::{histogram::PointHistogram, ProcessingParams, numass::{self, protos::rsb_event}};
-use serde::{Deserialize, Serialize};
+pub const CACHE_DIRECTORY: &str = "CACHE_DIRECTORY";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FSRepr {
@@ -39,12 +38,14 @@ pub struct FileCache {
 pub enum ProcessRequest {
     CalcHist {
         filepath: PathBuf,
-        params: ProcessingParams,
+        processing: ProcessingParams,
     },
     FilterEvents {
         filepath: PathBuf,
         range: Range<f32>,
-        neigborhood: u64,
+        neighborhood: usize,
+        algorithm: Algorithm,
+        convert_kev: bool
     },
     SplitTimeChunks {
         filepath: PathBuf,
@@ -67,7 +68,7 @@ fn get_cache_key(root: &Path, filepath: &Path, params: &ProcessingParams) -> Pat
         "process_file-{}-{}-{}",
         filepath.as_os_str().to_str().unwrap(),
         serde_json::to_string(&params.algorithm).unwrap(),
-        params.convert_to_kev
+        params.post_processing.convert_to_kev
     );
     let digest = md5::compute(raw_key);
     let key = hex::encode(digest.as_slice());
@@ -79,6 +80,8 @@ fn get_cache_key(root: &Path, filepath: &Path, params: &ProcessingParams) -> Pat
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn process_file(filepath: PathBuf, params: ProcessingParams) -> Option<FileCache> {
+    use std::collections::BTreeMap;
+
     use dataforge::{read_df_header_and_meta_sync, read_df_message_sync, DFMessage};
 
     let processed = std::fs::metadata(&filepath).unwrap().modified().unwrap();
@@ -107,7 +110,7 @@ pub fn process_file(filepath: PathBuf, params: ProcessingParams) -> Option<FileC
             let out = Some(extract_amplitudes(
                 &point,
                 &params.algorithm,
-                params.convert_to_kev,
+                params.post_processing.convert_to_kev,
             ));
 
             if let Some(cache_key) = &cache_key {
@@ -127,13 +130,14 @@ pub fn process_file(filepath: PathBuf, params: ProcessingParams) -> Option<FileC
 
         FileCache {
             opened: true,
-            histogram: Some(amplitudes_to_histogramm(amps, params)),
+            histogram: Some(amplitudes_to_histogram(amps, params.post_processing, params.histogram)),
             processed: Some(processed),
             meta: Some(meta),
         }
     })
 }
 
+// TODO: move from backend to processing (to split backend and viewers crate)
 #[cfg(not(target_arch = "wasm32"))]
 pub fn expand_dir(path: PathBuf) -> Option<FSRepr> {
     let meta = std::fs::metadata(&path).unwrap();
@@ -155,140 +159,4 @@ pub fn expand_dir(path: PathBuf) -> Option<FSRepr> {
     } else {
         panic!()
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeviceFrame {
-    pub time: u64,
-    pub waveforms: BTreeMap<u8, Vec<i16>>,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub async fn filter_events(
-    path: &PathBuf,
-    range: &Range<f32>,
-    neigborhood: u64,
-) -> Vec<(DeviceFrame, Vec<DeviceFrame>)> {
-    let mut point_file = tokio::fs::File::open(&path).await.unwrap();
-    let message = read_df_message::<numass::NumassMeta>(&mut point_file)
-        .await
-        .unwrap();
-
-    let mut events: BTreeMap<u64, BTreeMap<u8, Vec<i16>>> = BTreeMap::new();
-
-    let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
-    for channel in &point.channels {
-        for block in &channel.blocks {
-            for frame in &block.frames {
-                let entry = events.entry(frame.time).or_default();
-                entry.insert(channel.id as u8, frame_to_waveform(frame));
-            }
-        }
-    }
-
-    let algorithm = processing::Algorithm::Likhovid { left: 6, right: 36 };
-
-    let events = events
-        .iter()
-        .map(|(time, waveforms)| (*time, waveforms.clone()))
-        .collect::<Vec<_>>();
-
-    events
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, (time, waveforms))| {
-            // if waveforms.len() != 1 || !waveforms.contains_key(&5) {
-            //     return None;
-            // }
-
-            if !waveforms
-                .iter()
-                .map(|(ch_id, waveform)| {
-                    let (_, amp) = waveform_to_event(waveform, &algorithm);
-                    convert_to_kev(&amp, *ch_id, &algorithm)
-                })
-                .any(|amp| range.contains(&amp))
-            {
-                return None;
-            }
-
-            let neighbors = {
-                let bounds = (*time - neigborhood)..(*time + neigborhood);
-                let mut neighbors = vec![];
-                let mut left = idx;
-                loop {
-                    if left == 0 {
-                        break;
-                    }
-                    if !bounds.contains(&events[left - 1].0) {
-                        break;
-                    }
-                    neighbors.push(DeviceFrame {
-                        time: events[left - 1].0,
-                        waveforms: events[left - 1].1.clone(),
-                    });
-                    left -= 1;
-                }
-                let mut right = idx;
-                loop {
-                    if right == events.len() - 1 {
-                        break;
-                    }
-                    if !bounds.contains(&events[right + 1].0) {
-                        break;
-                    }
-                    neighbors.push(DeviceFrame {
-                        time: events[right + 1].0,
-                        waveforms: events[right + 1].1.clone(),
-                    });
-                    right += 1;
-                }
-                neighbors
-            };
-            Some((
-                DeviceFrame {
-                    time: *time,
-                    waveforms: waveforms.clone(),
-                },
-                neighbors,
-            ))
-        })
-        .collect::<Vec<_>>()
-}
-
-pub fn point_to_chunks(point: rsb_event::Point) -> Vec<Vec<(u8, Vec<[f64; 2]>)>> {
-    let limit_ns = 1_000_000;
-
-    let mut chunks = vec![];
-    chunks.push(vec![]);
-
-    for channel in point.channels {
-        for block in channel.blocks {
-            for frame in block.frames {
-                let chunk_num = (frame.time / limit_ns) as usize;
-
-                while chunks.len() < chunk_num + 1 {
-                    chunks.push(vec![])
-                }
-
-                // TODO: Refactor with processing::frame_to_waveform
-                let waveform_len = frame.data.len() / 2;
-                let waveform = (0..waveform_len).map(|idx| {
-                    let x =
-                        (frame.time + 8u64 * (idx as u64) - (chunk_num as u64 * limit_ns)) as f64;
-                    let y = i16::from_le_bytes(frame.data[idx * 2..idx * 2 + 2].try_into().unwrap())
-                        as f64;
-                    [x / 1000.0, y]
-                });
-
-                let baseline = waveform.clone().take(16).map(|[_, y]| y).sum::<f64>() / 16.0;
-                chunks[chunk_num].push((
-                    channel.id as u8,
-                    waveform.map(|[x, y]| [x, y - baseline]).collect::<Vec<_>>(),
-                ))
-            }
-        }
-    }
-
-    chunks
 }

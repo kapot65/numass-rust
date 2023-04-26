@@ -288,7 +288,7 @@ pub async fn acquire_point(
     Ok(events)
 }
 
-// TODO: add error handling
+#[deprecated(since="0.1.0", note="new tqdc board saves configuration in json format")]
 pub async fn get_tqdc_configuration(path_to_config: &PathBuf) -> Value {
     let mut file = tokio::fs::File::open(path_to_config)
         .await

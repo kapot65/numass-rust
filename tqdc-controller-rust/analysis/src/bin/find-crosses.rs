@@ -1,9 +1,11 @@
 use eframe::epaint::{color::Hsva, Color32};
+use processing::ProcessedWaveform;
 
+// TODO: move to a single definition
 fn color_same_as_egui(idx: usize) -> Color32 {
     let golden_ratio = (5.0_f32.sqrt() - 1.0) / 2.0; // 0.61803398875
     let h = idx as f32 * golden_ratio;
-    Hsva::new(h, 0.85, 0.5, 1.0).into() // TODO(emilk): OkLab or some other perspective color space
+    Hsva::new(h, 0.85, 0.5, 1.0).into()
 }
 
 #[tokio::main]
@@ -12,7 +14,8 @@ async fn main() {
     use std::collections::BTreeMap;
 
     use dataforge::read_df_message;
-    use processing::numass::{protos::rsb_event, NumassMeta};
+    use processing::{frame_to_waveform, process_waveform,
+         numass::{protos::rsb_event, NumassMeta}};
 
     // let files = [
     //     "/data/numass-server/2022_12/Tritium_7/set_1/p52(30s)(HV1=15000)",
@@ -100,7 +103,7 @@ async fn main() {
                             for frame in &block.frames {
                                 let entry: &mut Vec<_> = crosses.entry(frame.time).or_default();
                                 entry
-                                    .push((channel.id as u8, processing::frame_to_waveform(frame)));
+                                    .push((channel.id as u8, process_waveform(&frame_to_waveform(frame)) ));
                                 counts[channel.id as usize] += 1;
                             }
                         }
@@ -203,7 +206,7 @@ async fn main() {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-type Waveform = (u8, Vec<i16>);
+type Waveform = (u8, ProcessedWaveform);
 
 #[cfg(not(target_arch = "wasm32"))]
 struct CrossesViewer {
@@ -281,7 +284,7 @@ impl eframe::App for CrossesViewer {
                         for (ch_num, waveform) in waveform {
                             plot_ui.line(
                                 eframe::egui::plot::Line::new(
-                                    waveform
+                                    waveform.0
                                         .iter()
                                         .enumerate()
                                         .map(|(x, y)| [x as f64, *y as f64])

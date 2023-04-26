@@ -54,22 +54,23 @@ async fn main() -> eframe::Result<()> {
 // when compiling to web using trunk.
 #[cfg(target_arch = "wasm32")]
 fn main() {
-    // Make sure panics are logged using `console.error`.
-
-    use std::io::Cursor;
-
-    use dataforge::{read_df_message_sync, DFMessage};
     use eframe::web_sys::window;
-    use gloo_net::http::Request;
-    use backend::{DeviceFrame, ProcessRequest};
+    use processing::point_to_chunks;
+    use backend::ProcessRequest;
     use viewers::{
-        filtered_viewer, point_viewer,
+        filtered_viewer, point_viewer, load_point,
     };
     use wasm_bindgen_futures::spawn_local;
+
+    // Make sure panics are logged using `console.error`.
     console_error_panic_hook::set_once();
 
     // Redirect tracing to console.log and friends:
     tracing_wasm::set_as_global_default();
+
+    fn set_title(title: &str) {
+        window().unwrap().document().unwrap().set_title(title)
+    }
 
     let request = match window().unwrap().location().search() {
         Ok(search) => {
@@ -83,39 +84,23 @@ fn main() {
     if let Some(ProcessRequest::FilterEvents {
         filepath,
         range,
-        neigborhood,
+        neighborhood,
+        algorithm,
+        convert_kev
     }) = request
     {
-        window().unwrap().document().unwrap().set_title(
-            format!("filtered {filepath:?} ({range:?} keV, {neigborhood} ns neigborhood)").as_str(),
-        );
-
+        set_title(format!("filtered {filepath:?}").as_str());
         spawn_local(async move {
-            let independent = rmp_serde::from_slice::<Vec<(DeviceFrame, Vec<DeviceFrame>)>>(
-                &Request::post("/api/process")
-                    .json(&ProcessRequest::FilterEvents {
-                        filepath,
-                        range,
-                        neigborhood,
-                    })
-                    .unwrap()
-                    .send()
-                    .await
-                    .unwrap()
-                    .binary()
-                    .await
-                    .unwrap(),
-            )
-            .unwrap();
-
             eframe::start_web(
                 "the_canvas_id", // hardcode it
                 web_options,
-                Box::new(|_| {
-                    let app = filtered_viewer::FilteredViewer {
-                        current: 0,
-                        independent,
-                    };
+                Box::new(move |_| {
+                    let app = filtered_viewer::FilteredViewer::init_with_point(
+                        filepath, 
+                        algorithm, 
+                        range, 
+                        convert_kev, 
+                        neighborhood);
                     Box::new(app)
                 }),
             )
@@ -123,27 +108,14 @@ fn main() {
             .expect("failed to start eframe");
         })
     } else if let Some(ProcessRequest::SplitTimeChunks { filepath }) = request {
-        window()
-            .unwrap()
-            .document()
-            .unwrap()
-            .set_title(filepath.to_str().unwrap());
-        spawn_local(async move {
-            use processing::numass::{protos::rsb_event, NumassMeta};
-            use protobuf::Message;
-            let point_data = Request::get(&format!("/files{}", filepath.to_str().unwrap()))
-                .send()
-                .await
-                .unwrap()
-                .binary()
-                .await
-                .unwrap();
 
-            let mut buf = Cursor::new(point_data);
-            let message: DFMessage<NumassMeta> =
-                read_df_message_sync::<NumassMeta>(&mut buf).unwrap();
-            let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
-            let chunks = backend::point_to_chunks(point);
+        set_title(filepath.to_str().unwrap());
+
+        spawn_local(async move {
+
+            // TODO: move inside PointViewer
+            let point = load_point(filepath).await;
+            let chunks = point_to_chunks(point);
 
             eframe::start_web(
                 "the_canvas_id", // hardcode it

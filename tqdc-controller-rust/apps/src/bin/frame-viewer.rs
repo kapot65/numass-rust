@@ -27,11 +27,11 @@ struct Args {
     #[arg(long, default_value_t = STREAM_PORT)]
     tqdc_stream_port: u16,
 
-    #[arg(long, default_value_t = 0)]
-    hist_min: i32,
+    #[arg(long, default_value_t = 0.0)]
+    hist_min: f32,
 
-    #[arg(long, default_value_t = 400)]
-    hist_max: i32,
+    #[arg(long, default_value_t = 400.0)]
+    hist_max: f32,
 
     #[arg(long, default_value_t = 400)]
     hist_bins: usize,
@@ -50,7 +50,7 @@ fn main() {
     let args = Args::parse();
 
     let histogram_bg = Arc::new(Mutex::new(PointHistogram::new(
-        (args.hist_min as f32, args.hist_max as f32),
+        args.hist_min..args.hist_max,
         args.hist_bins,
     )));
     let histogram = Arc::clone(&histogram_bg);

@@ -31,9 +31,11 @@ use eframe::egui::{self, Ui};
 
 use egui::mutex::Mutex;
 use egui::plot::Points;
-use processing::{Algorithm, ProcessingParams, numass::{NumassMeta, Reply}};
+use processing::{ProcessingParams, numass::{NumassMeta, Reply}};
 
 use backend::{FSRepr, FileCache};
+
+use crate::{algorithm_editor, post_processing_editor, histogram_params_editor};
 
 pub fn color_same_as_egui(idx: usize) -> Color32 {
     let golden_ratio = (5.0_f32.sqrt() - 1.0) / 2.0; // 0.61803398875
@@ -127,8 +129,6 @@ impl DataViewerApp {
             } else if ui.button("apply").clicked() {
                 self.process()
             }
-
-            
 
             if ui.button("clear").clicked() {
                 self.state.lock().clear()
@@ -287,20 +287,12 @@ impl DataViewerApp {
     }
 
     pub fn process(&self) {
-        let params = *self.processing_params.lock();
+        let params = self.processing_params.lock().clone();
         let state = Arc::clone(&self.state);
 
         let status = Arc::clone(&self.processing_status);
 
         spawn(async move {
-            // TODO: add conditional recalculation
-            // let mut last_params = *processing_params.lock().await;
-            // let need_recalc = if last_params != params {
-            //     last_params = params;
-            //     true
-            // } else {
-            //     false
-            // };
 
             let files_to_processed = {
                 state
@@ -338,15 +330,17 @@ impl DataViewerApp {
             for filepath in files_to_processed {
                 let configuration_local = state.clone();
                 let status = Arc::clone(&status);
+
+                let processing = params.clone();
                 spawn(async move {
                     #[cfg(not(target_arch = "wasm32"))]
-                    let cache = { process_file(PathBuf::from(&filepath), params) };
+                    let cache = { process_file(PathBuf::from(&filepath), processing) };
                     #[cfg(target_arch = "wasm32")]
                     let cache = {
                         let value = Request::post("/api/process")
                             .json(&ProcessRequest::CalcHist {
                                 filepath: PathBuf::from(&filepath),
-                                params,
+                                processing,
                             })
                             .unwrap()
                             .send()
@@ -441,122 +435,21 @@ fn file_tree_entry(
 }
 
 fn params_editor(ui: &mut Ui, processing_params: ProcessingParams) -> ProcessingParams {
-    let mut algorithm = processing_params.algorithm;
 
-    ui.horizontal(|ui| {
-        if ui
-            .add(egui::RadioButton::new(algorithm == Algorithm::Max, "Max"))
-            .clicked()
-        {
-            algorithm = Algorithm::Max
-        }
-
-        if ui
-            .add(egui::RadioButton::new(
-                matches!(algorithm, Algorithm::Likhovid { .. }),
-                "Likhovid",
-            ))
-            .clicked()
-        {
-            algorithm = Algorithm::default()
-        }
-    });
-
-    if let Algorithm::Likhovid { left, right } = algorithm {
-        ui.separator();
-        ui.label("Algorithm params");
-
-        let mut left = left;
-        ui.add(egui::Slider::new(&mut left, 0..=15).text("left"));
-        let mut right = right;
-        ui.add(egui::Slider::new(&mut right, 0..=40).text("right"));
-
-        algorithm = Algorithm::Likhovid { left, right }
-    }
+    let algorithm = algorithm_editor(ui, &processing_params.algorithm);
 
     ui.separator();
-    ui.label("Histogramm params");
 
-    let mut hist_min = processing_params.hist_min;
-    ui.add(egui::Slider::new(&mut hist_min, -10.0..=400.0).text("left"));
-    let mut hist_max = processing_params.hist_max;
-    ui.add(egui::Slider::new(&mut hist_max, -10.0..=400.0).text("right"));
-    let mut hist_bins = processing_params.hist_bins;
-    ui.add(egui::Slider::new(&mut hist_bins, 10..=2000).text("bins"));
+    let post_processing = post_processing_editor(ui, &processing_params.post_processing);
 
-    let mut convert_to_kev = processing_params.convert_to_kev;
-    ui.checkbox(&mut convert_to_kev, "convert to keV");
-
-    let mut use_dead_time = processing_params.use_dead_time;
-    let mut effective_dead_time = processing_params.effective_dead_time;
-
-    ui.checkbox(&mut use_dead_time, "use dead time");
-    ui.add_enabled(
-        use_dead_time,
-        egui::Slider::new(&mut effective_dead_time, 0..=10000).text("ns"),
-    );
-
-    let mut merge_close_events = processing_params.merge_close_events;
-    ui.checkbox(&mut merge_close_events, "merge close events");
-
-    let mut merge_map = processing_params.merge_map;
-    ui.collapsing("merge mapping", |ui| {
-        egui_extras::TableBuilder::new(ui)
-            // .auto_shrink([false, false])
-            .columns(egui_extras::Column::initial(15.0), 8)
-            .header(20.0, |mut header| {
-                header.col(|_| {});
-                for idx in 0..7 {
-                    header.col(|ui| {
-                        ui.label((idx + 1).to_string());
-                    });
-                }
-            })
-            .body(|mut body| {
-                for ch_1 in 0usize..7 {
-                    body.row(20.0, |mut row| {
-                        row.col(|ui| {
-                            ui.label(format!("{}<", ch_1 + 1));
-                        });
-                        for ch_2 in 0usize..7 {
-                            row.col(|ui| {
-                                if ch_1 == ch_2 {
-                                    let checkbox =
-                                        egui::Checkbox::new(&mut merge_map[ch_1][ch_2], "");
-                                    ui.add_enabled(false, checkbox);
-                                } else if ui.checkbox(&mut merge_map[ch_1][ch_2], "").changed()
-                                    && merge_map[ch_1][ch_2]
-                                {
-                                    merge_map[ch_2][ch_1] = false;
-                                }
-                            });
-                        }
-                    });
-                }
-            });
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            // TODO: add image to web
-            let image = egui_extras::image::RetainedImage::from_image_bytes(
-                "Detector.drawio.png",
-                include_bytes!("../resources/Detector.drawio.png"),
-            )
-            .unwrap();
-            image.show(ui);
-        }
-    });
     ui.separator();
+
+    let histogram = histogram_params_editor(ui, &processing_params.histogram);
 
     ProcessingParams {
         algorithm,
-        convert_to_kev,
-        hist_min,
-        hist_max,
-        use_dead_time,
-        effective_dead_time,
-        hist_bins,
-        merge_close_events,
-        merge_map,
+        post_processing,
+        histogram,
     }
 }
 
@@ -566,7 +459,7 @@ impl eframe::App for DataViewerApp {
 
         egui::SidePanel::left("left").show(ctx, |ui| {
             let mut processing_params = self.processing_params.lock();
-            *processing_params = params_editor(ui, *processing_params);
+            *processing_params = params_editor(ui, processing_params.clone());
             drop(processing_params);
             self.files_editor(ui);
         });
@@ -606,6 +499,7 @@ impl eframe::App for DataViewerApp {
                                 return;
                             }
                             let hist = cache.histogram.clone().unwrap();
+
                             hist.channels.iter().map(|(ch_num, y)| {
                                 (format!("ch #{}", ch_num + 1), color_same_as_egui(*ch_num as usize), hist.step, hist.x.clone(), y.clone())
                             }).collect::<Vec<_>>()
@@ -704,15 +598,8 @@ impl eframe::App for DataViewerApp {
                 #[cfg(target_arch = "wasm32")]
                 let filtered_viewer_in_path = true;
 
-                let algorithm_ok = {
-                    let params = self.processing_params.lock();
-                    let algorithm_ok = params.algorithm == Algorithm::Likhovid { left: 6, right: 36 } && params.convert_to_kev;
-                    drop(params);
-                    algorithm_ok
-                };
-
                 let filtered_viewer_button = ui.add_enabled(
-                    opened_files.len() == 1 && filtered_viewer_in_path && algorithm_ok,
+                    opened_files.len() == 1 && filtered_viewer_in_path,
                     egui::Button::new("waveforms (in window)")).on_disabled_hover_ui(|ui| {
                     if !filtered_viewer_in_path {
                         ui.colored_label(Color32::RED, "filtered-viewer must be in PATH");
@@ -720,24 +607,34 @@ impl eframe::App for DataViewerApp {
                     if opened_files.len() != 1 {
                         ui.colored_label(Color32::RED, "exact one file must be opened");
                     }
-                    if !algorithm_ok {
-                        ui.colored_label(Color32::RED, "params must be default (Algorithm::Likhovid { left: 6, right: 36 }, convert_to_kev)");
-                    }
                 });
+
+                let algorithm = self.processing_params.lock().algorithm;
+                let convert_kev = self.processing_params.lock().post_processing.convert_to_kev;
 
                 if filtered_viewer_button.clicked() {
                     let (filepath, _) = opened_files[0];
                     #[cfg(not(target_arch = "wasm32"))] {
-                        tokio::process::Command::new("filtered-viewer").arg(filepath)
+                        let mut command = tokio::process::Command::new("filtered-viewer");
+                        
+                        command.arg(filepath)
                         .arg("--min").arg(left_border.max(0.0).to_string())
                         .arg("--max").arg(right_border.max(0.0).to_string())
-                        .spawn().unwrap();
+                        .arg("--algorithm").arg(serde_json::to_string(&algorithm).unwrap());
+
+                        if convert_kev {
+                            command.arg("--convert-kev");
+                        }
+                        
+                        command.spawn().unwrap();
                     }
                     #[cfg(target_arch = "wasm32")] {
                         let search = serde_qs::to_string(&ProcessRequest::FilterEvents {
                             filepath: PathBuf::from(filepath),
+                            algorithm,
+                            convert_kev,
                             range: left_border.max(0.0)..right_border.max(0.0),
-                            neigborhood: 5000 }).unwrap();
+                            neighborhood: 5000 }).unwrap();
                         window().unwrap().open_with_url(&format!("/?{search}")).unwrap();
                     }
                 }

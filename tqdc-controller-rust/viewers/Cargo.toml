@@ -12,17 +12,21 @@ eframe = { version = "0.21.0" }
 
 serde = { version = "1.0.152", features = ["derive"] }
 serde_json = "1.0.91"
-
-tracing = "0.1.37"
+serde_qs = "0.11.0"
 rmp-serde = "1.1.1"
 
-backend = { path = "../backend" }
+tracing = "0.1.37"
 
-processing = { git = "https://bitbucket.org/Kapot/numass-processing.git", tag = "0.1.1" }
+backend = { path = "../backend" }
+processing = { git = "https://bitbucket.org/Kapot/numass-processing.git", tag = "0.1.2" }
+# processing = { path = "../../numass-processing" }
+
 protobuf = "3.2.0"
 
 chrono = "0.4.23"
 natord = "1.0.9"
+
+clap = "4.1.4"
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -35,14 +39,10 @@ rfd = "0.11.1"
 home = "0.5.4"
 which = "4.4.0"
 
-clap = "4.1.4"
-
 # web:
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 tracing-wasm = "0.2"
 console_error_panic_hook = "0.1.6"
-
-serde_qs = "0.11.0"
 
 wasm-bindgen = "0.2.84"
 wasm-bindgen-futures = "0.4"

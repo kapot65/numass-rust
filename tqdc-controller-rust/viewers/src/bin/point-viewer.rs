@@ -11,9 +11,7 @@ async fn main() {
     use protobuf::Message;
 
     use dataforge::read_df_message;
-    use processing::numass::{protos::rsb_event, NumassMeta};
-
-    use backend::point_to_chunks;
+    use processing::{numass::{protos::rsb_event, NumassMeta}, point_to_chunks};
     use viewers::point_viewer::PointViewer;
 
     #[derive(Parser, Debug)]
@@ -36,6 +34,7 @@ async fn main() {
         rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap()
     };
 
+    // TODO: move processing to PointViewer App
     let chunks = point_to_chunks(point);
 
     let native_options = eframe::NativeOptions::default();

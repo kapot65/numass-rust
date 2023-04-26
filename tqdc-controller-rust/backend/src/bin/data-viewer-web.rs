@@ -19,7 +19,7 @@ async fn main() -> std::io::Result<()> {
     use clap::Parser;
 
     use backend::{
-        expand_dir, filter_events, process_file, ProcessRequest,
+        expand_dir, process_file, ProcessRequest,
         CACHE_DIRECTORY,
     };
 
@@ -38,19 +38,9 @@ async fn main() -> std::io::Result<()> {
         let actix_web::web::Json(reqest) = request;
 
         match reqest {
-            ProcessRequest::CalcHist { filepath, params } => HttpResponse::Ok()
+            ProcessRequest::CalcHist { filepath, processing } => HttpResponse::Ok()
                 .content_type(ContentType::json())
-                .body(serde_json::to_string(&process_file(filepath, params)).unwrap()),
-            ProcessRequest::FilterEvents {
-                filepath,
-                range,
-                neigborhood,
-            } => HttpResponse::Ok()
-                .content_type(mime::APPLICATION_MSGPACK)
-                .body(
-                    rmp_serde::to_vec(&filter_events(&filepath, &range, neigborhood).await)
-                        .unwrap(),
-                ),
+                .body(serde_json::to_string(&process_file(filepath, processing)).unwrap()),
             _ => HttpResponse::BadRequest().body(""),
         }
     }

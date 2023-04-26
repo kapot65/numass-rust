@@ -2,7 +2,7 @@
 async fn main() {
     use std::collections::HashMap;
 
-    use processing::{convert_to_kev, waveform_to_event, Algorithm};
+    use processing::{convert_to_kev, waveform_to_event, process_waveform, frame_to_waveform, Algorithm};
     use protobuf::Message;
 
     use dataforge::read_df_message;
@@ -90,7 +90,7 @@ async fn main() {
                             for frame in &block.frames {
                                 let entry: &mut Vec<_> = crosses.entry(frame.time).or_default();
                                 entry
-                                    .push((channel.id as u8, processing::frame_to_waveform(frame)));
+                                    .push((channel.id as u8, process_waveform(&frame_to_waveform(frame))));
                             }
                         }
                     }

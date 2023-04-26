@@ -30,7 +30,7 @@ async fn main() {
                 point.channels.iter().for_each(|ch| {
                     let baseline = ch.blocks.iter().flat_map(|block| {
                         block.frames.iter().flat_map(|frame| {
-                            Vec::from(&frame_to_waveform(frame)[..16])
+                            Vec::from(&frame_to_waveform(frame).0[..16])
                         })
                     }).map(|val| val as f64).collect::<Vec<_>>();
                     if !baseline.is_empty() {

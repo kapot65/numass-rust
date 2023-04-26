@@ -9,6 +9,7 @@ async fn main() {
         },
         processing::{
             numass::{protos::rsb_event, NumassMeta},
+            process_waveform,
             convert_to_kev, frame_to_waveform, histogram::PointHistogram, waveform_to_event,
             Algorithm,
         },
@@ -36,7 +37,7 @@ async fn main() {
             for frame in &block.frames {
                 let entry: &mut Vec<_> = crosses.entry(frame.time).or_default();
 
-                let waveform = frame_to_waveform(frame);
+                let waveform = process_waveform(&frame_to_waveform(frame));
                 let amp = waveform_to_event(&waveform, &algorithm).1;
                 let amp = convert_to_kev(&amp, channel.id as u8, &algorithm);
 
@@ -45,7 +46,7 @@ async fn main() {
         }
     }
 
-    let mut hist = PointHistogram::new((0.0, 27.0), 270);
+    let mut hist = PointHistogram::new(0.0..27.0, 270);
 
     let central = crosses
         .iter()

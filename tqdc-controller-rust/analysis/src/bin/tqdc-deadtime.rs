@@ -4,7 +4,10 @@ async fn main() {
     use protobuf::Message;
 
     use dataforge::read_df_message;
-    use processing::numass::{protos::rsb_event, NumassMeta};
+    use processing::{
+        process_waveform, frame_to_waveform,
+        numass::{protos::rsb_event, NumassMeta}
+    };
 
     let filepath = "/data/2022_12/Tritium_7/set_1/p120(30s)(HV1=12000)";
     // let filepath = "/data/2022_12/Tritium_7/set_1/p0(30s)(HV1=14000)";
@@ -23,12 +26,11 @@ async fn main() {
         .flat_map(|channel| {
             channel.blocks.iter().flat_map(|block| {
                 block.frames.iter().map(|frame| {
-                    let waveform = processing::frame_to_waveform(frame);
-                    let baseline = waveform.iter().take(16).sum::<i16>() as f32 / 16.0;
+                    let waveform = process_waveform(&frame_to_waveform(frame));
                     let threshold = 10.0;
 
                     let x_offset =
-                        processing::find_first_peak(&waveform, threshold, baseline) as u64 * 8;
+                        processing::find_first_peak(&waveform, threshold) as u64 * 8;
                     frame.time + x_offset
                 })
             })

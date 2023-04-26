@@ -3,7 +3,9 @@ async fn main() {
     use std::collections::BTreeMap;
 
     use plotly::{common::Title, histogram::Bins, layout::Axis, Histogram, Layout, Plot};
-    use processing::{convert_to_kev, frame_to_waveform, waveform_to_event, numass::{protos::rsb_event, NumassMeta}};
+    use processing::{
+        process_waveform, ProcessedWaveform,
+        convert_to_kev, frame_to_waveform, waveform_to_event, numass::{protos::rsb_event, NumassMeta}};
     use protobuf::Message;
 
     use dataforge::read_df_message;
@@ -25,14 +27,14 @@ async fn main() {
         .await
         .unwrap();
 
-    let mut independent: BTreeMap<u64, BTreeMap<u8, Vec<i16>>> = BTreeMap::new();
+    let mut independent: BTreeMap<u64, BTreeMap<u8, ProcessedWaveform>> = BTreeMap::new();
 
     let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
     for channel in &point.channels {
         for block in &channel.blocks {
             for frame in &block.frames {
                 let entry = independent.entry(frame.time).or_default();
-                entry.insert(channel.id as u8, frame_to_waveform(frame));
+                entry.insert(channel.id as u8, process_waveform(&frame_to_waveform(frame)));
             }
         }
     }

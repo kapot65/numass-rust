@@ -1,57 +1,62 @@
-use chrono::{Local, NaiveDateTime};
-use clap::Parser;
-
-use std::io::Read;
-use std::net::TcpStream;
-use std::panic;
-use std::path::PathBuf;
-use std::time::Duration;
-use ssh2::Session;
-
-
-/// Watch power failure and detector last point timeout
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    /// Detector SSH address
-    #[arg(long, default_value = "192.168.111.140:22")]
-    detector_ssh_addr: std::net::SocketAddr,
-    
-    /// Detector SSH user (user ssh key must be in detector allowed keys)
-    #[arg(long, default_value = "chernov")]
-    detector_ssh_user: String,
-    
-    /// Detector points backup path
-    #[arg(long, default_value = "/data/tqdc-server-backup/")]
-    detector_backup_folder: PathBuf,
-    
-    /// Maximum interval without new points (seconds)
-    #[arg(long, default_value_t = 60)]
-    detector_interval: i64,
-    
-    /// Ignore detector last point  checking
-    #[arg(long)]
-    ignore_detector: bool,
-    
-    /// Ignore power failure check
-    #[arg(long)]
-    ignore_battery: bool
-}
-
-fn infinite_alarm_sound(err: &str) -> ! {
-    let failure_timestamp = Local::now().naive_local();
-    println!("{failure_timestamp} {err}");
-    
-    loop {
-        std::process::Command::new("speaker-test")
-            .args(["-t", "sine", "-f", "1000", "-l", "1"])
-            .output()
-            .unwrap();
-    }
-}
-
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#[cfg(target_arch = "wasm32")]
 fn main() {
-    
+    todo!()
+}
+#[cfg(not(target_arch = "wasm32"))]
+fn main() {
+    use chrono::{Local, NaiveDateTime};
+    use clap::Parser;
+
+    use std::io::Read;
+    use std::net::TcpStream;
+    use std::panic;
+    use std::path::PathBuf;
+    use std::time::Duration;
+    use ssh2::Session;
+
+
+    /// Watch power failure and detector last point timeout
+    #[derive(Parser, Debug)]
+    #[command(author, version, about, long_about = None)]
+    struct Args {
+        /// Detector SSH address
+        #[arg(long, default_value = "192.168.111.140:22")]
+        detector_ssh_addr: std::net::SocketAddr,
+        
+        /// Detector SSH user (user ssh key must be in detector allowed keys)
+        #[arg(long, default_value = "chernov")]
+        detector_ssh_user: String,
+        
+        /// Detector points backup path
+        #[arg(long, default_value = "/data/tqdc-server-backup/")]
+        detector_backup_folder: PathBuf,
+        
+        /// Maximum interval without new points (seconds)
+        #[arg(long, default_value_t = 60)]
+        detector_interval: i64,
+        
+        /// Ignore detector last point  checking
+        #[arg(long)]
+        ignore_detector: bool,
+        
+        /// Ignore power failure check
+        #[arg(long)]
+        ignore_battery: bool
+    }
+
+    fn infinite_alarm_sound(err: &str) -> ! {
+        let failure_timestamp = Local::now().naive_local();
+        println!("{failure_timestamp} {err}");
+        
+        loop {
+            std::process::Command::new("speaker-test")
+                .args(["-t", "sine", "-f", "1000", "-l", "1"])
+                .output()
+                .unwrap();
+        }
+    }
+
     panic::set_hook(Box::new(|info| {
         infinite_alarm_sound(&info.to_string())
     }));

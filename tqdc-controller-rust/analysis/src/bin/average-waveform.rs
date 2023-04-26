@@ -4,6 +4,7 @@ async fn main() {
         dataforge::read_df_message,
         plotters::prelude::*,
         processing::{
+            process_waveform, ProcessedWaveform,
             numass::{protos::rsb_event, NumassMeta},
             correct_amp, find_first_peak, frame_to_waveform},
         protobuf::Message,
@@ -11,8 +12,7 @@ async fn main() {
 
     #[derive(Debug, Clone)]
     struct WaveformNormed {
-        waveform: Vec<i16>,
-        baseline: f32,
+        waveform: ProcessedWaveform,
         bin: usize,
         x: f32,
         y: f32,
@@ -44,27 +44,27 @@ async fn main() {
         .iter()
         .map(|frame| {
             let waveform = frame_to_waveform(frame);
-            let baseline = waveform.iter().take(16).sum::<i16>() as f32 / 16.0;
+            let waveform = process_waveform(&waveform);
 
-            let bin = find_first_peak(&waveform, threshold, baseline);
+
+            let bin = find_first_peak(&waveform, threshold);
 
             let left = if bin == 0 {
-                waveform[bin + 1] as f32
+                waveform.0[bin + 1]
             } else {
-                waveform[bin - 1] as f32
+                waveform.0[bin - 1]
             };
-            let center = waveform[bin] as f32;
-            let right = if bin == waveform.len() - 1 {
+            let center = waveform.0[bin];
+            let right = if bin == waveform.0.len() - 1 {
                 left
             } else {
-                waveform[bin + 1] as f32
+                waveform.0[bin + 1]
             };
 
             let (x, y) = correct_amp(left, center, right);
 
             WaveformNormed {
                 waveform,
-                baseline,
                 bin,
                 x,
                 y,
@@ -74,7 +74,7 @@ async fn main() {
     let mut groups = vec![vec![]; 40];
 
     waveforms_ch6.for_each(|wf| {
-        let group = (wf.y - wf.baseline) / step;
+        let group = wf.y / step;
         if group < 40.0 {
             groups[group as usize].push(wf);
         }
@@ -111,7 +111,6 @@ async fn main() {
 
                 for WaveformNormed {
                     waveform,
-                    baseline,
                     bin,
                     x,
                     y: _,
@@ -120,14 +119,11 @@ async fn main() {
                     let offset_x = bin as f32 - 35.0 + x;
                     // let scale_y = y / 195.0;
 
-                    let x = (0..waveform.len())
+                    let x = (0..waveform.0.len())
                         .map(|x| x as f32 - offset_x)
                         .collect::<Vec<_>>();
 
-                    let y = waveform
-                        .iter()
-                        .map(|y| (*y as f32 - baseline) /* / scale_y */)
-                        .collect::<Vec<_>>();
+                    let y = waveform.0.to_vec();
 
                     let vals = x.iter().zip(y.iter());
 

@@ -1,10 +1,8 @@
-// use processing
-
 use std::path::{Path, PathBuf};
 
 use dataforge::read_df_message_sync;
 use plotly::{Plot, Histogram, Layout, histogram::Bins, layout::BarMode};
-use processing::{frame_to_waveform, numass::{NumassMeta, protos::rsb_event}};
+use processing::{frame_to_waveform, numass::{NumassMeta, protos::rsb_event}, process_waveform};
 use protobuf::Message;
 
 use unzip_n::unzip_n;
@@ -48,18 +46,8 @@ fn make_hist(point: &rsb_event::Point, ch_id: u64,  baseline: f32, coeff: f32) -
         for frame in &block.frames {
 
                 if channel.id == ch_id {
-
-                    let waveform = frame_to_waveform(frame);
-                    // waveform.iter().map(|amp| *amp as f32).collect::<Vec<_>>();
-
-                    // waveform.windows(kernel.len()).map(|window| {                
-                    //     let convolved = kernel.iter().enumerate().map(|(idx, coeff)| {
-                    //         window[idx] as f32 * coeff
-                    //     }).sum::<f32>();
-                    //     convolved
-                    // }).collect::<Vec<_>>();
-
-                    let amp = wafeform_to_amp(&waveform, baseline, coeff);
+                    let waveform = process_waveform(&frame_to_waveform(frame));
+                    let amp = wafeform_to_amp(&waveform.0, baseline, coeff);
 
                     amps.push(amp)
                 }

@@ -2,6 +2,7 @@
 async fn main() {
     use {
         processing::{
+            process_waveform, frame_to_waveform,
             histogram::PointHistogram, waveform_to_event, Algorithm,
             numass::{protos::rsb_event, NumassMeta}
         },
@@ -54,7 +55,7 @@ async fn main() {
                         .await
                         .unwrap();
 
-                    let mut histogram = PointHistogram::new((0.0, 400.0), 400);
+                    let mut histogram = PointHistogram::new(0.0..400.0, 400);
 
                     let point =
                         rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
@@ -64,7 +65,7 @@ async fn main() {
                             .iter()
                             .flat_map(|block| {
                                 block.frames.iter().map(|frame| {
-                                    let waveform = processing::frame_to_waveform(frame);
+                                    let waveform = process_waveform(&frame_to_waveform(frame));
                                     let (_, y) = waveform_to_event(&waveform, &algorithm);
                                     y
                                 })
