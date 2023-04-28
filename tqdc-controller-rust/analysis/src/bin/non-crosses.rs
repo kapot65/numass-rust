@@ -2,7 +2,7 @@
 async fn main() {
     use std::collections::HashMap;
 
-    use processing::{convert_to_kev, waveform_to_event, process_waveform, frame_to_waveform, Algorithm};
+    use processing::{convert_to_kev, waveform_to_events, process_waveform, frame_to_waveform, Algorithm};
     use protobuf::Message;
 
     use dataforge::read_df_message;
@@ -156,17 +156,15 @@ async fn main() {
     //     (waveforms[0].0 + 1, waveforms[1].0 + 1)
     // }).collect::<Vec<_>>());
 
-    let algorithm = Algorithm::Likhovid { left: 6, right: 36 };
+    let algorithm = Algorithm::default();
     let non_crosses_amps = double_non_crosses
         .map(|(_, waveforms)| {
             waveforms
                 .iter()
                 .map(|(ch_id, waveform)| {
-                    convert_to_kev(
-                        &waveform_to_event(waveform, &algorithm).1,
-                        *ch_id,
-                        &algorithm,
-                    )
+                    waveform_to_events(waveform, &algorithm).iter().map(|(_, amp)| {
+                        convert_to_kev(amp, *ch_id, &algorithm)
+                    }).sum::<f32>()
                 })
                 .sum::<f32>()
         })

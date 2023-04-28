@@ -2,7 +2,7 @@ use std::{ops::Range, path::PathBuf, sync::Arc, collections::BTreeMap, borrow::B
 
 use crate::{app::color_same_as_egui, algorithm_editor, load_point};
 use egui::{mutex::Mutex, plot::PlotUi};
-use processing::{Algorithm, frame_to_waveform, convert_to_kev, ProcessedWaveform, process_waveform};
+use processing::{Algorithm, frame_to_waveform, convert_to_kev, ProcessedWaveform, process_waveform, waveform_to_events};
 use serde::Serialize;
 use serde_json::json;
 
@@ -126,15 +126,14 @@ impl FilteredViewer {
             if let Some(events) = events.lock().as_mut() { 
                 events.iter_mut().for_each(|ProcessedDeviceFrame { channels, .. }| {
                     channels.iter_mut().for_each(|(ch_id, processed)| {
-
-                        let (time, pos) = processing::waveform_to_event(&processed.waveform, &algorithm);
-                        let pos = if convert_kev {
-                            convert_to_kev(&pos, *ch_id, &algorithm)
-                        } else {
-                            pos
-                        };
-
-                        processed.peaks = Some(vec![[time as f64 / 8.0, pos as f64]])
+                        processed.peaks =  Some(waveform_to_events(&processed.waveform, &algorithm).iter().map(|(time, pos)|{
+                            let pos = if convert_kev {
+                                convert_to_kev(pos, *ch_id, &algorithm)
+                            } else {
+                                *pos
+                            };
+                            [*time as f64 / 8.0, pos as f64]
+                        }).collect::<Vec<_>>());
                     })
                 });
             }

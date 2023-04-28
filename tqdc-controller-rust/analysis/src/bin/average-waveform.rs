@@ -42,33 +42,34 @@ async fn main() {
         .blocks[0]
         .frames
         .iter()
-        .map(|frame| {
+        .filter_map(|frame| {
             let waveform = frame_to_waveform(frame);
             let waveform = process_waveform(&waveform);
 
-
             let bin = find_first_peak(&waveform, threshold);
-
-            let left = if bin == 0 {
-                waveform.0[bin + 1]
-            } else {
-                waveform.0[bin - 1]
-            };
-            let center = waveform.0[bin];
-            let right = if bin == waveform.0.len() - 1 {
-                left
-            } else {
-                waveform.0[bin + 1]
-            };
-
-            let (x, y) = correct_amp(left, center, right);
-
-            WaveformNormed {
-                waveform,
-                bin,
-                x,
-                y,
-            }
+            bin.map(|bin| {
+                // TODO: remind what this code does and document it
+                let left = if bin == 0 {
+                    waveform.0[bin + 1]
+                } else {
+                    waveform.0[bin - 1]
+                };
+                let center = waveform.0[bin];
+                let right = if bin == waveform.0.len() - 1 {
+                    left
+                } else {
+                    waveform.0[bin + 1]
+                };
+    
+                let (x, y) = correct_amp(left, center, right);
+    
+                WaveformNormed {
+                    waveform,
+                    bin,
+                    x,
+                    y,
+                }
+            })
         });
 
     let mut groups = vec![vec![]; 40];

@@ -289,7 +289,6 @@ impl DataViewerApp {
     pub fn process(&self) {
         let params = self.processing_params.lock().clone();
         let state = Arc::clone(&self.state);
-
         let status = Arc::clone(&self.processing_status);
 
         spawn(async move {

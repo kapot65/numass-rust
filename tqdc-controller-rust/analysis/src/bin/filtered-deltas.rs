@@ -5,7 +5,7 @@ async fn main() {
     use plotly::{common::Title, histogram::Bins, layout::Axis, Histogram, Layout, Plot};
     use processing::{
         process_waveform, ProcessedWaveform,
-        convert_to_kev, frame_to_waveform, waveform_to_event, numass::{protos::rsb_event, NumassMeta}};
+        convert_to_kev, frame_to_waveform, waveform_to_events, numass::{protos::rsb_event, NumassMeta}};
     use protobuf::Message;
 
     use dataforge::read_df_message;
@@ -39,7 +39,7 @@ async fn main() {
         }
     }
 
-    let algorithm = processing::Algorithm::Likhovid { left: 6, right: 36 };
+    let algorithm = processing::Algorithm::default();
 
     let deltas = independent
         .iter()
@@ -52,15 +52,21 @@ async fn main() {
                 return None;
             }
 
-            let (_, amp) = waveform_to_event(&waveforms[&5], &algorithm);
+            let events = waveform_to_events(&waveforms[&5], &algorithm);
 
-            let amp_kev = convert_to_kev(&amp, 5, &algorithm);
-
-            if !(range.contains(&amp_kev)) {
+            if events.is_empty() {
                 None
             } else {
-                let (time_2, _) = pair[1];
-                Some(time_2 - time_1)
+                // TODO: correct algorithm for multiple events
+                let amp = events[0].1;
+                let amp_kev = convert_to_kev(&amp, 5, &algorithm);
+
+                if !(range.contains(&amp_kev)) {
+                    None
+                } else {
+                    let (time_2, _) = pair[1];
+                    Some(time_2 - time_1)
+                }
             }
         })
         .collect::<Vec<_>>();

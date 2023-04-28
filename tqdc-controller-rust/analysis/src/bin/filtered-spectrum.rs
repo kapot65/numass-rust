@@ -5,7 +5,7 @@ async fn main() {
     use plotly::{common::Title, histogram::Bins, layout::Axis, Histogram, Layout, Plot};
     use processing::{
         process_waveform, ProcessedWaveform,
-        convert_to_kev, frame_to_waveform, waveform_to_event, numass::{protos::rsb_event, NumassMeta}};
+        convert_to_kev, frame_to_waveform, waveform_to_events, numass::{protos::rsb_event, NumassMeta}};
     use protobuf::Message;
 
     use dataforge::read_df_message;
@@ -39,7 +39,7 @@ async fn main() {
         }
     }
 
-    let algorithm = processing::Algorithm::Likhovid { left: 6, right: 36 };
+    let algorithm = processing::Algorithm::default();
 
     let deltas = independent
         .iter()
@@ -51,8 +51,9 @@ async fn main() {
             let mut amps = vec![];
 
             for (ch, waveform) in waveforms {
-                let (_, amp) = waveform_to_event(waveform, &algorithm);
-                amps.push(convert_to_kev(&amp, *ch, &algorithm));
+                waveform_to_events(waveform, &algorithm).iter().for_each(|(_, amp)| {
+                    amps.push(convert_to_kev(amp, *ch, &algorithm));
+                });
             }
 
             if !(amps.iter().any(|amp| range.contains(amp))) {
@@ -63,8 +64,9 @@ async fn main() {
                     Some(amps)
                 } else {
                     for (ch, waveform) in waveforms_2 {
-                        let (_, amp) = waveform_to_event(waveform, &algorithm);
-                        amps.push(convert_to_kev(&amp, *ch, &algorithm));
+                        waveform_to_events(waveform, &algorithm).iter().for_each(|(_, amp)| {
+                            amps.push(convert_to_kev(amp, *ch, &algorithm));
+                        });
                     }
                     Some(amps)
                 }

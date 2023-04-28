@@ -142,20 +142,40 @@ pub fn algorithm_editor(ui: &mut Ui, algorithm: &Algorithm) -> Algorithm {
         {
             algorithm = Algorithm::default()
         }
+
+        if ui
+            .add(egui::RadioButton::new(
+                matches!(algorithm, Algorithm::FirstPeak { .. }),
+                "FirstPeak",
+            ))
+            .clicked()
+        {
+            algorithm = Algorithm::FirstPeak { threshold: 10, left: 8 }
+        }
     });
 
-    if let Algorithm::Likhovid { left, right } = algorithm {
+    match algorithm {
+        Algorithm::Max => {
+            algorithm
+        }
+        Algorithm::Likhovid { left, right } => {
+            let mut left = left;
+            ui.add(egui::Slider::new(&mut left, 0..=30).text("left"));
+            let mut right = right;
+            ui.add(egui::Slider::new(&mut right, 0..=40).text("right"));
 
-        let mut left = left;
-        ui.add(egui::Slider::new(&mut left, 0..=30).text("left"));
-        let mut right = right;
-        ui.add(egui::Slider::new(&mut right, 0..=40).text("right"));
+            Algorithm::Likhovid { left, right }
+        }
+        Algorithm::FirstPeak { threshold, left } => {
 
-        algorithm = Algorithm::Likhovid { left, right }
+            let mut left = left;
+            ui.add(egui::Slider::new(&mut left, 0..=30).text("left"));
+
+            let mut threshold = threshold;
+            ui.add(egui::Slider::new(&mut threshold, 0..=400).text("threshold"));
+            Algorithm::FirstPeak { threshold, left }
+        }
     }
-
-    algorithm
-
 }
 
 pub async fn load_point(filepath: PathBuf) -> rsb_event::Point {

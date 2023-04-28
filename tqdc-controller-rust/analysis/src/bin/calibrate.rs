@@ -3,7 +3,7 @@ async fn main() {
     use {
         processing::{
             process_waveform, frame_to_waveform,
-            histogram::PointHistogram, waveform_to_event, Algorithm,
+            histogram::PointHistogram, waveform_to_events, Algorithm,
             numass::{protos::rsb_event, NumassMeta}
         },
         protobuf::Message,
@@ -11,34 +11,79 @@ async fn main() {
         tokio::sync::Mutex,
     };
 
-    let algorithm = Algorithm::Max;
-    // let algorithm = Algorithm::Likhovid { left: 6, right: 36 };
+    // let algorithm = Algorithm::Max;
+    // let algorithm = Algorithm::Likhovid { left: 15, right: 36 };
+
+    // let points = [
+    //     (
+    //         6.0,
+    //         "/data/numass-server/2022_12/Electrode_4/set_1/p2(200s)(HV1=6000)",
+    //     ),
+    //     (
+    //         12.0,
+    //         "/data/numass-server/2022_12/Electrode_4/set_1/p5(200s)(HV1=12000)",
+    //     ),
+    //     (
+    //         14.0,
+    //         "/data/numass-server/2022_12/Electrode_4/set_1/p6(200s)(HV1=14000)",
+    //     ),
+    //     (
+    //         16.0,
+    //         "/data/numass-server/2022_12/Electrode_4/set_1/p7(200s)(HV1=16000)",
+    //     ),
+    //     (
+    //         18.0,
+    //         "/data/numass-server/2022_12/Electrode_4/set_1/p8(200s)(HV1=18000)",
+    //     ),
+    //     (
+    //         20.0,
+    //         "/data/numass-server/2022_12/Electrode_4/set_1/p9(200s)(HV1=20000)",
+    //     ),
+    // ];
+
+    let algorithm = Algorithm::FirstPeak { threshold: 10, left: 8 };
 
     let points = [
         (
+            3.0,
+            "/data/numass-server/2023_03/Electrode_2/set_1/p0(200s)(HV1=3000)",
+        ),
+        (
+            4.0,
+            "/data/numass-server/2023_03/Electrode_2/set_1/p1(200s)(HV1=4000)",
+        ),
+        (
             6.0,
-            "/data/numass-server/2022_12/Electrode_4/set_1/p2(200s)(HV1=6000)",
+            "/data/numass-server/2023_03/Electrode_2/set_1/p2(200s)(HV1=6000)",
+        ),
+        (
+            8.0,
+            "/data/numass-server/2023_03/Electrode_2/set_1/p3(200s)(HV1=8000)",
+        ),
+        (
+            10.0,
+            "/data/numass-server/2023_03/Electrode_2/set_1/p4(200s)(HV1=10000)",
         ),
         (
             12.0,
-            "/data/numass-server/2022_12/Electrode_4/set_1/p5(200s)(HV1=12000)",
+            "/data/numass-server/2023_03/Electrode_2/set_1/p5(200s)(HV1=12000)",
         ),
         (
             14.0,
-            "/data/numass-server/2022_12/Electrode_4/set_1/p6(200s)(HV1=14000)",
+            "/data/numass-server/2023_03/Electrode_2/set_1/p6(200s)(HV1=14000)",
         ),
         (
             16.0,
-            "/data/numass-server/2022_12/Electrode_4/set_1/p7(200s)(HV1=16000)",
+            "/data/numass-server/2023_03/Electrode_2/set_1/p7(200s)(HV1=16000)",
         ),
         (
             18.0,
-            "/data/numass-server/2022_12/Electrode_4/set_1/p8(200s)(HV1=18000)",
+            "/data/numass-server/2023_03/Electrode_2/set_1/p8(200s)(HV1=18000)",
         ),
-        (
-            20.0,
-            "/data/numass-server/2022_12/Electrode_4/set_1/p9(200s)(HV1=20000)",
-        ),
+        // (
+        //     20.0,
+        //     "/data/numass-server/2022_12/Electrode_2/set_1/p9(200s)(HV1=20000)",
+        // ),
     ];
 
     let calibration_data: Arc<Mutex<HashMap<u8, Vec<_>>>> = Arc::new(Mutex::new(HashMap::new()));
@@ -64,10 +109,11 @@ async fn main() {
                             .blocks
                             .iter()
                             .flat_map(|block| {
-                                block.frames.iter().map(|frame| {
+                                block.frames.iter().flat_map(|frame| {
                                     let waveform = process_waveform(&frame_to_waveform(frame));
-                                    let (_, y) = waveform_to_event(&waveform, &algorithm);
-                                    y
+                                    waveform_to_events(&waveform, &algorithm).iter().map(|(_, amp)| {
+                                        *amp
+                                    }).collect::<Vec<_>>()
                                 })
                             })
                             .collect::<Vec<_>>();

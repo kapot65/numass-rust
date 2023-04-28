@@ -18,7 +18,7 @@ rmp-serde = "1.1.1"
 tracing = "0.1.37"
 
 backend = { path = "../backend" }
-processing = { git = "https://bitbucket.org/Kapot/numass-processing.git", tag = "0.1.2" }
+processing = { git = "https://bitbucket.org/Kapot/numass-processing.git", tag = "0.1.3" }
 # processing = { path = "../../numass-processing" }
 
 protobuf = "3.2.0"

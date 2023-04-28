@@ -25,13 +25,14 @@ async fn main() {
         .iter()
         .flat_map(|channel| {
             channel.blocks.iter().flat_map(|block| {
-                block.frames.iter().map(|frame| {
+                block.frames.iter().filter_map(|frame| {
                     let waveform = process_waveform(&frame_to_waveform(frame));
                     let threshold = 10.0;
 
-                    let x_offset =
-                        processing::find_first_peak(&waveform, threshold) as u64 * 8;
-                    frame.time + x_offset
+                    processing::find_first_peak(&waveform, threshold).map(|x| {
+                        let x_offset = x as u64 * 8;
+                        frame.time + x_offset
+                    })
                 })
             })
         })

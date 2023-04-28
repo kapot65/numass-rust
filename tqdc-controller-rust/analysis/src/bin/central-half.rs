@@ -10,7 +10,7 @@ async fn main() {
         processing::{
             numass::{protos::rsb_event, NumassMeta},
             process_waveform,
-            convert_to_kev, frame_to_waveform, histogram::PointHistogram, waveform_to_event,
+            convert_to_kev, frame_to_waveform, histogram::PointHistogram, waveform_to_events,
             Algorithm,
         },
         protobuf::Message,
@@ -30,18 +30,16 @@ async fn main() {
 
     let mut crosses = BTreeMap::new();
 
-    let algorithm = Algorithm::Likhovid { left: 6, right: 36 };
+    let algorithm = Algorithm::default();
 
     for channel in &point.channels {
         for block in &channel.blocks {
             for frame in &block.frames {
                 let entry: &mut Vec<_> = crosses.entry(frame.time).or_default();
-
                 let waveform = process_waveform(&frame_to_waveform(frame));
-                let amp = waveform_to_event(&waveform, &algorithm).1;
-                let amp = convert_to_kev(&amp, channel.id as u8, &algorithm);
-
-                entry.push((channel.id as u8, amp));
+                waveform_to_events(&waveform, &algorithm).iter().for_each(|(_, amp)| {
+                    entry.push((channel.id as u8, convert_to_kev(amp, channel.id as u8, &algorithm)));
+                });
             }
         }
     }
