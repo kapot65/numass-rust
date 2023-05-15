@@ -62,6 +62,7 @@ impl FSRepr {
     }
 }
 
+// TODO: implement better caching algorithm
 #[cfg(not(target_arch = "wasm32"))]
 fn get_cache_key(root: &Path, filepath: &Path, params: &ProcessingParams) -> PathBuf {
     let raw_key = format!(
@@ -123,7 +124,6 @@ pub fn process_file(filepath: PathBuf, params: ProcessingParams) -> Option<FileC
     });
 
     amplitudes.map(|amps| {
-        // TODO: make all in a single file read
         let mut point_file = std::fs::File::open(&filepath).unwrap();
         let (_, meta) =
             read_df_header_and_meta_sync::<numass::NumassMeta>(&mut point_file).unwrap();
@@ -137,7 +137,6 @@ pub fn process_file(filepath: PathBuf, params: ProcessingParams) -> Option<FileC
     })
 }
 
-// TODO: move from backend to processing (to split backend and viewers crate)
 #[cfg(not(target_arch = "wasm32"))]
 pub fn expand_dir(path: PathBuf) -> Option<FSRepr> {
     let meta = std::fs::metadata(&path).unwrap();
