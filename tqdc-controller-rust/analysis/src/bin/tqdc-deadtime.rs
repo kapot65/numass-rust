@@ -9,7 +9,8 @@ async fn main() {
         numass::{protos::rsb_event, NumassMeta}
     };
 
-    let filepath = "/data/2022_12/Tritium_7/set_1/p120(30s)(HV1=12000)";
+    let filepath = "/data/numass-server/2023_03/Tritium_1/set_1/p118(30s)(HV1=12000)";
+    // let filepath = "/data/2022_12/Tritium_7/set_1/p120(30s)(HV1=12000)";
     // let filepath = "/data/2022_12/Tritium_7/set_1/p0(30s)(HV1=14000)";
     // let filepath = "/data/2022_12/Tritium_7/set_1/p6(30s)(HV1=18100)";
 
