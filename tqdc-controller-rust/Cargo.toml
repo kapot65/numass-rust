@@ -5,3 +5,9 @@ members = [
   "analysis",
   "tqdc"
 ]
+
+[patch."https://bitbucket.org/Kapot/dataforge-parser-rust.git"]
+dataforge = { path = "../dataforge-parser-rust" }
+
+[patch."https://bitbucket.org/Kapot/numass-processing.git"]
+processing = { path = "../numass-processing" }
