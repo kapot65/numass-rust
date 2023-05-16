@@ -1,6 +1,6 @@
 use {
     numpy::{ndarray::Dim, PyArray, PyArray2, PyArray1},
-    pyo3::{prelude::*, exceptions::PyValueError},
+    pyo3::prelude::*,
     protobuf::Message,
     processing::numass::protos::rsb_event,
     processing::Algorithm
@@ -11,21 +11,10 @@ type PyProcessedPoint<'py> = (&'py PyArray<u64, Dim<[usize; 1]>>, &'py PyArray<f
 #[pymodule]
 fn py_numass(_py: Python, m: &PyModule) -> PyResult<()> {
 
-    #[pyfn(m)]
     fn point_to_amps<'py>(
-            py: Python<'py>, point_data: &[u8], algorithm: Option<&str>, likhovid_range: Option<[usize; 2]>,
-            convert_to_kev: Option<bool>,) -> Result<PyProcessedPoint<'py>, PyErr> {
-        let algorithm =  match algorithm {
-            None => Algorithm::default(),
-            Some("max") => Algorithm::Max,
-            Some("likhovid") => {
-                let [left, right] = likhovid_range.unwrap_or([6, 36]);
-                Algorithm::Likhovid { left, right }
-            },
-            Some(_) => Err(PyValueError::new_err("algorithm must be 'max' or 'likhovid' "))?
-        };
-        let convert_to_kev = convert_to_kev.unwrap_or(true);
-
+        py: Python<'py>, point_data: &[u8], 
+        algorithm: Algorithm, convert_to_kev: bool
+    ) -> Result<PyProcessedPoint<'py>, PyErr> {
         let point = rsb_event::Point::parse_from_bytes(point_data).unwrap();
 
         let amplitudes = processing::extract_amplitudes(
@@ -49,6 +38,49 @@ fn py_numass(_py: Python, m: &PyModule) -> PyResult<()> {
             }
         });
         Ok((times, amps))
+    }
+
+    #[pyfn(m)]
+    fn point_to_amps_max<'py>(
+        py: Python<'py>, 
+        point_data: &[u8], 
+        convert_to_kev: Option<bool>
+    ) -> Result<PyProcessedPoint<'py>, PyErr> {
+
+        let algorithm = Algorithm::Max;
+        let convert_to_kev = convert_to_kev.unwrap_or(true);
+        point_to_amps(py, point_data, algorithm, convert_to_kev)
+    }
+
+    #[pyfn(m)]
+    fn point_to_amps_likhovid<'py>(
+        py: Python<'py>, point_data: &[u8], 
+        left: Option<usize>, right: Option<usize>, 
+        convert_to_kev: Option<bool>
+    ) -> Result<PyProcessedPoint<'py>, PyErr> {
+        
+        let algorithm = {
+            let left = left.unwrap_or(15);
+            let right = right.unwrap_or(35);
+            Algorithm::Likhovid { left, right }
+        };
+        let convert_to_kev = convert_to_kev.unwrap_or(true);
+        point_to_amps(py, point_data, algorithm, convert_to_kev)
+    }
+
+    #[pyfn(m)]
+    fn point_to_amps_firstpeak<'py>(
+        py: Python<'py>, point_data: &[u8], 
+        threshold: Option<i16>, left: Option<usize>,
+        convert_to_kev: Option<bool>
+    ) -> Result<PyProcessedPoint<'py>, PyErr> {
+        let algorithm = {
+            let left = left.unwrap_or(8);
+            let threshold = threshold.unwrap_or(10);
+            Algorithm::FirstPeak { threshold,  left }
+        };
+        let convert_to_kev = convert_to_kev.unwrap_or(true);
+        point_to_amps(py, point_data, algorithm, convert_to_kev)
     }
 
     Ok(())
