@@ -6,6 +6,24 @@ pub extern crate numass;
 use {histogram::PointHistogram, numass::protos::rsb_event, std::collections::BTreeMap};
 pub mod histogram;
 
+#[cfg(feature = "egui")]
+use egui::{Color32, epaint::Hsva, plot::{PlotUi, Line}};
+
+#[cfg(feature = "egui")]
+pub fn color_for_index(idx: usize) -> Color32 {
+    let golden_ratio = (5.0_f32.sqrt() - 1.0) / 2.0; // 0.61803398875
+    let h = idx as f32 * golden_ratio;
+    Hsva::new(h, 0.85, 0.5, 1.0).into()
+}
+
+#[cfg(feature = "plotly")]
+pub fn color_for_index_str(idx: usize) -> String {
+    let golden_ratio = (5.0_f32.sqrt() - 1.0) / 2.0; // 0.61803398875
+    let h = idx as f32 * golden_ratio;
+    let h = h * 360.0;
+    format!("hsl({}, 85%, 50%)", h)
+}
+
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct ProcessingParams {
     pub algorithm: Algorithm,
@@ -119,35 +137,45 @@ const KEV_COEFF_LIKHOVID: [[f32; 2]; 7] = [
     ],
 ];
 
+// const KEV_COEFF_FIRST_PEAK: [[f32; 2]; 7] = [
+//     [
+//         0.30209273,
+//         0.058135986,
+//     ],
+//     [
+//         0.25891086,
+//         -0.0007972717,
+//     ],
+//     [
+//         0.2746626,
+//         -0.036146164,
+//     ],
+//     [
+//         0.27816013,
+//         0.050985336,
+//     ],
+//     [
+//         0.28441244,
+//         -0.08033466,
+//     ],
+//     [
+//         0.27044022,
+//         0.05974865,
+//     ],
+//     [
+//         0.2477852,
+//         -0.06184864,
+//     ],
+// ];
+
 const KEV_COEFF_FIRST_PEAK: [[f32; 2]; 7] = [
-    [
-        0.30209273,
-        0.058135986,
-    ],
-    [
-        0.25891086,
-        -0.0007972717,
-    ],
-    [
-        0.2746626,
-        -0.036146164,
-    ],
-    [
-        0.27816013,
-        0.050985336,
-    ],
-    [
-        0.28441244,
-        -0.08033466,
-    ],
-    [
-        0.27044022,
-        0.05974865,
-    ],
-    [
-        0.2477852,
-        -0.06184864,
-    ],
+    [0.30209273, -0.022],
+    [0.25891086, -0.0007972717],
+    [0.2746626, -0.036146164],
+    [0.27816013, 0.081],
+    [0.28441244, -0.0133],
+    [0.27044022, -0.01026],
+    [0.2477852, -0.0318],
 ];
 
 pub fn extract_amplitudes(point: &rsb_event::Point, algorithm: &Algorithm, to_kev: bool) -> BTreeMap<u64, BTreeMap<usize, f32>> {
@@ -159,7 +187,7 @@ pub fn extract_amplitudes(point: &rsb_event::Point, algorithm: &Algorithm, to_ke
             for frame in &block.frames {
                 let entry = amplitudes.entry(frame.time).or_insert(BTreeMap::new());
 
-                let waveform = process_waveform(&frame_to_waveform(frame));
+                let waveform = process_waveform(frame);
 
                 for (_, amp) in waveform_to_events(&waveform, algorithm) {
                     let amp = if to_kev {
@@ -218,23 +246,99 @@ pub fn amplitudes_to_histogram(
     histogram
 }
 
+// TODO: add channel id
 #[derive(Debug, Clone)]
 pub struct RawWaveform(pub Vec<i16>);
 
-pub fn frame_to_waveform(frame: &rsb_event::point::channel::block::Frame) -> RawWaveform {
-    let waveform_len = frame.data.len() / 2;
-    RawWaveform((0..waveform_len)
-    .map(|idx| i16::from_le_bytes(frame.data[idx * 2..idx * 2 + 2].try_into().unwrap()))
-    .collect::<Vec<_>>())
+impl RawWaveform {
+    pub fn to_egui_line(&self, offset: i64) -> Vec<[f64; 2]> {
+        self.0.iter()
+            .enumerate()
+            .map(|(x, y)| [(x as i64 + offset) as f64, (*y as f64)])
+            .collect::<Vec<_>>()
+    }
 }
 
-pub fn process_waveform(waveform: &RawWaveform) -> ProcessedWaveform {
+impl From<RawWaveform> for Vec<[f64; 2]> {
+    fn from(waveform: RawWaveform) -> Self {
+        waveform.0.iter()
+            .enumerate()
+            .map(|(x, y)| [x as f64, *y as f64])
+            .collect::<Vec<_>>()
+    }
+}
+
+#[cfg(feature = "egui")]
+pub trait EguiLine: Into<Vec<[f64; 2]>> {
+    fn draw_egui(self, plot_ui: &mut PlotUi, name: Option<&str>, color: Option<Color32>, thickness: Option<f32>, offset: Option<i64>) {
+        let mut points: Vec<[f64; 2]> = self.into();
+        if let Some(offset) = offset {
+            points.iter_mut().for_each(|[x, _]| *x += offset as f64)
+        }
+
+        let mut line = Line::new(points);
+        if let Some(color) = color {
+            line = line.color(color)
+        }
+        if let Some(name) = name {
+            line = line.name(name)
+        }
+        if let Some(thickness) = thickness {
+            line = line.width(thickness)
+        }
+
+        plot_ui.line(line);
+    }
+}
+
+#[cfg(feature = "egui")]
+impl EguiLine for RawWaveform {}
+
+#[cfg(feature = "egui")]
+impl EguiLine for ProcessedWaveform {}
+
+impl From<Vec<i16>> for RawWaveform {
+    fn from(data: Vec<i16>) -> Self {
+        Self(data)
+    }
+}
+
+impl From<rsb_event::point::channel::block::Frame> for RawWaveform {
+    fn from(frame: rsb_event::point::channel::block::Frame) -> Self {
+        let waveform_len = frame.data.len() / 2;
+        RawWaveform((0..waveform_len)
+        .map(|idx| i16::from_le_bytes(frame.data[idx * 2..idx * 2 + 2].try_into().unwrap()))
+        .collect::<Vec<_>>())
+    }
+}
+
+impl From<&rsb_event::point::channel::block::Frame> for RawWaveform {
+    fn from(frame: &rsb_event::point::channel::block::Frame) -> Self {
+        let waveform_len = frame.data.len() / 2;
+        RawWaveform((0..waveform_len)
+        .map(|idx| i16::from_le_bytes(frame.data[idx * 2..idx * 2 + 2].try_into().unwrap()))
+        .collect::<Vec<_>>())
+    }
+}
+
+// TODO: add static correction
+pub fn process_waveform(waveform: impl Into<RawWaveform>) -> ProcessedWaveform {
+    let waveform = waveform.into();
     let baseline = waveform.0.iter().take(16).sum::<i16>() as f32 / 16.0;
     ProcessedWaveform(waveform.0.iter().map(|bin| *bin as f32 - baseline).collect::<Vec<_>>())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessedWaveform(pub Vec<f32>);
+
+impl From<ProcessedWaveform> for Vec<[f64; 2]> {
+    fn from(waveform: ProcessedWaveform) -> Self {
+        waveform.0.iter()
+            .enumerate()
+            .map(|(x, y)| [x as f64, *y as f64])
+            .collect::<Vec<_>>()
+    }
+}
 
 pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 {
     match algorithm {
@@ -316,7 +420,7 @@ pub fn find_first_peak(waveform: &ProcessedWaveform, threshold: f32) -> Option<u
         .map(|(idx, _)| idx)
 }
 
-pub fn point_to_chunks(point: rsb_event::Point, limit_ns: u64) -> Vec<Vec<(u8, Vec<[f64; 2]>)>> {
+pub fn point_to_chunks(point: rsb_event::Point, limit_ns: u64) -> Vec<Vec<(u8, ProcessedWaveform)>> {
 
     let mut chunks = vec![];
     chunks.push(vec![]);
@@ -330,13 +434,11 @@ pub fn point_to_chunks(point: rsb_event::Point, limit_ns: u64) -> Vec<Vec<(u8, V
                     chunks.push(vec![])
                 }
 
-                let waveform = process_waveform(&frame_to_waveform(&frame));
+                let waveform = process_waveform(&frame);
 
                 chunks[chunk_num].push((
                     channel.id as u8,
-                    waveform.0.iter().enumerate().map(|(idx, y)| {
-                        [(frame.time + 8u64 * (idx as u64) - (chunk_num as u64 * limit_ns)) as f64 / 1000.0, *y as f64]
-                    }).collect::<Vec<_>>(),
+                    waveform.into()
                 ));
             }
         }
