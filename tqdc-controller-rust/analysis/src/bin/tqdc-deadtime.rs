@@ -1,13 +1,14 @@
+use plotly::{common::Title, layout::Axis, Layout, Plot};
+use protobuf::Message;
+
+use dataforge::read_df_message;
+use processing::{
+    process_waveform, histogram::PointHistogram, numass::{protos::rsb_event, NumassMeta}
+};
+
 #[tokio::main]
 async fn main() {
-    use plotly::{common::Title, histogram::Bins, layout::Axis, Histogram, Layout, Plot};
-    use protobuf::Message;
-
-    use dataforge::read_df_message;
-    use processing::{
-        process_waveform, frame_to_waveform,
-        numass::{protos::rsb_event, NumassMeta}
-    };
+    
 
     let filepath = "/data/numass-server/2023_03/Tritium_1/set_1/p118(30s)(HV1=12000)";
     // let filepath = "/data/2022_12/Tritium_7/set_1/p120(30s)(HV1=12000)";
@@ -27,7 +28,7 @@ async fn main() {
         .flat_map(|channel| {
             channel.blocks.iter().flat_map(|block| {
                 block.frames.iter().filter_map(|frame| {
-                    let waveform = process_waveform(&frame_to_waveform(frame));
+                    let waveform = process_waveform(frame);
                     let threshold = 10.0;
 
                     processing::find_first_peak(&waveform, threshold).map(|x| {
@@ -54,9 +55,8 @@ async fn main() {
         deltas
     };
 
-    let trace2 = Histogram::new(deltas)
-        .x_bins(Bins::new(0.0, 3e5, 24.0))
-        .opacity(0.6);
+    let mut hist = PointHistogram::new_step(0.0..3e5, 24.0 * 4.0);
+    hist.add_batch(0, deltas.iter().map(|x| *x as f32).collect::<Vec<_>>());
 
     let mut plot = Plot::new();
 
@@ -65,9 +65,9 @@ async fn main() {
         .x_axis(Axis::new().title(Title::new("time delta, ns")))
         .y_axis(Axis::new().type_(plotly::layout::AxisType::Log))
         .height(1000);
+   
     plot.set_layout(layout);
-
-    plot.add_trace(trace2);
+    hist.draw_plotly(&mut plot, None);
 
     plot.show();
 }

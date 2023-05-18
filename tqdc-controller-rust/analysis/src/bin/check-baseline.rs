@@ -2,7 +2,7 @@ use std::{path::PathBuf, sync::{Arc, Mutex}, collections::BTreeMap};
 
 use dataforge::DFMessage;
 use plotly::{Scatter, common::{ErrorData, ErrorType}, Plot};
-use processing::{frame_to_waveform, numass::{self, protos::rsb_event::Point}};
+use processing::{numass::{self, protos::rsb_event::Point}, RawWaveform};
 use protobuf::Message;
 
 use statrs::statistics::Statistics;
@@ -30,7 +30,8 @@ async fn main() {
                 point.channels.iter().for_each(|ch| {
                     let baseline = ch.blocks.iter().flat_map(|block| {
                         block.frames.iter().flat_map(|frame| {
-                            Vec::from(&frame_to_waveform(frame).0[..16])
+                            let waveform: RawWaveform = frame.into();
+                            Vec::from(&waveform.0[..16])
                         })
                     }).map(|val| val as f64).collect::<Vec<_>>();
                     if !baseline.is_empty() {

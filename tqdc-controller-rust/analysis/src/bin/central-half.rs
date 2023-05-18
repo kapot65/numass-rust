@@ -3,14 +3,11 @@ async fn main() {
     use {
         dataforge::read_df_message,
         
-        plotly::{
-            common::{Line, LineShape},
-            Plot, Scatter,
-        },
+        plotly::Plot,
         processing::{
             numass::{protos::rsb_event, NumassMeta},
             process_waveform,
-            convert_to_kev, frame_to_waveform, histogram::PointHistogram, waveform_to_events,
+            convert_to_kev, histogram::PointHistogram, waveform_to_events,
             Algorithm,
         },
         protobuf::Message,
@@ -36,7 +33,7 @@ async fn main() {
         for block in &channel.blocks {
             for frame in &block.frames {
                 let entry: &mut Vec<_> = crosses.entry(frame.time).or_default();
-                let waveform = process_waveform(&frame_to_waveform(frame));
+                let waveform = process_waveform(frame);
                 waveform_to_events(&waveform, &algorithm).iter().for_each(|(_, amp)| {
                     entry.push((channel.id as u8, convert_to_kev(amp, channel.id as u8, &algorithm)));
                 });
@@ -75,20 +72,9 @@ async fn main() {
 
     let mut plot = Plot::new();
 
-    let layout = plotly::Layout::new()
-        // .title(plotly::common::Title::new("calibration data"))
-        .height(1000);
+    let layout = plotly::Layout::new().height(1000);
     plot.set_layout(layout);
+    hist.draw_plotly_each_channel(&mut plot);
 
-    let trace_ch_2 = Scatter::new(hist.x.clone(), hist.channels.get(&1).unwrap().clone())
-        .name("ch 2")
-        .line(Line::new().shape(LineShape::Hvh));
-
-    let trace_ch_6 = Scatter::new(hist.x, hist.channels.get(&5).unwrap().clone())
-        .name("ch 6")
-        .line(Line::new().shape(LineShape::Hvh));
-
-    plot.add_trace(trace_ch_6);
-    plot.add_trace(trace_ch_2);
     plot.show()
 }

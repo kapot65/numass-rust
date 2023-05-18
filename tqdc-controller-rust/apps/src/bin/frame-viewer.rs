@@ -5,11 +5,12 @@ use std::time::Instant;
 
 use clap::Parser;
 use eframe::egui;
-use eframe::egui::plot::{Legend, Line, Plot};
+use eframe::egui::plot::{Legend, Plot};
 
 use apps::defaults::{BOARD_IP, HOST_IP, HOST_STREAM_PORT, STREAM_PORT};
+use processing::{process_waveform, waveform_to_events, Algorithm, ProcessedWaveform, EguiLine};
 use processing::histogram::PointHistogram;
-use tqdc::mlink::MlinkMessage;
+use tqdc::mlink::{MlinkMessage, ADCDataBlock};
 
 /// Read TQDC register that contains id (programm does not have timeout)
 #[derive(Parser, Debug)]
@@ -39,20 +40,20 @@ struct Args {
     #[arg(long, default_value_t = 3)]
     count_rate_interval_sec: u128,
 
-    #[arg(long, default_value_t = 25)]
-    count_rate_threshold: i16,
-
-    #[clap(long, short, action)]
-    correct_baseline: bool,
+    #[arg(long, default_value_t = 25.0)]
+    count_rate_threshold: f32,
 }
 
+// ! TODO: Test on hardware 
 fn main() {
     let args = Args::parse();
 
-    let histogram_bg = Arc::new(Mutex::new(PointHistogram::new(
+    let empty_hist = PointHistogram::new(
         args.hist_min..args.hist_max,
         args.hist_bins,
-    )));
+    );
+
+    let histogram_bg = Arc::new(Mutex::new(empty_hist.clone()));
     let histogram = Arc::clone(&histogram_bg);
 
     let waveforms_bg = Arc::new(Mutex::new(vec![]));
@@ -61,7 +62,6 @@ fn main() {
     let count_rate_bg = Arc::new(Mutex::new(BTreeMap::new()));
     let count_rate = Arc::clone(&count_rate_bg);
 
-    let correct_baseline = args.correct_baseline;
     std::thread::spawn(move || {
         let bind_address = SocketAddr::new(args.host_ip, args.host_stream_port);
         let tqdc_address = SocketAddr::new(args.tqdc_ip, args.tqdc_stream_port);
@@ -82,6 +82,8 @@ fn main() {
 
         let mut start = Instant::now();
         let mut counts = BTreeMap::new();
+        let mut waveforms = vec![];
+        let mut histogram = empty_hist.clone();
         
         let mut seq = 0;
 
@@ -104,69 +106,36 @@ fn main() {
                             to_addr,
                         )
                         .unwrap();
-                        
                         seq +=1;
-
-                        let channels = frames
-                            .iter()
-                            .flat_map(|fragment| {
-                                fragment.channels.iter().map(|channel| {
-                                    let first = if correct_baseline {
-                                        channel.waveform.iter().take(16).sum::<i16>() / 16
-                                    } else { 0 };
-
-                                    Waveform {
-                                        ch_num: channel.channel_number,
-                                        waveform: channel
-                                            .waveform
-                                            .iter()
-                                            .map(|v| (v - first) / 4)
-                                            .collect::<Vec<_>>(),
-                                    }
-                                })
-                            })
-                            .collect::<Vec<_>>();
-
-                        {
-                            for Waveform { ch_num, waveform } in &channels {
-                                let amplitude = waveform.iter().max().unwrap();
-                                if amplitude > &args.count_rate_threshold {
-                                    *counts.entry(*ch_num).or_insert(0u16) += 1;
-                                }
-                            }
-                        }
-
-                        let elapsed_ms = start.elapsed().as_millis();
-                        if elapsed_ms > args.count_rate_interval_sec * 1000 {
-                            let mut count_rate_lock = count_rate_bg.lock().unwrap();
-                            *count_rate_lock = counts
-                                .iter()
-                                .map(|(ch_num, counts)| {
-                                    (
-                                        *ch_num,
-                                        ((*counts as f32) / (elapsed_ms as f32 / 1000.0)) as u32,
-                                    )
-                                })
-                                .collect::<BTreeMap<_, _>>();
-
-                            start = Instant::now();
-                            counts = BTreeMap::new();
-                        }
-
-                        {
-                            let mut hist_lock = histogram_bg.lock().unwrap();
-                            for Waveform { ch_num, waveform } in &channels {
-                                let amplitude = *waveform.iter().max().unwrap();
-                                hist_lock.add(*ch_num, amplitude as f32);
-                            }
-                        }
-
-                        {
-                            let mut waveform_lock = waveforms_bg.lock().unwrap();
-                            *waveform_lock = channels;
-                        }
                     } else {
                         panic!("no frames in package!")
+                    }
+
+                    frames.into_iter().for_each(|fragment| {
+                        waveforms = fragment.channels.into_iter().map(|ADCDataBlock {ch_num, waveform }| {
+                            let waveform = process_waveform(waveform);
+                            waveform_to_events(&waveform, &Algorithm::Max).into_iter().for_each(|(_, amp)| {
+                                if amp > args.count_rate_threshold {
+                                    *counts.entry(ch_num).or_insert(0) += 1;
+                                }
+                                histogram.add(ch_num, amp)
+                            });
+                            Waveform { ch_num, waveform }
+                        }).collect::<Vec<_>>();
+                    });
+
+                    let elapsed_ms = start.elapsed().as_millis();
+                    if elapsed_ms > args.count_rate_interval_sec * 1000 {
+                        start = Instant::now();
+
+                        *count_rate_bg.lock().unwrap() = counts;
+                        counts = BTreeMap::new();
+
+                        *waveforms_bg.lock().unwrap() = waveforms;
+                        waveforms = vec![];
+
+                        *histogram_bg.lock().unwrap() = histogram;
+                        histogram = empty_hist.clone();
                     }
                 }
                 _ => panic!("unimplemented!!"),
@@ -185,13 +154,14 @@ fn main() {
                 count_rate,
             })
         }),
-    );
+    ).unwrap();
 }
 
+// TODO: merge with RawWaveform
 #[derive(Clone)]
 struct Waveform {
     ch_num: u8,
-    waveform: Vec<i16>,
+    waveform: ProcessedWaveform,
 }
 
 struct MyEguiApp {
@@ -203,8 +173,6 @@ struct MyEguiApp {
 impl eframe::App for MyEguiApp {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         ctx.request_repaint_after(std::time::Duration::from_millis(1000 / 60));
-
-        //    println!("{:?}", ctx.used_size());
 
         let channels = {
             let lock = self.waveforms.lock();
@@ -225,17 +193,6 @@ impl eframe::App for MyEguiApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            let lines = channels.iter().map(|(ch_num, waveform)| {
-                Line::new(
-                    waveform
-                        .iter()
-                        .enumerate()
-                        .map(|(x, y)| [x as f64, *y as f64])
-                        .collect::<Vec<_>>(),
-                )
-                .name(format!("ch #{}", ch_num + 1))
-            });
-
             ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
                 ui.vertical(|ui| {
                     ui.set_width(500.0);
@@ -245,7 +202,16 @@ impl eframe::App for MyEguiApp {
                             background_alpha: 1.0,
                             position: egui::plot::Corner::RightTop,
                         })
-                        .show(ui, |plot_ui| lines.for_each(|line| plot_ui.line(line)));
+                        .show(ui, |plot_ui| {
+                            channels.into_iter().for_each(|(ch_num, waveform)| {
+
+                                waveform.draw_egui(
+                                    plot_ui, 
+                                    Some(&format!("ch #{}", ch_num + 1)), 
+                                    None, None, None
+                                );
+                            });
+                        });
                 });
                 ui.vertical(|ui| {
                     Plot::new("hists")
@@ -256,29 +222,7 @@ impl eframe::App for MyEguiApp {
                         })
                         .show(ui, |plot_ui| {
                             let hist = self.histogram.lock().unwrap().clone();
-
-                            for (ch_num, y) in hist.channels {
-                                plot_ui.line(
-                                    Line::new(
-                                        y.iter()
-                                            .enumerate()
-                                            .flat_map(|(x, y)| {
-                                                [
-                                                    [
-                                                        (hist.x[x] - hist.step / 2.0) as f64,
-                                                        *y as f64,
-                                                    ],
-                                                    [
-                                                        (hist.x[x] + hist.step / 2.0) as f64,
-                                                        *y as f64,
-                                                    ],
-                                                ]
-                                            })
-                                            .collect::<Vec<_>>(),
-                                    )
-                                    .name(format!("ch #{}", ch_num + 1)),
-                                );
-                            }
+                            hist.draw_egui_each_channel(plot_ui, None);
                         });
                 });
             })

@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use dataforge::read_df_message_sync;
-use plotly::{Plot, Histogram, Layout, histogram::Bins, layout::BarMode};
-use processing::{frame_to_waveform, numass::{NumassMeta, protos::rsb_event}, process_waveform};
+use plotly::{Plot, Layout};
+use processing::{numass::{NumassMeta, protos::rsb_event}, process_waveform, histogram::PointHistogram};
 use protobuf::Message;
 
 use unzip_n::unzip_n;
@@ -32,23 +32,13 @@ fn wafeform_to_amp<T>(waveform: &[T],  baseline: f32, coeff: f32) -> f32
 fn make_hist(point: &rsb_event::Point, ch_id: u64,  baseline: f32, coeff: f32) -> Vec<f32> {
     let mut amps = vec![];
 
-    // let mut frames = BTreeMap::new();
-
-    // const KERNEL: [f32; 10] = [
-    //     -0.125f32, -0.125, -0.125, -0.125,
-    //     0.0, 0.0,
-    //     0.125, 0.125, 0.125, 0.125
-    // ];
-
-    
     for channel in &point.channels {
         let block = &channel.blocks[0];
         for frame in &block.frames {
 
                 if channel.id == ch_id {
-                    let waveform = process_waveform(&frame_to_waveform(frame));
+                    let waveform = process_waveform(frame);
                     let amp = wafeform_to_amp(&waveform.0, baseline, coeff);
-
                     amps.push(amp)
                 }
         }
@@ -72,14 +62,12 @@ fn point_to_amps<T: AsRef<Path>>(filepath: T, ch_id: u64, baseline: f32, coeff: 
 fn main() {
 
     let bin_size = 16.0;
-    let opacity = 0.3;
-
 
     let data_root: PathBuf = PathBuf::from("/data/numass-server/");
 
     let old_amps = point_to_amps(
         data_root.join("2023_03/Tritium_1/set_1/p0(30s)(HV1=14000)"), 
-        5, 44.4, 0.25
+        5, 0.0, 0.25
     );
 
     let new_amps_p1 = point_to_amps(
@@ -102,58 +90,37 @@ fn main() {
         0, 0.0, 0.441
     );
     
-    
-    let layout = Layout::new()
-        .bar_mode(BarMode::Overlay)
-        // .x_axis(Axis::new().title(Title::new("time delta, ns")))
-        // .y_axis(Axis::new().type_(plotly::layout::AxisType::Log))
-        // .height(1000)
-        ;
+    let layout = Layout::new().height(1000);
 
     let mut plot = Plot::new();
     plot.set_layout(layout);
 
-    {
-        let trace = Histogram::new(old_amps)
-            .x_bins(Bins::new(0.0, 8000.0, bin_size))
-            .name("current board")
-            .opacity(opacity);
-        plot.add_trace(trace);
-    }
+    let mut hist_old = PointHistogram::new_step(0.0..1000.0, bin_size);
+
+    println!("{old_amps:?}");
+
+    hist_old.add_batch(0, old_amps);
+
+    
+
+    let mut hist_new_p1 = PointHistogram::new_step(0.0..1000.0, bin_size);
+    hist_new_p1.add_batch(0, new_amps_p1);
+
+    let mut hist_new_p2 = PointHistogram::new_step(0.0..1000.0, bin_size);
+    hist_new_p2.add_batch(0, new_amps_p2);
+
+    let mut hist_new_p3 = PointHistogram::new_step(0.0..1000.0, bin_size);
+    hist_new_p3.add_batch(0, new_amps_p3);
+
+    let mut hist_new_p4 = PointHistogram::new_step(0.0..1000.0, bin_size);
+    hist_new_p4.add_batch(0, new_amps_p4);
 
 
-    {
-        let trace2 = Histogram::new(new_amps_p1)
-            .x_bins(Bins::new(0.0, 4000.0, bin_size))
-            .name("new board trapezium 4-2-4")
-            .opacity(opacity);
-        plot.add_trace(trace2);
-    }
-
-
-    {
-        let trace3 = Histogram::new(new_amps_p2)
-            .x_bins(Bins::new(0.0, 4000.0, bin_size))
-            .name("new board diff 12-12")
-            .opacity(opacity);
-        plot.add_trace(trace3);
-    }
-
-    {
-        let trace4 = Histogram::new(new_amps_p3)
-            .x_bins(Bins::new(0.0, 4000.0, bin_size))
-            .name("new board diff 12-12 (960 ns)")
-            .opacity(opacity);
-        plot.add_trace(trace4);
-    }
-
-    {
-        let trace5 = Histogram::new(new_amps_p4)
-            .x_bins(Bins::new(0.0, 4000.0, bin_size))
-            .name("new board diff 16-16 (960 ns)")
-            .opacity(opacity);
-        plot.add_trace(trace5);
-    }
+    hist_old.draw_plotly(&mut plot, Some("current board"));
+    hist_new_p1.draw_plotly(&mut plot, Some("new board trapezium 4-2-4"));
+    hist_new_p2.draw_plotly(&mut plot, Some("new board diff 12-12"));
+    hist_new_p3.draw_plotly(&mut plot, Some("new board diff 12-12 (960 ns)"));
+    hist_new_p4.draw_plotly(&mut plot, Some("new board diff 16-16 (960 ns)"));
 
     plot.show();
 }

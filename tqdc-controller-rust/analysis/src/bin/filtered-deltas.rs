@@ -1,11 +1,13 @@
+use processing::histogram::PointHistogram;
+
 #[tokio::main]
 async fn main() {
     use std::collections::BTreeMap;
 
-    use plotly::{common::Title, histogram::Bins, layout::Axis, Histogram, Layout, Plot};
+    use plotly::{common::Title, layout::Axis, Layout, Plot};
     use processing::{
         process_waveform, ProcessedWaveform,
-        convert_to_kev, frame_to_waveform, waveform_to_events, numass::{protos::rsb_event, NumassMeta}};
+        convert_to_kev, waveform_to_events, numass::{protos::rsb_event, NumassMeta}};
     use protobuf::Message;
 
     use dataforge::read_df_message;
@@ -34,7 +36,7 @@ async fn main() {
         for block in &channel.blocks {
             for frame in &block.frames {
                 let entry = independent.entry(frame.time).or_default();
-                entry.insert(channel.id as u8, process_waveform(&frame_to_waveform(frame)));
+                entry.insert(channel.id as u8, process_waveform(frame));
             }
         }
     }
@@ -71,9 +73,9 @@ async fn main() {
         })
         .collect::<Vec<_>>();
 
-    let trace2 = Histogram::new(deltas)
-        .x_bins(Bins::new(0.0, 20e3, 24.0 * 2.0))
-        .opacity(0.6);
+    let mut histogram = PointHistogram::new_step(0.0..20e3, 24.0 * 2.0);
+    histogram.add_batch(0, deltas.iter().map(|x| *x as f32).collect::<Vec<_>>());
+
 
     let mut plot = Plot::new();
 
@@ -87,7 +89,8 @@ async fn main() {
         .height(1000);
 
     plot.set_layout(layout);
-    plot.add_trace(trace2);
+    
+    histogram.draw_plotly(&mut plot, None);
 
     plot.show();
 }

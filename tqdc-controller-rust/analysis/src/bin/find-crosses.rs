@@ -1,12 +1,5 @@
-use eframe::epaint::{color::Hsva, Color32};
-use processing::ProcessedWaveform;
+use processing::{ProcessedWaveform, color_for_index, EguiLine};
 
-// TODO: move to a single definition
-fn color_same_as_egui(idx: usize) -> Color32 {
-    let golden_ratio = (5.0_f32.sqrt() - 1.0) / 2.0; // 0.61803398875
-    let h = idx as f32 * golden_ratio;
-    Hsva::new(h, 0.85, 0.5, 1.0).into()
-}
 
 #[tokio::main]
 async fn main() {
@@ -14,8 +7,7 @@ async fn main() {
     use std::collections::BTreeMap;
 
     use dataforge::read_df_message;
-    use processing::{frame_to_waveform, process_waveform,
-         numass::{protos::rsb_event, NumassMeta}};
+    use processing::{process_waveform, numass::{protos::rsb_event, NumassMeta}};
 
     // let files = [
     //     "/data/numass-server/2022_12/Tritium_7/set_1/p52(30s)(HV1=15000)",
@@ -103,7 +95,7 @@ async fn main() {
                             for frame in &block.frames {
                                 let entry: &mut Vec<_> = crosses.entry(frame.time).or_default();
                                 entry
-                                    .push((channel.id as u8, process_waveform(&frame_to_waveform(frame)) ));
+                                    .push((channel.id as u8, process_waveform(frame) ));
                                 counts[channel.id as usize] += 1;
                             }
                         }
@@ -199,8 +191,8 @@ async fn main() {
                 ch_enabled: [false; 7],
                 current: 0,
             })
-        }),
-    );
+        })
+    ).unwrap();
 
     // println!("{crosses:?}");
 }
@@ -219,15 +211,16 @@ struct CrossesViewer {
 #[cfg(not(target_arch = "wasm32"))]
 impl eframe::App for CrossesViewer {
     fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
-        if ctx.input().key_pressed(eframe::egui::Key::ArrowRight)
-            && self.current < self.filtered.len() - 1
-        {
-            self.current += 1;
-        }
 
-        if ctx.input().key_pressed(eframe::egui::Key::ArrowLeft) && self.current > 0 {
-            self.current -= 1;
-        }
+        ctx.input(|i| {
+            if i.key_pressed(eframe::egui::Key::ArrowRight) &&  self.current < self.filtered.len() - 1
+            {
+                self.current += 1;
+            }
+            if i.key_pressed(eframe::egui::Key::ArrowLeft) && self.current > 0 {
+                self.current -= 1;
+            }
+        });
 
         eframe::egui::CentralPanel::default().show(ctx, |ui| {
             ui.style_mut().spacing.slider_width = frame.info().window_info.size.x - 150.0;
@@ -282,16 +275,11 @@ impl eframe::App for CrossesViewer {
                     if !self.filtered.is_empty() {
                         let (_, waveform) = &self.filtered[self.current];
                         for (ch_num, waveform) in waveform {
-                            plot_ui.line(
-                                eframe::egui::plot::Line::new(
-                                    waveform.0
-                                        .iter()
-                                        .enumerate()
-                                        .map(|(x, y)| [x as f64, *y as f64])
-                                        .collect::<Vec<_>>(),
-                                )
-                                .color(color_same_as_egui((*ch_num) as usize))
-                                .name(format!("ch #{}", ch_num + 1)),
+                            waveform.clone().draw_egui(
+                                plot_ui,
+                                Some(&format!("ch #{}", ch_num + 1)), 
+                                Some(color_for_index((*ch_num) as usize)),
+                                None, None
                             );
                         }
                     }

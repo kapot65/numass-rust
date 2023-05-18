@@ -41,7 +41,7 @@ pub async fn events_to_point(
                 }
 
                 frames_per_channel
-                    .entry(channel.channel_number)
+                    .entry(channel.ch_num)
                     .or_default()
                     .push(frame);
             }

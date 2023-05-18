@@ -1,25 +1,27 @@
+use processing::histogram::PointHistogram;
+
 #[tokio::main]
 async fn main() {
     use std::collections::HashMap;
 
-    use processing::{convert_to_kev, waveform_to_events, process_waveform, frame_to_waveform, Algorithm};
+    use processing::{convert_to_kev, waveform_to_events, process_waveform, Algorithm};
     use protobuf::Message;
 
     use dataforge::read_df_message;
     use processing::numass::{protos::rsb_event, NumassMeta};
 
-    // let files = [
-    //     "/data/numass-server/2022_12/Tritium_7/set_1/p52(30s)(HV1=15000)",
-    //     "/data/numass-server/2022_12/Tritium_7/set_2/p52(30s)(HV1=15000)",
-    //     "/data/numass-server/2022_12/Tritium_7/set_3/p52(30s)(HV1=15000)",
-    //     "/data/numass-server/2022_12/Tritium_7/set_4/p52(30s)(HV1=15000)",
-    //     "/data/numass-server/2022_12/Tritium_7/set_5/p52(30s)(HV1=15000)",
-    //     "/data/numass-server/2022_12/Tritium_7/set_6/p52(30s)(HV1=15000)",
-    //     "/data/numass-server/2022_12/Tritium_7/set_7/p52(30s)(HV1=15000)",
-    //     "/data/numass-server/2022_12/Tritium_7/set_8/p52(30s)(HV1=15000)",
-    //     "/data/numass-server/2022_12/Tritium_7/set_9/p52(30s)(HV1=15000)",
-    //     "/data/numass-server/2022_12/Tritium_7/set_10/p52(30s)(HV1=15000)",
-    // ];
+    let files = [
+        "/data/numass-server/2022_12/Tritium_7/set_1/p52(30s)(HV1=15000)",
+        "/data/numass-server/2022_12/Tritium_7/set_2/p52(30s)(HV1=15000)",
+        "/data/numass-server/2022_12/Tritium_7/set_3/p52(30s)(HV1=15000)",
+        "/data/numass-server/2022_12/Tritium_7/set_4/p52(30s)(HV1=15000)",
+        "/data/numass-server/2022_12/Tritium_7/set_5/p52(30s)(HV1=15000)",
+        "/data/numass-server/2022_12/Tritium_7/set_6/p52(30s)(HV1=15000)",
+        "/data/numass-server/2022_12/Tritium_7/set_7/p52(30s)(HV1=15000)",
+        "/data/numass-server/2022_12/Tritium_7/set_8/p52(30s)(HV1=15000)",
+        "/data/numass-server/2022_12/Tritium_7/set_9/p52(30s)(HV1=15000)",
+        "/data/numass-server/2022_12/Tritium_7/set_10/p52(30s)(HV1=15000)",
+    ];
 
     // let files = [
     //     "/data/numass-server/2022_12/Tritium_7/set_1/p64(30s)(HV1=14500)",
@@ -34,13 +36,13 @@ async fn main() {
     //     "/data/numass-server/2022_12/Tritium_7/set_10/p64(30s)(HV1=14500)",
     // ];
 
-    let monitor_indices = [30, 39, 47, 53, 58, 66, 75, 76, 85, 93, 103, 111, 121];
-    let mut files = vec![];
-    for set_number in 1..=10 {
-        for point_idx in monitor_indices {
-            files.push(format!("/data/numass-server/2022_12/Tritium_7/set_{set_number}/p{point_idx}(30s)(HV1=14000)"))
-        }
-    }
+    // let monitor_indices = [30, 39, 47, 53, 58, 66, 75, 76, 85, 93, 103, 111, 121];
+    // let mut files = vec![];
+    // for set_number in 1..=10 {
+    //     for point_idx in monitor_indices {
+    //         files.push(format!("/data/numass-server/2022_12/Tritium_7/set_{set_number}/p{point_idx}(30s)(HV1=14000)"))
+    //     }
+    // }
 
     // let files = [
     //     "/data/numass-server/2022_12/Tritium_7/set_1/p98(30s)(HV1=13000)",
@@ -90,7 +92,7 @@ async fn main() {
                             for frame in &block.frames {
                                 let entry: &mut Vec<_> = crosses.entry(frame.time).or_default();
                                 entry
-                                    .push((channel.id as u8, process_waveform(&frame_to_waveform(frame))));
+                                    .push((channel.id as u8, process_waveform(frame)));
                             }
                         }
                     }
@@ -152,9 +154,6 @@ async fn main() {
             borders.contains(&border)
         });
 
-    // println!("{:?}", double_non_crosses.clone().map(|(_, waveforms)| {
-    //     (waveforms[0].0 + 1, waveforms[1].0 + 1)
-    // }).collect::<Vec<_>>());
 
     let algorithm = Algorithm::default();
     let non_crosses_amps = double_non_crosses
@@ -170,20 +169,18 @@ async fn main() {
         })
         .collect::<Vec<_>>();
 
-    let trace2 = plotly::Histogram::new(non_crosses_amps)
-        .x_bins(plotly::histogram::Bins::new(0.0, 50.0, 0.1))
-        .opacity(0.6);
+    let mut histogram = PointHistogram::new_step(0.0..50.0, 0.1);
+    histogram.add_batch(0, non_crosses_amps);
 
     let mut plot = plotly::Plot::new();
 
     let layout = plotly::Layout::new()
         .title(plotly::common::Title::new("non-crosses"))
         .x_axis(plotly::layout::Axis::new().title(plotly::common::Title::new("time delta, ns")))
-        // .y_axis(plotly::layout::Axis::new().type_(plotly::layout::AxisType::Log))
         .height(1000);
 
     plot.set_layout(layout);
-    plot.add_trace(trace2);
+    histogram.draw_plotly(&mut plot, None);
 
     plot.show();
 }

@@ -6,7 +6,8 @@ async fn main() {
         processing::{
             process_waveform, ProcessedWaveform,
             numass::{protos::rsb_event, NumassMeta},
-            correct_amp, find_first_peak, frame_to_waveform},
+            correct_amp, find_first_peak
+        },
         protobuf::Message,
     };
 
@@ -43,8 +44,7 @@ async fn main() {
         .frames
         .iter()
         .filter_map(|frame| {
-            let waveform = frame_to_waveform(frame);
-            let waveform = process_waveform(&waveform);
+            let waveform = process_waveform(frame);
 
             let bin = find_first_peak(&waveform, threshold);
             bin.map(|bin| {

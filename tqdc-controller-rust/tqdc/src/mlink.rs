@@ -368,7 +368,7 @@ impl MLinkHeader {
 
 #[derive(Debug)]
 pub struct ADCDataBlock {
-    pub channel_number: u8,
+    pub ch_num: u8,
     pub waveform: Vec<i16>,
 }
 
@@ -462,7 +462,7 @@ impl MStreamFragment {
                         ));
                     }
                     channels.push(ADCDataBlock {
-                        channel_number,
+                        ch_num: channel_number,
                         waveform,
                     });
                 }
