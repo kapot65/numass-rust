@@ -40,6 +40,7 @@ pub enum ProcessRequest {
         filepath: PathBuf,
         processing: ProcessingParams,
     },
+    // TODO: move to viewers crate
     FilterEvents {
         filepath: PathBuf,
         range: Range<f32>,
