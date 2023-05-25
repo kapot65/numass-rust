@@ -48,27 +48,13 @@ async fn main() {
 
             let bin = find_first_peak(&waveform, threshold);
             bin.map(|bin| {
-                // TODO: remind what this code does and document it
-                let left = if bin == 0 {
-                    waveform.0[bin + 1]
-                } else {
-                    waveform.0[bin - 1]
-                };
+                // mirror neighbors if peak is on the edge
+                let left = if bin == 0 { waveform.0[bin + 1] } else { waveform.0[bin - 1] };
                 let center = waveform.0[bin];
-                let right = if bin == waveform.0.len() - 1 {
-                    left
-                } else {
-                    waveform.0[bin + 1]
-                };
+                let right = if bin == waveform.0.len() - 1 { left } else { waveform.0[bin + 1] };
     
                 let (x, y) = correct_amp(left, center, right);
-    
-                WaveformNormed {
-                    waveform,
-                    bin,
-                    x,
-                    y,
-                }
+                WaveformNormed { waveform, bin, x, y }
             })
         });
 

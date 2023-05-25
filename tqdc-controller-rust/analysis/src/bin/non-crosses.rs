@@ -1,14 +1,15 @@
-use processing::histogram::PointHistogram;
+use std::collections::BTreeMap;
+
+use protobuf::Message;
+
+use processing::{
+    histogram::PointHistogram,  numass::{protos::rsb_event, NumassMeta},
+    convert_to_kev, waveform_to_events, process_waveform, Algorithm
+};
+use dataforge::read_df_message;
 
 #[tokio::main]
 async fn main() {
-    use std::collections::HashMap;
-
-    use processing::{convert_to_kev, waveform_to_events, process_waveform, Algorithm};
-    use protobuf::Message;
-
-    use dataforge::read_df_message;
-    use processing::numass::{protos::rsb_event, NumassMeta};
 
     let files = [
         "/data/numass-server/2022_12/Tritium_7/set_1/p52(30s)(HV1=15000)",
@@ -71,14 +72,14 @@ async fn main() {
     // ];
 
     let crosses = {
-        let mut crosses = vec![];
+        let mut crosses = BTreeMap::new();
 
         let handles = files
             .iter()
             .map(|filepath| {
                 let filepath = filepath.to_owned();
                 tokio::spawn(async move {
-                    let mut crosses = HashMap::new();
+                    let mut crosses = BTreeMap::new();
 
                     let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
                     let message = read_df_message::<NumassMeta>(&mut point_file)
@@ -90,9 +91,8 @@ async fn main() {
                     for channel in &point.channels {
                         for block in &channel.blocks {
                             for frame in &block.frames {
-                                let entry: &mut Vec<_> = crosses.entry(frame.time).or_default();
-                                entry
-                                    .push((channel.id as u8, process_waveform(frame)));
+                                let entry: &mut BTreeMap<_, _> = crosses.entry(frame.time).or_default();
+                                entry.insert(channel.id as usize, process_waveform(frame));
                             }
                         }
                     }
@@ -100,22 +100,8 @@ async fn main() {
                     let filtered_crosses = crosses
                         .iter()
                         .filter(|(_, waveforms)| waveforms.len() > 1)
-                        .filter(|(_, waveforms)| {
-                            let mut has_duplicate = false;
-
-                            for idx_1 in 0..waveforms.len() - 1 {
-                                for idx_2 in idx_1 + 1..waveforms.len() {
-                                    if waveforms[idx_1].0 == waveforms[idx_2].0 {
-                                        has_duplicate = true;
-                                        break;
-                                    }
-                                }
-                            }
-
-                            !has_duplicate
-                        })
                         .map(|(ch_num, waveform)| (*ch_num, waveform.to_owned()))
-                        .collect::<Vec<_>>();
+                        .collect::<BTreeMap<_, _>>();
 
                     filtered_crosses
                 })
@@ -130,29 +116,11 @@ async fn main() {
         crosses
     };
 
-    let borders = [
-        [1u8, 3],
-        [1, 4],
-        [1, 7],
-        [2, 3],
-        [2, 5],
-        [2, 7],
-        [3, 4],
-        [4, 5],
-    ];
-
-    // TODO: change for check_neigbors_fast from processing
     let double_non_crosses = crosses
         .iter()
         .filter(|(_, waveforms)| waveforms.len() == 2)
         .filter(|(_, waveforms)| {
-            let (ch_1, ch_2) = (waveforms[0].0 + 1, waveforms[1].0 + 1);
-            let border = if ch_1 < ch_2 {
-                [ch_1, ch_2]
-            } else {
-                [ch_2, ch_1]
-            };
-            borders.contains(&border)
+            processing::check_neigbors_fast(waveforms)
         });
 
 
@@ -163,7 +131,7 @@ async fn main() {
                 .iter()
                 .map(|(ch_id, waveform)| {
                     waveform_to_events(waveform, &algorithm).iter().map(|(_, amp)| {
-                        convert_to_kev(amp, *ch_id, &algorithm)
+                        convert_to_kev(amp, *ch_id as u8, &algorithm)
                     }).sum::<f32>()
                 })
                 .sum::<f32>()

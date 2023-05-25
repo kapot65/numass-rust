@@ -32,6 +32,7 @@ async fn main() {
 
     let pb: Arc<Mutex<indicatif::ProgressBar>> = Arc::new(Mutex::new(indicatif::ProgressBar::new(points.len() as u64)));
     let handles = points.iter().map(|filepath| {
+        
         let filepath = filepath.clone();
         let histogram = Arc::clone(&histogram);
         let pb = Arc::clone(&pb);
