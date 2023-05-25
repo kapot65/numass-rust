@@ -1,87 +1,106 @@
-use processing::histogram::PointHistogram;
+use std::{collections::BTreeMap, sync::Arc};
+
+use analysis::get_points_by_pattern;
+use plotly::{common::Title, layout::Axis, Layout, Plot};
+use processing::{
+    process_waveform, ProcessedWaveform,
+    convert_to_kev, waveform_to_events, numass::{protos::rsb_event, NumassMeta},
+    histogram::PointHistogram
+};
+use protobuf::Message;
+
+use dataforge::read_df_message;
+use tokio::sync::Mutex;
+
+pub const DB_ROOT: &str = "/home/chernov/data";
 
 #[tokio::main]
 async fn main() {
-    use std::collections::BTreeMap;
+    
+    let db_root = "/home/chernov/data";
+    let run = "2023_03";
+    let pattern = format!("/{run}/Tritium_5/set_*/p*(30s)(HV1=12000)");
+    let exclude = [];
 
-    use plotly::{common::Title, layout::Axis, Layout, Plot};
-    use processing::{
-        process_waveform, ProcessedWaveform,
-        convert_to_kev, waveform_to_events, numass::{protos::rsb_event, NumassMeta}};
-    use protobuf::Message;
+    let points = get_points_by_pattern(db_root, &pattern, &exclude).first_key_value().unwrap().1.clone();
 
-    use dataforge::read_df_message;
+    let range = 0.0..6.5;
+    // let range = 6.5..27.0;
 
-    let filepath = "/data/numass-server/2022_12/Adiabacity_19_2/set_1/p4(200s)(HV1=15000)";
-    let range = 0.0..5.0;
+    let histogram = Arc::new(
+        Mutex::new(PointHistogram::new_step(0.0..40e3, 24.0 * 6.0)));
 
-    // let filepath = "/data/numass-server/2022_12/Adiabacity_19_2/set_1/p5(200s)(HV1=14000)";
-    // let range = 0.0..6.0;
+    let pb: Arc<Mutex<indicatif::ProgressBar>> = Arc::new(Mutex::new(indicatif::ProgressBar::new(points.len() as u64)));
+    let handles = points.iter().map(|filepath| {
+        let filepath = filepath.clone();
+        let histogram = Arc::clone(&histogram);
+        let pb = Arc::clone(&pb);
+        let range = range.clone();
 
-    // let filepath = "/data/numass-server/2022_12/Adiabacity_19_2/set_1/p6(200s)(HV1=13000)";
-    // let range = 0.0..7.0;
+        tokio::spawn(async move {
+            let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
+            let message = read_df_message::<NumassMeta>(&mut point_file)
+                .await
+                .unwrap();
 
-    // let filepath = "/data/numass-server/2022_12/Adiabacity_19_2/set_1/p7(200s)(HV1=12000)";
-    // let range = 0.0..8.0;
+            let mut independent: BTreeMap<u64, BTreeMap<u8, ProcessedWaveform>> = BTreeMap::new();
 
-    let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
-    let message = read_df_message::<NumassMeta>(&mut point_file)
-        .await
-        .unwrap();
-
-    let mut independent: BTreeMap<u64, BTreeMap<u8, ProcessedWaveform>> = BTreeMap::new();
-
-    let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
-    for channel in &point.channels {
-        for block in &channel.blocks {
-            for frame in &block.frames {
-                let entry = independent.entry(frame.time).or_default();
-                entry.insert(channel.id as u8, process_waveform(frame));
-            }
-        }
-    }
-
-    let algorithm = processing::Algorithm::default();
-
-    let deltas = independent
-        .iter()
-        .collect::<Vec<_>>()
-        .windows(2)
-        .filter_map(|pair| {
-            let (time_1, waveforms) = pair[0];
-
-            if !(waveforms.len() == 1 && waveforms.contains_key(&5)) {
-                return None;
-            }
-
-            let events = waveform_to_events(&waveforms[&5], &algorithm);
-
-            if events.is_empty() {
-                None
-            } else {
-                // TODO: correct algorithm for multiple events
-                let amp = events[0].1;
-                let amp_kev = convert_to_kev(&amp, 5, &algorithm);
-
-                if !(range.contains(&amp_kev)) {
-                    None
-                } else {
-                    let (time_2, _) = pair[1];
-                    Some(time_2 - time_1)
+            let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
+            for channel in &point.channels {
+                for block in &channel.blocks {
+                    for frame in &block.frames {
+                        let entry = independent.entry(frame.time).or_default();
+                        entry.insert(channel.id as u8, process_waveform(frame));
+                    }
                 }
             }
+
+            let algorithm = processing::Algorithm::default();
+
+            let deltas = independent
+                .iter()
+                .collect::<Vec<_>>()
+                .windows(2)
+                .filter_map(|pair| {
+                    let (time_1, waveforms) = pair[0];
+
+                    if !(waveforms.len() == 1 && waveforms.contains_key(&5)) {
+                        return None;
+                    }
+
+                    let events = waveform_to_events(&waveforms[&5], &algorithm);
+
+                    if events.is_empty() {
+                        None
+                    } else {
+                        // TODO: correct algorithm for multiple events
+                        let amp = events[0].1;
+                        let amp_kev = convert_to_kev(&amp, 5, &algorithm);
+
+                        if !(range.contains(&amp_kev)) {
+                            None
+                        } else {
+                            let (time_2, _) = pair[1];
+                            Some((time_2 - time_1) as f32)
+                        }
+                    }
+                })
+                .collect::<Vec<_>>();
+
+                histogram.lock().await.add_batch(0, deltas);
+                pb.lock().await.inc(1);
         })
-        .collect::<Vec<_>>();
+    }).collect::<Vec<_>>();
 
-    let mut histogram = PointHistogram::new_step(0.0..20e3, 24.0 * 2.0);
-    histogram.add_batch(0, deltas.iter().map(|x| *x as f32).collect::<Vec<_>>());
-
+    for handle in handles {
+        handle.await.unwrap();
+    }
 
     let mut plot = Plot::new();
 
     let layout = Layout::new()
         .title(Title::new(
-            format!("(event within ({range:?} keV) -> next event) time deltas for {filepath}")
+            format!("(event within ({range:?} keV) -> next event) time deltas for {pattern}")
                 .as_str(),
         ))
         .x_axis(Axis::new().title(Title::new("time delta, ns")))
@@ -90,7 +109,8 @@ async fn main() {
 
     plot.set_layout(layout);
     
-    histogram.draw_plotly(&mut plot, None);
+    
+    histogram.try_lock().unwrap().draw_plotly(&mut plot, None);
 
     plot.show();
 }

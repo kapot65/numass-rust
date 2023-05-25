@@ -141,6 +141,7 @@ async fn main() {
         [4, 5],
     ];
 
+    // TODO: change for check_neigbors_fast from processing
     let double_non_crosses = crosses
         .iter()
         .filter(|(_, waveforms)| waveforms.len() == 2)
