@@ -1,8 +1,9 @@
 use std::{path::PathBuf, collections::BTreeMap, vec, sync::Arc};
 
-use analysis::get_points_by_pattern;
+use analysis::{get_points_by_pattern, CorrectionCoeffs};
 // use analysis::DB_ROOT;
 use dataforge::read_df_message;
+use indicatif::ProgressStyle;
 use processing::{Algorithm, numass::{NumassMeta, protos::rsb_event}, PostProcessingParams, histogram::{HistogramParams, PointHistogram}, post_process, extract_amplitudes};
 use protobuf::Message;
 use serde::{Serialize, Deserialize};
@@ -42,10 +43,10 @@ struct ProducedPoint {
     u_sp: u16,
     e_curr: f32,
     l_curr: f32,
-    k: usize,
-    l: usize,
-    m: usize,
-    d: usize,
+    k: f64,
+    l: f64,
+    m: f64,
+    d: f64,
     origins: Vec<PathBuf>,
     time: u64
 }
@@ -53,22 +54,81 @@ struct ProducedPoint {
 #[tokio::main]
 async fn main() {
 
-    let db_root = "/home/chernov/data";
-
+    // let db_root = "/data/numass-server";
+    let db_root = "/data-ssd";
     let run = "2023_03";
 
-    let pattern = format!("/{run}/Background_[23]/set_[123]/p*");
+    // === Background 1 ===
+    let pattern = format!("/{run}/Background_1/set_[12]/p*");
     let exclude = [
-        format!("/Background_3/set_1/p101")
+        format!("/Background_1/set_1/p43"),
+        format!("/Background_1/set_1/p74"),
+        format!("/Background_1/set_2/p55"),
+        format!("/Background_1/set_2/p59"),
+        format!("/Background_1/set_2/p66")
     ];
-    let group = "bgr";
+    let correct_to_monitor = false;
+    let group = "bgr-1";
 
+    // === Background 2,3 ===
+    // let pattern = format!("/{run}/Background_2/set_[12]/p*");
+    // let exclude = [];
+    // let correct_to_monitor = false;
+    // let group = "bgr-2";
+
+    // === Tritium 1, Bgr 1 ===
+    // let pattern = format!("/{run}/Tritium_1/set_[1234567]/p*");
+    // let exclude = [];
+    // let correct_to_monitor = true;
+    // let group = "tritium-1-bgr-1";
+
+    // === Tritium 1, Bgr 2 ===
+    // let pattern = format!("/{run}/Tritium_1/set_[123][0123456789]/p*");
+    // let exclude = [
+    //     "Tritium_1/set_10".to_owned()
+    // ];
+    // let correct_to_monitor = true;
+    // let group = "tritium-1-bgr-2";
+
+    // === Tritium 2 ===
+    // let pattern = format!("/{run}/Tritium_2/set_*/p*");
+    // let exclude: Vec<String> = vec![
+    //     "Tritium_2/set_5/p18".to_owned(),
+    //     "Tritium_2/set_5/p19".to_owned(),
+    //     "Tritium_2/set_14/p20".to_owned(),
+    //     "Tritium_2/set_14/p22".to_owned(),
+    // ];
+    // let correct_to_monitor = true;
+    // let group = "tritium-2";
+
+    // === Tritium 3 ===
+    // let pattern = format!("/{run}/Tritium_3/set_*/p*");
+    // let exclude: Vec<String> = vec![
+    //     "Tritium_3/set_25_short".to_owned(),
+    //     "Tritium_2/set_29/p37".to_owned()
+    // ];
+    // let correct_to_monitor = true;
+    // let group = "tritium-3";
+
+    // === Tritium 4 ===
+    // let pattern = format!("/{run}/Tritium_4/set_*/p*");
+    // let exclude: Vec<String> = vec![
+    //     "Tritium_4/set_10_short".to_owned(),
+    //     "Tritium_4/set_25/p7".to_owned(),
+    //     "Tritium_4/set_25_18000V_bad".to_owned()
+    // ];
+    // let correct_to_monitor = true;
+    // let group = "tritium-4";
+
+    // === Tritium 5 ===
     // let pattern = format!("/{run}/Tritium_5/set_*/p*");
     // let exclude: Vec<String> = vec![
     //     "Tritium_5/set_10".to_owned()
     // ];
-    // let group = "tritium_5";
+    // let correct_to_monitor = true;
+    // let group = "tritium-5";
 
+    // === End ===
 
     let workspace = PathBuf::from("/home/chernov/produced");
     std::fs::create_dir_all(&workspace).unwrap();
@@ -76,9 +136,14 @@ async fn main() {
     let bgr_dir = workspace.join(group);
     std::fs::create_dir_all(&bgr_dir).unwrap();
 
+    let coeffs = Arc::new(CorrectionCoeffs::load(&format!("/{db_root}/monitor.json")));
     let points = get_points_by_pattern(db_root, &pattern, &exclude);
 
-    let pb: Arc<Mutex<indicatif::ProgressBar>> = Arc::new(Mutex::new(indicatif::ProgressBar::new(points.len() as u64)));
+    let pb = indicatif::ProgressBar::new(points.len() as u64);
+    pb.set_style(ProgressStyle::with_template("[{elapsed_precise}] {bar} {pos:>7}/{len:7} {msg}")
+    .unwrap());
+    let pb: Arc<Mutex<indicatif::ProgressBar>> = Arc::new(Mutex::new(pb));
+
     let table = Arc::new(Mutex::new(BTreeMap::new()));
 
     let handles = points.iter().map(|(u_sp, points)| {
@@ -87,7 +152,8 @@ async fn main() {
         let points = points.clone();
         let bgr_dir = bgr_dir.clone();
         let table = Arc::clone(&table);
-        let pb = Arc::clone(&pb);
+        let pb: Arc<Mutex<indicatif::ProgressBar>> = Arc::clone(&pb);
+        let coeffs = Arc::clone(&coeffs);
 
         tokio::spawn(async move {
 
@@ -97,10 +163,10 @@ async fn main() {
                 u_sp: u_sp_v,
                 e_curr: E_MIN.max(18.5 - u_sp_kev),
                 l_curr: u_sp_kev as f32 * L_COEFF,
-                k: 0,
-                l: 0,
-                m: 0,
-                d: 0,
+                k: 0.0,
+                l: 0.0,
+                m: 0.0,
+                d: 0.0,
                 origins: vec![],
                 time: 0
             };
@@ -112,6 +178,9 @@ async fn main() {
                     .await
                     .unwrap();
                 let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
+                let monitor_coeff = if correct_to_monitor {
+                    coeffs.get_for_point(&filepath, &point) as f64
+                } else { 1.0 };
 
                 let amps = post_process(
                     extract_amplitudes(&point, &ALGORITHM, true) , &POST_PROCESSING);
@@ -123,15 +192,15 @@ async fn main() {
 
                         if (out_point.e_curr..E_PEAK).contains(amp) {
                             if *ch_num == 5 {
-                                out_point.k += 1;
+                                out_point.k += monitor_coeff;
                                 if (out_point.l_curr..E_PEAK).contains(amp) {
-                                    out_point.l += 1;
+                                    out_point.l += monitor_coeff;
                                 }
                             } else if (out_point.l_curr..E_PEAK).contains(amp) {
-                                out_point.m += 1;
+                                out_point.m += monitor_coeff;
                             }
                         } else if (E_PEAK..E_MAX).contains(amp) && *ch_num == 5 {
-                            out_point.d += 1;
+                            out_point.d += monitor_coeff;
                         }
                     })
                 });
@@ -143,7 +212,6 @@ async fn main() {
             tokio::fs::write(
                 bgr_dir.join(format!("{}.json", u_sp_v)),
                 serde_json::to_string(&out_point).unwrap()).await.unwrap();
-
 
             // TODO: move to PointHistogram trait
             let mut ascii_hist = format!("u\tcounts\n");
@@ -176,10 +244,10 @@ async fn main() {
             u_sp = u_sp,
             e_curr = point.e_curr,
             l_curr = point.l_curr,
-            k = point.k,
-            l = point.l,
-            m = point.m,
-            d = point.d,
+            k = point.k.round() as u64,
+            l = point.l.round() as u64,
+            m = point.m.round() as u64,
+            d = point.d.round() as u64,
             time = point.time
         ));
     });

@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, path::PathBuf};
 
+use processing::numass::protos::rsb_event::Point;
 use serde::Deserialize;
 
 pub fn get_points_by_pattern(db_root: &str, pattern: &str, exclude: &[String]) -> BTreeMap<u16, Vec<PathBuf>> {
@@ -41,6 +42,7 @@ pub struct CorrectionCoeffs {
 }
 
 impl CorrectionCoeffs {
+
     pub fn load(filepath: &str) -> Self {
         let json = std::fs::read(filepath).unwrap();
         let coeffs = serde_json::from_slice(&json).unwrap();
@@ -52,5 +54,25 @@ impl CorrectionCoeffs {
 
     pub fn get(&self, fill: &str, set: &str) -> Option<&Coeffs> {
         self.coeffs.get(fill)?.get(set).map(|params| &params.corr_coef)
+    }
+
+    pub fn get_for_point(&self, filepath: &PathBuf, point: &Point) -> f32{
+
+        let (fill, set) = {
+            let set_folder = filepath.parent().unwrap();
+            (
+                set_folder.parent().unwrap().file_name().unwrap().to_str().unwrap(), 
+                set_folder.file_name().unwrap().to_str().unwrap()
+            )
+        };
+
+        let Coeffs {a, b} = self.get(fill, set).unwrap();
+        let time = point.channels.first().unwrap().blocks.first().unwrap().time as f32;
+        Some((a * time + b, time));
+
+        let secs = point.channels.first().unwrap().blocks.first().unwrap().time / 
+                1_000_000_000 + (3600 * 4);
+
+        1.0 / (a * (secs % 1_000_000) as f32 + b)
     }
 }

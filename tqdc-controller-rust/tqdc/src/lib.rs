@@ -168,7 +168,7 @@ async fn gather_frames(
     tqdc_contol_addr: SocketAddr,
     host_stream_addr: SocketAddr,
     tqdc_stream_addr: SocketAddr,
-) -> Result<Vec<[u8; 1448]>> {
+) -> Result<Vec<[u8; 1456]>> {
     let mut frames = Vec::with_capacity(30_000 * 100);
     let stream_socket = UdpSocket::bind(host_stream_addr).await?;
 
@@ -182,7 +182,7 @@ async fn gather_frames(
         .await?;
 
     loop {
-        let mut buf = [0; 1448];
+        let mut buf = [0; 1456];
 
         match tokio::time::timeout(
             Duration::from_millis(500),
@@ -226,7 +226,7 @@ async fn gather_frames(
     Ok(frames)
 }
 
-fn frames_to_events(frames: Vec<[u8; 1448]>) -> Result<Vec<MStreamFragment>> {
+fn frames_to_events(frames: Vec<[u8; 1456]>) -> Result<Vec<MStreamFragment>> {
     let mut events = vec![];
     for frame in frames {
         let message = MlinkMessage::from_datagram(&frame);

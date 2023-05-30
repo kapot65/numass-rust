@@ -1,4 +1,4 @@
-use std::{sync::Arc};
+use std::{sync::{Arc, atomic::{AtomicUsize, Ordering}}};
 
 use analysis::get_points_by_pattern;
 use plotly::{common::Title, layout::Axis, Layout, Plot};
@@ -18,13 +18,16 @@ async fn main() {
     
     let db_root = "/home/chernov/data";
     let run = "2023_03";
-    let pattern = format!("/{run}/Tritium_5/set_*/p*(30s)(HV1=14000)");
+    let pattern = format!("/{run}/Tritium_2/set_*/p*(30s)(HV1=14000)");
     let exclude = [];
 
     let points = get_points_by_pattern(db_root, &pattern, &exclude).first_key_value().unwrap().1.clone();
 
-    let histogram_all = Arc::new(Mutex::new(PointHistogram::new_step(0.0..27.0, 0.1)));
-    let histogram = Arc::new(Mutex::new(PointHistogram::new_step(0.0..27.0, 0.1)));
+    let histogram_all = Arc::new(Mutex::new(PointHistogram::new_step(0.0..40.0, 0.1)));
+    let histogram = Arc::new(Mutex::new(PointHistogram::new_step(0.0..40.0, 0.1)));
+
+    let counts = Arc::new(AtomicUsize::new(0));
+    let counts_all = Arc::new(AtomicUsize::new(0));
 
     let pb: Arc<Mutex<indicatif::ProgressBar>> = Arc::new(Mutex::new(indicatif::ProgressBar::new(points.len() as u64)));
     let handles = points.iter().map(|filepath| {
@@ -32,6 +35,10 @@ async fn main() {
         let histogram_all = Arc::clone(&histogram_all);
         let histogram = Arc::clone(&histogram);
         let pb = Arc::clone(&pb);
+
+        let counts = Arc::clone(&counts);
+        let counts_all = Arc::clone(&counts_all);
+        // let counts_all = Arc::clone(&counts_all);
 
         tokio::spawn(async move {
             let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
@@ -48,8 +55,9 @@ async fn main() {
             );
             
             let amps = events.iter().filter_map(|(_, frames)| {
-                if frames.len() == 1 
-                || processing::check_neigbors_fast::<f32>(&frames) 
+                if 
+                    frames.len() == 1 || 
+                    processing::check_neigbors_fast::<f32>(&frames) 
                 // || frames.contains_key(&5)
                 {
                     None
@@ -58,12 +66,20 @@ async fn main() {
                 }
             }).flatten().collect::<Vec<_>>();
 
+        
+            counts.store(counts.load(Ordering::Relaxed) + amps.len(), Ordering::Relaxed);
             histogram.lock().await.add_batch(0, amps);
 
-            let amps_all = events.iter().flat_map(|(_, frames)| {
-                frames.into_iter().map(|(_, amp)| *amp)
+            let amps_all = events.iter()
+            .filter(|(_, frames)| {
+                frames.len() > 1 && frames.contains_key(&5)
+            })
+            .map(|(_, frames)| {
+                frames.into_iter().map(|(_, amp)| amp).sum::<f32>()
+                // .map(|(_, amp)| *amp)
             }).collect::<Vec<_>>();
 
+            counts_all.store(counts_all.load(Ordering::Relaxed) + amps_all.len(), Ordering::Relaxed);
             histogram_all.lock().await.add_batch(0, amps_all);
 
             pb.lock().await.inc(1);
@@ -74,6 +90,10 @@ async fn main() {
         handle.await.unwrap();
     }
 
+
+    println!("Total events: {}", counts.load(Ordering::Relaxed));
+    println!("Total events: {}", counts_all.load(Ordering::Relaxed));
+
     let mut plot = Plot::new();
 
     let layout = Layout::new()
@@ -81,7 +101,7 @@ async fn main() {
             format!("{pattern}")
                 .as_str(),
         ))
-        .x_axis(Axis::new().title(Title::new("time delta, ns")))
+        .x_axis(Axis::new().title(Title::new("Enery, KeV")))
         // .y_axis(Axis::new().type_(plotly::layout::AxisType::Log))
         .height(1000);
 
