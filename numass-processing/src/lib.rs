@@ -476,30 +476,3 @@ pub fn find_first_peak(waveform: &ProcessedWaveform, threshold: f32) -> Option<u
         })
         .map(|(idx, _)| idx)
 }
-
-pub fn point_to_chunks(point: rsb_event::Point, limit_ns: u64) -> Vec<Vec<(u8, ProcessedWaveform)>> {
-
-    let mut chunks = vec![];
-    chunks.push(vec![]);
-
-    for channel in point.channels {
-        for block in channel.blocks {
-            for frame in block.frames {
-                let chunk_num = (frame.time / limit_ns) as usize;
-                
-                while chunks.len() < chunk_num + 1 {
-                    chunks.push(vec![])
-                }
-
-                let waveform = process_waveform(&frame);
-
-                chunks[chunk_num].push((
-                    channel.id as u8,
-                    waveform.into()
-                ));
-            }
-        }
-    }
-
-    chunks
-}
