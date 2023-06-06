@@ -124,13 +124,13 @@ impl From<&[MStreamFragment]> for MStreamTriggerAndUserData {
             let length = fragment.header.length as usize;
 
             if fragment.header.fragment_offset == 0 {
-                device_serial = Some(u32::from_le_bytes(array_ref![fragment.payload, 0, 4].to_owned()));
+                device_serial = Some(u32::from_le_bytes(*array_ref![fragment.payload, 0, 4]));
                 event_number = Some(
-                    u24::new(u32::from_le_bytes(array_ref![fragment.payload, 4, 4].to_owned()) & 0x00FFFFFF)
+                    u24::new(u32::from_le_bytes(*array_ref![fragment.payload, 4, 4]) & 0x00FFFFFF)
                 );
                 user_defined_bits = Some(fragment.payload[7]);
-                tai_sec = Some(u32::from_le_bytes(array_ref![fragment.payload, 8, 4].to_owned()));
-                tai_nano_sec = Some(u32::from_le_bytes(array_ref![fragment.payload, 12, 4].to_owned())); // ! 1:0 - flag
+                tai_sec = Some(u32::from_le_bytes(*array_ref![fragment.payload, 8, 4]));
+                tai_nano_sec = Some(u32::from_le_bytes(*array_ref![fragment.payload, 12, 4])); // ! 1:0 - flag
 
                 buffer[16..length].copy_from_slice(&fragment.payload[16..length]);
             } else {
@@ -156,7 +156,7 @@ pub fn extract_data_blocks(payload: &[u8]) -> Vec<ADCDataBlock> {
     let mut channels = vec![];
 
     while offset < payload.len() as usize {
-        let data_payload_length = u16::from_le_bytes(array_ref![payload, offset, 2].clone()); // 15:0
+        let data_payload_length = u16::from_le_bytes(*array_ref![payload, offset, 2]); // 15:0
 
         // let adc_data_block_specific = {
         //     let combined = u8::from_le_bytes(bytes[offset+2..offset+3].try_into().unwrap()); // 23:16
@@ -175,12 +175,12 @@ pub fn extract_data_blocks(payload: &[u8]) -> Vec<ADCDataBlock> {
             1 => {
                 // let adc_timestamp = u16::from_le_bytes(bytes[offset+4..offset+6].try_into().unwrap());
                 let adc_data_length =
-                    u16::from_le_bytes(array_ref![payload, offset + 6, 2].clone());
+                    u16::from_le_bytes(*array_ref![payload, offset + 6, 2]);
 
                 let bins_number = (adc_data_length / 2) as usize;
                 let mut waveform = Vec::with_capacity(bins_number);
                 for n in 0..bins_number {
-                    waveform.push(i16::from_le_bytes(array_ref![payload, offset + 8 + (n * 2), 2].clone()));
+                    waveform.push(i16::from_le_bytes(*array_ref![payload, offset + 8 + (n * 2), 2]));
                 }
 
                 channels.push(ADCDataBlock {

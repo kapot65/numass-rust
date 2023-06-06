@@ -1,7 +1,6 @@
 use std::{path::PathBuf, collections::BTreeMap, vec, sync::Arc};
 
 use analysis::{get_points_by_pattern, CorrectionCoeffs};
-// use analysis::DB_ROOT;
 use dataforge::read_df_message;
 use indicatif::ProgressStyle;
 use processing::{Algorithm, numass::{NumassMeta, protos::rsb_event}, PostProcessingParams, histogram::{HistogramParams, PointHistogram}, post_process, extract_amplitudes};
@@ -33,7 +32,7 @@ const E_MAX: f32 = 40.0;
 
 const E_PEAK: f32 = 19.0;
 
-const L_COEFF: f32 = 0.85;
+const L_COEFF: f32 = 0.80;
 
 const HISTOGRAM_PARAMS: HistogramParams = HistogramParams { range: E_MIN..E_MAX, bins: 360 };
 
@@ -59,16 +58,16 @@ async fn main() {
     let run = "2023_03";
 
     // === Background 1 ===
-    let pattern = format!("/{run}/Background_1/set_[12]/p*");
-    let exclude = [
-        format!("/Background_1/set_1/p43"),
-        format!("/Background_1/set_1/p74"),
-        format!("/Background_1/set_2/p55"),
-        format!("/Background_1/set_2/p59"),
-        format!("/Background_1/set_2/p66")
-    ];
-    let correct_to_monitor = false;
-    let group = "bgr-1";
+    // let pattern = format!("/{run}/Background_1/set_[12]/p*");
+    // let exclude = [
+    //     format!("/Background_1/set_1/p43"),
+    //     format!("/Background_1/set_1/p74"),
+    //     format!("/Background_1/set_2/p55"),
+    //     format!("/Background_1/set_2/p59"),
+    //     format!("/Background_1/set_2/p66")
+    // ];
+    // let correct_to_monitor = false;
+    // let group = "bgr-1";
 
     // === Background 2,3 ===
     // let pattern = format!("/{run}/Background_2/set_[12]/p*");
@@ -91,15 +90,15 @@ async fn main() {
     // let group = "tritium-1-bgr-2";
 
     // === Tritium 2 ===
-    // let pattern = format!("/{run}/Tritium_2/set_*/p*");
-    // let exclude: Vec<String> = vec![
-    //     "Tritium_2/set_5/p18".to_owned(),
-    //     "Tritium_2/set_5/p19".to_owned(),
-    //     "Tritium_2/set_14/p20".to_owned(),
-    //     "Tritium_2/set_14/p22".to_owned(),
-    // ];
-    // let correct_to_monitor = true;
-    // let group = "tritium-2";
+    let pattern = format!("/{run}/Tritium_2/set_*/p*");
+    let exclude: Vec<String> = vec![
+        "Tritium_2/set_5/p18".to_owned(),
+        "Tritium_2/set_5/p19".to_owned(),
+        "Tritium_2/set_14/p20".to_owned(),
+        "Tritium_2/set_14/p22".to_owned(),
+    ];
+    let correct_to_monitor = true;
+    let group = "tritium-2";
 
     // === Tritium 3 ===
     // let pattern = format!("/{run}/Tritium_3/set_*/p*");
@@ -249,7 +248,7 @@ async fn main() {
             m = point.m.round() as u64,
             d = point.d.round() as u64,
             time = point.time
-        ));
+        ).replace(".", ","));
     });
     std::fs::write(bgr_dir.join("all.tsv"), table_data).unwrap()
 }

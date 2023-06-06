@@ -1,4 +1,4 @@
-use std::{sync::{Arc, atomic::{AtomicUsize, Ordering}}};
+use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 
 use analysis::get_points_by_pattern;
 use plotly::{common::Title, layout::Axis, Layout, Plot};
@@ -11,20 +11,19 @@ use protobuf::Message;
 use dataforge::read_df_message;
 use tokio::sync::Mutex;
 
-pub const DB_ROOT: &str = "/home/chernov/data";
-
 #[tokio::main]
 async fn main() {
     
-    let db_root = "/home/chernov/data";
+    let db_root = "/data-ssd";
     let run = "2023_03";
-    let pattern = format!("/{run}/Tritium_2/set_*/p*(30s)(HV1=14000)");
+    let pattern = format!("/{run}/Tritium_2/set_1/p118(30s)(HV1=12000)");
+    // let pattern = format!("/{run}/Tritium_2/set_*/p*(30s)(HV1=12000)");
     let exclude = [];
 
     let points = get_points_by_pattern(db_root, &pattern, &exclude).first_key_value().unwrap().1.clone();
 
-    let histogram_all = Arc::new(Mutex::new(PointHistogram::new_step(0.0..40.0, 0.1)));
-    let histogram = Arc::new(Mutex::new(PointHistogram::new_step(0.0..40.0, 0.1)));
+    let histogram_all = Arc::new(Mutex::new(PointHistogram::new_step(-2.0..40.0, 0.1)));
+    let histogram = Arc::new(Mutex::new(PointHistogram::new_step(-2.0..40.0, 0.1)));
 
     let counts = Arc::new(AtomicUsize::new(0));
     let counts_all = Arc::new(AtomicUsize::new(0));
@@ -38,7 +37,6 @@ async fn main() {
 
         let counts = Arc::clone(&counts);
         let counts_all = Arc::clone(&counts_all);
-        // let counts_all = Arc::clone(&counts_all);
 
         tokio::spawn(async move {
             let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
@@ -48,35 +46,39 @@ async fn main() {
 
             let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
 
-            let algorithm = Algorithm::default();
+            let algorithm = Algorithm::FirstPeak { threshold: 10, left: 8 };
 
             let events = extract_amplitudes(
                 &point, &algorithm, true
             );
             
-            let amps = events.iter().filter_map(|(_, frames)| {
-                if 
-                    frames.len() == 1 || 
-                    processing::check_neigbors_fast::<f32>(&frames) 
-                // || frames.contains_key(&5)
-                {
-                    None
-                } else {
-                    Some(frames.into_iter().map(|(_, amp)| *amp))
+            let amps = events.iter().filter_map(|(_, amps)| {
+                if  amps.len() == 1 ||
+                    processing::check_neigbors_fast::<f32>(&amps) 
+                { None } else {
+                    Some(amps.into_iter().map(|(_, amp)| *amp)
+                        .sum::<f32>()
+                    )
                 }
-            }).flatten().collect::<Vec<_>>();
+            }).collect::<Vec<_>>();
 
-        
+            // let amps = events.iter().filter_map(|(_, amps)| {
+            //     if  amps.len() == 1 || 
+            //         // frames.len() > 2 ||
+            //         processing::check_neigbors_fast::<f32>(&amps) 
+            //     { None } else {
+            //         Some(amps.into_iter().map(|(_, amp)| *amp).sum::<f32>())
+            //     }
+            // }).collect::<Vec<_>>();
+
             counts.store(counts.load(Ordering::Relaxed) + amps.len(), Ordering::Relaxed);
             histogram.lock().await.add_batch(0, amps);
 
             let amps_all = events.iter()
-            .filter(|(_, frames)| {
-                frames.len() > 1 && frames.contains_key(&5)
-            })
-            .map(|(_, frames)| {
-                frames.into_iter().map(|(_, amp)| amp).sum::<f32>()
-                // .map(|(_, amp)| *amp)
+            .filter_map(|(_, frames)| {
+                if frames.len() > 1 && frames.contains_key(&5) {
+                    Some(frames.into_iter().map(|(_, amp)| amp).sum::<f32>())
+                } else { None }
             }).collect::<Vec<_>>();
 
             counts_all.store(counts_all.load(Ordering::Relaxed) + amps_all.len(), Ordering::Relaxed);
@@ -90,25 +92,26 @@ async fn main() {
         handle.await.unwrap();
     }
 
-
     println!("Total events: {}", counts.load(Ordering::Relaxed));
     println!("Total events: {}", counts_all.load(Ordering::Relaxed));
 
     let mut plot = Plot::new();
 
     let layout = Layout::new()
-        .title(Title::new(
-            format!("{pattern}")
-                .as_str(),
-        ))
+        .title(Title::new(&pattern))
         .x_axis(Axis::new().title(Title::new("Enery, KeV")))
-        // .y_axis(Axis::new().type_(plotly::layout::AxisType::Log))
         .height(1000);
-
     plot.set_layout(layout);
-    
+
     histogram_all.try_lock().unwrap().draw_plotly(&mut plot, None);
-    histogram.try_lock().unwrap().draw_plotly(&mut plot, None);
+    
+    {
+        let histogram = histogram.try_lock().unwrap();
+        let under_hist = histogram.events_in_window_all(10.2, 19.0);
+        let total = histogram.events_in_window_all(4.0, 40.0);
+        println!("{}", under_hist as f32 / total as f32);
+        histogram.draw_plotly(&mut plot, None);
+    }
     
     plot.show();
 }

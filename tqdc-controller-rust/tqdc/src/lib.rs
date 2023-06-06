@@ -364,19 +364,3 @@ pub async fn get_tqdc_configuration(path_to_config: &PathBuf) -> Value {
 
     config
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn parse_config() {
-        let path_to_config = if let Some(home) = home::home_dir() {
-            home.join::<PathBuf>(".config/AFI Electronics/TQDC2/TQDC2_default.ini".into())
-        } else {
-            panic!("can't obtain home directory")
-        };
-        let conf = get_tqdc_configuration(&path_to_config).await;
-        println!("{}", serde_json::to_string_pretty(&conf).unwrap())
-    }
-}

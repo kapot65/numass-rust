@@ -22,7 +22,26 @@ async fn main() {
 
     let amps = post_process(
         amlitudes, 
-        &PostProcessingParams::default());
+        // &PostProcessingParams::default()
+
+        &PostProcessingParams {
+            // TODO: add to KeV corrections
+            convert_to_kev: true,
+            merge_close_events: false,
+            use_dead_time: false,
+            effective_dead_time: 4000,
+            merge_map: [
+                [false, true, false, false, false, false, false],
+                [false, false, false, true, false, false, false],
+                [false, false, false, false, true, false, false],
+                [false, false, false, false, false, false, true],
+                [true, false, false, false, false, false, false],
+                [true, true, true, true, true, false, true],
+                [false, false, true, false, false, false, false],
+            ],
+        }
+    
+    );
 
     let counts = amps.iter().map(|(_, frames)| {
         frames.values().count()

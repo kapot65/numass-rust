@@ -1,5 +1,7 @@
 use std::convert::TryFrom;
 
+use arrayref::array_ref;
+
 use crate::regs::{is_reg16, is_reg32, Register16, Register32};
 use crate::mstream::MStreamFragment;
 
@@ -15,11 +17,11 @@ pub enum MlinkMessage {
         id: u16,
     },
     CtrlReq {
-        header: MLinkHeader, // TODO: remove header
+        header: MLinkHeader,
         regs: Vec<CtrlReg>,
     },
     CtrlAck {
-        header: MLinkHeader, // TODO: remove header
+        header: MLinkHeader,
         regs: Vec<CtrlReg>,
     },
 }
@@ -321,17 +323,17 @@ impl MLinkHeader {
         assert!(bytes.len() >= 12); // TODO: remove duplicate check?
 
         let type_ =
-            MessageType::try_from(u16::from_le_bytes(bytes[..2].try_into().unwrap())).unwrap();
+            MessageType::try_from(u16::from_le_bytes(*array_ref![bytes, 0, 2])).unwrap();
         let sync =
-            MessageSync::try_from(u16::from_le_bytes(bytes[2..4].try_into().unwrap())).unwrap();
+            MessageSync::try_from(u16::from_le_bytes(*array_ref![bytes, 2, 2])).unwrap();
 
         MLinkHeader {
             type_,
             sync,
-            seq: u16::from_le_bytes(bytes[4..6].try_into().unwrap()),
-            len: u16::from_le_bytes(bytes[6..8].try_into().unwrap()),
-            src: u16::from_le_bytes(bytes[8..10].try_into().unwrap()),
-            dst: u16::from_le_bytes(bytes[10..12].try_into().unwrap()),
+            seq: u16::from_le_bytes(*array_ref![bytes, 4, 2]),
+            len: u16::from_le_bytes(*array_ref![bytes, 6, 2]),
+            src: u16::from_le_bytes(*array_ref![bytes, 8, 2]),
+            dst: u16::from_le_bytes(*array_ref![bytes, 10, 2]),
         }
     }
 }
