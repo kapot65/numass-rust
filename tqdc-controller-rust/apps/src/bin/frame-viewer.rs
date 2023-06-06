@@ -10,8 +10,9 @@ use eframe::egui::plot::{Legend, Plot};
 use apps::defaults::{BOARD_IP, HOST_IP, HOST_STREAM_PORT, STREAM_PORT};
 use processing::{process_waveform, waveform_to_events, Algorithm, ProcessedWaveform, EguiLine, color_for_index};
 use processing::histogram::PointHistogram;
+use tqdc::MTU_SIZE;
 use tqdc::mlink::MlinkMessage;
-use tqdc::mstream::{MStreamTriggerAndUserData, extract_data_blocks, ADCDataBlock};
+use tqdc::mstream::{MStreamTriggerAndUserData, ADCDataBlock};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -71,7 +72,7 @@ fn main() {
         let tqdc_address = SocketAddr::new(args.tqdc_ip, args.tqdc_stream_port);
 
         let sock = UdpSocket::bind(bind_address).unwrap();
-
+        
         sock.send_to(
             &MlinkMessage::to_datagram(&MlinkMessage::new_stream_acq(
                 0x0000, 
@@ -91,12 +92,12 @@ fn main() {
         let mut channels = BTreeMap::new();
         let mut histogram = empty_hist.clone();
 
-        let mut fragments_buf = vec![];
+        let mut fragments_buf = BTreeMap::new();
         
         let mut seq = 0;
 
         loop {
-            let mut buf = [0; 4096 * 10];
+            let mut buf = [0; MTU_SIZE];
             let (len, to_addr) = sock.recv_from(&mut buf).unwrap();
             let message = MlinkMessage::from_datagram(&buf[..len]);
 
@@ -105,7 +106,6 @@ fn main() {
 
             match message {
                 MlinkMessage::StreamReq { fragment, ..} => {
-                    
                     sock.send_to(
                         &MlinkMessage::to_datagram(&MlinkMessage::new_stream_acq(
                             seq,
@@ -119,51 +119,39 @@ fn main() {
                     .unwrap();
                     seq +=1;
 
-                    // TODO: fix fragments combining
-                    let last_fragment = fragment.header.subtype_and_flags.last_fragment();
-                    fragments_buf.push(fragment);
-
-                    if last_fragment {
-                        let merged = MStreamTriggerAndUserData::from(fragments_buf.as_slice());
-                        fragments_buf = vec![];
-                        let adc_blocks = extract_data_blocks(&merged.user_data);
-                        channels = adc_blocks.into_iter().map(|ADCDataBlock {ch_num, waveform }| {
-                            let waveform = process_waveform(waveform);
-                            waveform_to_events(&waveform, &Algorithm::Max).into_iter().for_each(|(_, amp)| {
-                                if amp > args.count_rate_threshold {
-                                    *counts.entry(ch_num).or_insert(0) += 1;
-                                }
-                                histogram.add(ch_num, amp)
-                            });
-                            (ch_num, waveform)
-                        }).collect::<BTreeMap<_, _>>();
-                    }
-
-                    // frames.into_iter().for_each(|fragment| {
-                    //     channels = fragment.channels.into_iter().map(|ADCDataBlock {ch_num, waveform }| {
-                    //         let waveform = process_waveform(waveform);
-                    //         waveform_to_events(&waveform, &Algorithm::Max).into_iter().for_each(|(_, amp)| {
-                    //             if amp > args.count_rate_threshold {
-                    //                 *counts.entry(ch_num).or_insert(0) += 1;
-                    //             }
-                    //             histogram.add(ch_num, amp)
-                    //         });
-                    //         (ch_num, waveform)
-                    //     }).collect::<BTreeMap<_, _>>();
-                    // });
+                    fragments_buf.entry(fragment.header.fragment_id).or_insert(vec![]).push(fragment);
 
                     let elapsed_ms = count_rate_timer.elapsed().as_millis();
                     if elapsed_ms > count_rate_interval_ms {
                         count_rate_timer = Instant::now();
-                        *count_rate_bg.lock().unwrap() = counts; // TODO: fix count rate calculation
-                        counts = BTreeMap::new();
+                        counts.iter_mut().for_each(|(_, count)| {
+                            *count /= (elapsed_ms) as f32 / 1000.0;
+                        });
+                        *count_rate_bg.lock().unwrap() = counts.clone(); // TODO: fix count rate calculation
+                        counts.clear();
                     }
 
                     let elapsed_ms = plots_refresh_timer.elapsed().as_millis();
                     if elapsed_ms > plots_refresh_interval_ms {
+                        fragments_buf.iter().for_each(|(_, fragments)| {
+                            if let Ok(combined) = MStreamTriggerAndUserData::try_from(&fragments[..]) {
+                                channels = combined.extract_data_blocks().into_iter().map(|ADCDataBlock {ch_num, waveform }| {
+                                    let waveform = process_waveform(waveform);
+                                    waveform_to_events(&waveform, &Algorithm::Max).into_iter().for_each(|(_, amp)| {
+                                        if amp > args.count_rate_threshold {
+                                            *counts.entry(ch_num).or_insert(0.0) += 1.0;
+                                        }
+                                        histogram.add(ch_num, amp)
+                                    });
+                                    (ch_num, waveform)
+                                }).collect::<BTreeMap<_, _>>();
+                            }
+                        });
+                        fragments_buf.clear();
+
                         plots_refresh_timer = Instant::now();
-                        *channels_bg.lock().unwrap() = channels;
-                        channels = BTreeMap::new();
+                        *channels_bg.lock().unwrap() = channels.clone();
+                        channels.clear();
                         *histogram_bg.lock().unwrap() = histogram.clone();
                     }
                 }
@@ -189,7 +177,7 @@ fn main() {
 struct MyEguiApp {
     histogram: Arc<Mutex<PointHistogram>>,
     channels: Arc<Mutex<BTreeMap<u8, ProcessedWaveform>>>,
-    count_rate: Arc<Mutex<BTreeMap<u8, u32>>>,
+    count_rate: Arc<Mutex<BTreeMap<u8, f32>>>,
 }
 
 impl eframe::App for MyEguiApp {
@@ -203,7 +191,7 @@ impl eframe::App for MyEguiApp {
 
             ui.label("count_rates:");
             for (ch_num, count_rate) in count_rate_lock.iter() {
-                ui.label(format!("ch {}: {count_rate: >8} Hz", ch_num + 1));
+                ui.label(format!("ch {}: {count_rate:>8.2} Hz", ch_num + 1));
             }
         });
 

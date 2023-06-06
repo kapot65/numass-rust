@@ -102,15 +102,38 @@ pub struct MStreamADCBlocks {
     pub adc_blocks: Vec<ADCDataBlock>,
 }
 
-const FRAGMENT_MAX: usize = 4096;
+impl TryFrom<&[MStreamFragment]> for MStreamTriggerAndUserData {
 
-impl From<&[MStreamFragment]> for MStreamTriggerAndUserData {
-    fn from(fragments: &[MStreamFragment]) -> Self {
+    type Error = &'static str;
 
-        // TODO: check if all fragments are from the same device
+    fn try_from(fragments: &[MStreamFragment]) -> Result<Self, Self::Error> {
 
-        let mut buffer = [0u8; FRAGMENT_MAX]; // TODO: change to dynamic allocation
-        let mut buff_size = 0;
+        let mut fragments = fragments.iter().collect::<Vec<_>>();
+        fragments.sort_by_key(|fragment| fragment.header.fragment_offset);
+
+        // check if all fragments are present and in order
+        let mut total_length = 0;
+        {
+            let mut last_fragment_found = false;
+            let mut current_offset = 0;
+            
+            for fragment in fragments.clone() {
+                if fragment.header.fragment_offset != current_offset {
+                    Err("missing intermediate fragment")?;
+                }
+                if fragment.header.subtype_and_flags.last_fragment() {
+                    last_fragment_found = true;
+                }
+                current_offset += fragment.header.length;
+                total_length += fragment.header.length as usize;
+            }
+
+            if !last_fragment_found {
+                Err("last fragment not found")?;
+            }
+        }
+
+        let mut buffer = Vec::with_capacity(total_length);
 
         let mut device_serial = None;
         let mut event_number = None;
@@ -118,11 +141,9 @@ impl From<&[MStreamFragment]> for MStreamTriggerAndUserData {
         let mut tai_sec = None;
         let mut tai_nano_sec = None;
 
-        fragments.iter().for_each(|fragment| {
-
-            let offset = fragment.header.fragment_offset as usize;
+        fragments.into_iter().for_each(|fragment| {
             let length = fragment.header.length as usize;
-
+            
             if fragment.header.fragment_offset == 0 {
                 device_serial = Some(u32::from_le_bytes(*array_ref![fragment.payload, 0, 4]));
                 event_number = Some(
@@ -132,85 +153,110 @@ impl From<&[MStreamFragment]> for MStreamTriggerAndUserData {
                 tai_sec = Some(u32::from_le_bytes(*array_ref![fragment.payload, 8, 4]));
                 tai_nano_sec = Some(u32::from_le_bytes(*array_ref![fragment.payload, 12, 4])); // ! 1:0 - flag
 
-                buffer[16..length].copy_from_slice(&fragment.payload[16..length]);
+                buffer.extend_from_slice(&fragment.payload[16..length]);
             } else {
-                buffer[offset..offset + length].copy_from_slice(&fragment.payload[..length]); 
+                buffer.extend_from_slice(&fragment.payload[..length]); 
             }
-            if buff_size < offset + length { buff_size = offset + length; }
         });
 
-        Self {
+        Ok(Self {
             device_serial: device_serial.unwrap(),
             event_number: event_number.unwrap(),
             user_defined_bits: user_defined_bits.unwrap(),
             tai_sec: tai_sec.unwrap(),
             tai_nano_sec: tai_nano_sec.unwrap(),
-            user_data: buffer[16..buff_size].to_vec()
-        }
+            user_data: buffer
+        })
     }
 }
 
-pub fn extract_data_blocks(payload: &[u8]) -> Vec<ADCDataBlock> {
+impl MStreamTriggerAndUserData {
+    pub fn extract_data_blocks(&self) -> Vec<ADCDataBlock> {
 
-    let mut offset = 0;
-    let mut channels = vec![];
-
-    while offset < payload.len() as usize {
-        let data_payload_length = u16::from_le_bytes(*array_ref![payload, offset, 2]); // 15:0
-
-        // let adc_data_block_specific = {
-        //     let combined = u8::from_le_bytes(bytes[offset+2..offset+3].try_into().unwrap()); // 23:16
-        //     combined & 0b11 // 16..18
-        // };
-
-        let (data_type, channel_number) = {
-            let combined = payload[offset + 3];
-            (combined >> 4, combined & 0b1111)
-        };
-
-        match data_type {
-            0 => {
-                // TODO add TDC event parsing
-            }
-            1 => {
-                // let adc_timestamp = u16::from_le_bytes(bytes[offset+4..offset+6].try_into().unwrap());
-                let adc_data_length =
-                    u16::from_le_bytes(*array_ref![payload, offset + 6, 2]);
-
-                let bins_number = (adc_data_length / 2) as usize;
-                let mut waveform = Vec::with_capacity(bins_number);
-                for n in 0..bins_number {
-                    waveform.push(i16::from_le_bytes(*array_ref![payload, offset + 8 + (n * 2), 2]));
+        let mut offset = 0;
+        let mut channels = vec![];
+    
+        while offset < self.user_data.len() as usize {
+            let data_payload_length = u16::from_le_bytes(*array_ref![self.user_data, offset, 2]); // 15:0
+    
+            // let adc_data_block_specific = {
+            //     let combined = u8::from_le_bytes(bytes[offset+2..offset+3].try_into().unwrap()); // 23:16
+            //     combined & 0b11 // 16..18
+            // };
+    
+            let (data_type, channel_number) = {
+                let combined = self.user_data[offset + 3];
+                (combined >> 4, combined & 0b1111)
+            };
+    
+            match data_type {
+                0 => {
+                    // TODO add TDC event parsing
                 }
-
-                channels.push(ADCDataBlock {
-                    ch_num: channel_number,
-                    waveform,
-                });
+                1 => {
+                    // let adc_timestamp = u16::from_le_bytes(bytes[offset+4..offset+6].try_into().unwrap());
+                    let adc_data_length =
+                        u16::from_le_bytes(*array_ref![self.user_data, offset + 6, 2]);
+    
+                    let bins_number = (adc_data_length / 2) as usize;
+                    let mut waveform = Vec::with_capacity(bins_number);
+                    for n in 0..bins_number {
+                        waveform.push(i16::from_le_bytes(*array_ref![self.user_data, offset + 8 + (n * 2), 2]));
+                    }
+    
+                    channels.push(ADCDataBlock {
+                        ch_num: channel_number,
+                        waveform,
+                    });
+                }
+                other => panic!("unexpected MStream Data Block format {other}"),
             }
-            other => panic!("unexpected MStream Data Block format {other}"),
+            offset += data_payload_length as usize + 4;
         }
-        offset += data_payload_length as usize + 4;
+        channels
     }
-    channels
 }
 
 
-#[test]
-fn test_multipacket() {
+#[cfg(test)]
+mod tests {
 
-    let payload = {
-        let fragment_1 = {
-            let data = std::fs::read("../resources/test/frames/multi-1.bin").unwrap();
-            MStreamFragment::from(&data[12..data.len() - 4])
-        };
-        let fragment_2 = {
-            let data = std::fs::read("../resources/test/frames/multi-2.bin").unwrap();
-            MStreamFragment::from(&data[12..data.len() - 4])
-        };
-        MStreamTriggerAndUserData::from([fragment_1, fragment_2].as_slice()).user_data
-    };
+    use super::*;
 
-    let blocks = extract_data_blocks(payload.as_slice());
-    println!("{blocks:?}");
+    #[test]
+    fn test_multifragment() {
+        let payload = {
+            let fragment_1 = {
+                let data = std::fs::read("../resources/test/frames/multi-1.bin").unwrap();
+                MStreamFragment::from(&data[12..data.len() - 4])
+            };
+            let fragment_2 = {
+                let data = std::fs::read("../resources/test/frames/multi-2.bin").unwrap();
+                MStreamFragment::from(&data[12..data.len() - 4])
+            };
+            MStreamTriggerAndUserData::try_from([fragment_1, fragment_2].as_slice()).unwrap()
+        };
+
+        let blocks = payload.extract_data_blocks();
+        println!("{blocks:?}");
+    }
+
+    #[test]
+    fn test_multifragment_wrong_order() {
+        let payload = {
+            let fragment_1 = {
+                let data = std::fs::read("../resources/test/frames/multi-2.bin").unwrap();
+                MStreamFragment::from(&data[12..data.len() - 4])
+            };
+            let fragment_2 = {
+                let data = std::fs::read("../resources/test/frames/multi-1.bin").unwrap();
+                MStreamFragment::from(&data[12..data.len() - 4])
+            };
+            MStreamTriggerAndUserData::try_from([fragment_1, fragment_2].as_slice()).unwrap()
+        };
+
+        let blocks = payload.extract_data_blocks();
+        println!("{blocks:?}");
+    }
 }
+

@@ -14,8 +14,10 @@ use tokio::net::UdpSocket;
 use tokio::time::{self, sleep, Duration};
 
 use mlink::{CtrlReg, MlinkMessage};
-use mstream::{MStreamTriggerAndUserData, extract_data_blocks, MStreamADCBlocks};
+use mstream::{MStreamTriggerAndUserData, MStreamADCBlocks};
 use regs::{as_run_state, Register16, Register32, RunMode, RunState, RunLogicControl};
+
+pub const MTU_SIZE: usize = 1536;
 
 async fn start_acquisition(
     millis: u32,
@@ -70,7 +72,7 @@ async fn start_acquisition(
     )
     .await?;
 
-    let mut buf = [0; 1536];
+    let mut buf = [0; MTU_SIZE];
 
     match time::timeout(Duration::from_millis(100), sock.recv_from(&mut buf)).await {
         Ok(res) => match res {
@@ -101,7 +103,7 @@ async fn check_run_state(
     )
     .await?;
 
-    let mut buf = [0; 1536 * 10];
+    let mut buf = [0; MTU_SIZE * 10];
 
     match time::timeout(Duration::from_millis(100), sock.recv_from(&mut buf)).await {
         Ok(res) => match res {
@@ -166,14 +168,12 @@ async fn stop_acquisition(
     }
 }
 
-const FRAME_SIZE: usize = 1456;
-
 async fn gather_frames(
     host_control_addr: SocketAddr,
     tqdc_contol_addr: SocketAddr,
     host_stream_addr: SocketAddr,
     tqdc_stream_addr: SocketAddr,
-) -> Result<Vec<[u8; FRAME_SIZE]>> {
+) -> Result<Vec<[u8; MTU_SIZE]>> {
     let mut frames = Vec::with_capacity(30_000 * 100);
     let stream_socket = UdpSocket::bind(host_stream_addr).await?;
 
@@ -187,7 +187,7 @@ async fn gather_frames(
         .await?;
 
     loop {
-        let mut buf = [0; FRAME_SIZE];
+        let mut buf = [0; MTU_SIZE];
 
         match tokio::time::timeout(
             Duration::from_millis(500),
@@ -231,7 +231,7 @@ async fn gather_frames(
     Ok(frames)
 }
 
-fn frames_to_events(frames: Vec<[u8; FRAME_SIZE]>) -> Result<Vec<MStreamADCBlocks>> {
+fn frames_to_events(frames: Vec<[u8; MTU_SIZE]>) -> Result<Vec<MStreamADCBlocks>> {
     let mut fragments = BTreeMap::new();
 
     for frame in frames {
@@ -245,8 +245,9 @@ fn frames_to_events(frames: Vec<[u8; FRAME_SIZE]>) -> Result<Vec<MStreamADCBlock
     };
 
     Ok(fragments.iter().map(|(_, fragments)| {
-        let merged = MStreamTriggerAndUserData::from(fragments.as_slice());
-        let adc_blocks = extract_data_blocks(&merged.user_data);
+        
+        let merged = MStreamTriggerAndUserData::try_from(fragments.as_slice()).unwrap(); // TODO: handle error
+        let adc_blocks = merged.extract_data_blocks();
 
         MStreamADCBlocks {
             device_serial: merged.device_serial,
