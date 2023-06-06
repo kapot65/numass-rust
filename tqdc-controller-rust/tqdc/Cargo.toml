@@ -11,6 +11,7 @@ strum = { version = "0.24.1", features = ["derive"] }
 strum_macros = "0.24.3"
 ux = "0.1.5"
 eyre = "0.6.8"
+arrayref = "0.3.7"
 
 [dev-dependencies]
 home = "0.5.4"

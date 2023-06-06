@@ -10,7 +10,8 @@ use eframe::egui::plot::{Legend, Plot};
 use apps::defaults::{BOARD_IP, HOST_IP, HOST_STREAM_PORT, STREAM_PORT};
 use processing::{process_waveform, waveform_to_events, Algorithm, ProcessedWaveform, EguiLine, color_for_index};
 use processing::histogram::PointHistogram;
-use tqdc::mlink::{MlinkMessage, ADCDataBlock};
+use tqdc::mlink::MlinkMessage;
+use tqdc::mstream::{MStreamTriggerAndUserData, extract_data_blocks, ADCDataBlock};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -89,6 +90,8 @@ fn main() {
         let mut counts = BTreeMap::new();
         let mut channels = BTreeMap::new();
         let mut histogram = empty_hist.clone();
+
+        let mut fragments_buf = vec![];
         
         let mut seq = 0;
 
@@ -101,26 +104,30 @@ fn main() {
             let plots_refresh_interval_ms = ( 1.0 / args.refresh_rate * 1000.0) as u128;
 
             match message {
-                MlinkMessage::StreamReq { frames, ..} => {
-                    if let Some(frame) = frames.first() {
-                        sock.send_to(
-                            &MlinkMessage::to_datagram(&MlinkMessage::new_stream_acq(
-                                seq,
-                                0x0001,
-                                0xfefe,
-                                frame.fragment_offset,
-                                frame.fragment_id,
-                            )),
-                            to_addr,
-                        )
-                        .unwrap();
-                        seq +=1;
-                    } else {
-                        panic!("no frames in package!")
-                    }
+                MlinkMessage::StreamReq { fragment, ..} => {
+                    
+                    sock.send_to(
+                        &MlinkMessage::to_datagram(&MlinkMessage::new_stream_acq(
+                            seq,
+                            0x0001,
+                            0xfefe,
+                            fragment.header.fragment_offset,
+                            fragment.header.fragment_id,
+                        )),
+                        to_addr,
+                    )
+                    .unwrap();
+                    seq +=1;
 
-                    frames.into_iter().for_each(|fragment| {
-                        channels = fragment.channels.into_iter().map(|ADCDataBlock {ch_num, waveform }| {
+                    // TODO: fix fragments combining
+                    let last_fragment = fragment.header.subtype_and_flags.last_fragment();
+                    fragments_buf.push(fragment);
+
+                    if last_fragment {
+                        let merged = MStreamTriggerAndUserData::from(fragments_buf.as_slice());
+                        fragments_buf = vec![];
+                        let adc_blocks = extract_data_blocks(&merged.user_data);
+                        channels = adc_blocks.into_iter().map(|ADCDataBlock {ch_num, waveform }| {
                             let waveform = process_waveform(waveform);
                             waveform_to_events(&waveform, &Algorithm::Max).into_iter().for_each(|(_, amp)| {
                                 if amp > args.count_rate_threshold {
@@ -130,12 +137,25 @@ fn main() {
                             });
                             (ch_num, waveform)
                         }).collect::<BTreeMap<_, _>>();
-                    });
+                    }
+
+                    // frames.into_iter().for_each(|fragment| {
+                    //     channels = fragment.channels.into_iter().map(|ADCDataBlock {ch_num, waveform }| {
+                    //         let waveform = process_waveform(waveform);
+                    //         waveform_to_events(&waveform, &Algorithm::Max).into_iter().for_each(|(_, amp)| {
+                    //             if amp > args.count_rate_threshold {
+                    //                 *counts.entry(ch_num).or_insert(0) += 1;
+                    //             }
+                    //             histogram.add(ch_num, amp)
+                    //         });
+                    //         (ch_num, waveform)
+                    //     }).collect::<BTreeMap<_, _>>();
+                    // });
 
                     let elapsed_ms = count_rate_timer.elapsed().as_millis();
                     if elapsed_ms > count_rate_interval_ms {
                         count_rate_timer = Instant::now();
-                        *count_rate_bg.lock().unwrap() = counts;
+                        *count_rate_bg.lock().unwrap() = counts; // TODO: fix count rate calculation
                         counts = BTreeMap::new();
                     }
 

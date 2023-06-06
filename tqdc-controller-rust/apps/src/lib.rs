@@ -5,10 +5,10 @@ use std::collections::HashMap;
 use tokio::io::AsyncWriteExt;
 
 use processing::numass::{protos::rsb_event, ZeroSuppressionParams};
-use tqdc::mlink::MStreamFragment;
+use tqdc::mstream::MStreamADCBlocks;
 
 pub async fn events_to_point(
-    events: Vec<MStreamFragment>,
+    events: Vec<MStreamADCBlocks>,
     zero_suppression: Option<ZeroSuppressionParams>,
 ) -> tokio::io::Result<rsb_event::Point> {
     let mut frames_per_channel: HashMap<u8, Vec<rsb_event::point::channel::block::Frame>> =
@@ -16,7 +16,7 @@ pub async fn events_to_point(
     let mut begin_time: Option<u128> = None;
 
     for frame in events {
-        for channel in frame.channels {
+        for channel in frame.adc_blocks {
             let append = match zero_suppression {
                 Some(params) => {
                     let baseline = channel.waveform.iter().take(params.baseline).sum::<i16>()

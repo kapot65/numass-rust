@@ -1,6 +1,8 @@
 pub mod mlink;
+pub mod mstream;
 pub mod regs;
 
+use std::collections::BTreeMap;
 use std::net::{IpAddr, SocketAddr};
 use std::{path::PathBuf, vec};
 
@@ -11,7 +13,8 @@ use tokio::io::AsyncReadExt;
 use tokio::net::UdpSocket;
 use tokio::time::{self, sleep, Duration};
 
-use mlink::{CtrlReg, MStreamFragment, MlinkMessage};
+use mlink::{CtrlReg, MlinkMessage};
+use mstream::{MStreamTriggerAndUserData, extract_data_blocks, MStreamADCBlocks};
 use regs::{as_run_state, Register16, Register32, RunMode, RunState, RunLogicControl};
 
 async fn start_acquisition(
@@ -163,12 +166,14 @@ async fn stop_acquisition(
     }
 }
 
+const FRAME_SIZE: usize = 1456;
+
 async fn gather_frames(
     host_control_addr: SocketAddr,
     tqdc_contol_addr: SocketAddr,
     host_stream_addr: SocketAddr,
     tqdc_stream_addr: SocketAddr,
-) -> Result<Vec<[u8; 1456]>> {
+) -> Result<Vec<[u8; FRAME_SIZE]>> {
     let mut frames = Vec::with_capacity(30_000 * 100);
     let stream_socket = UdpSocket::bind(host_stream_addr).await?;
 
@@ -182,7 +187,7 @@ async fn gather_frames(
         .await?;
 
     loop {
-        let mut buf = [0; 1456];
+        let mut buf = [0; FRAME_SIZE];
 
         match tokio::time::timeout(
             Duration::from_millis(500),
@@ -192,8 +197,8 @@ async fn gather_frames(
             Ok(received) => {
                 let message = MlinkMessage::from_datagram(&buf[..received?.0]);
                 
-                if let MlinkMessage::StreamReq { header, frames } = message {
-                    let frame = frames.first().unwrap();
+                if let MlinkMessage::StreamReq { header, fragment } = message {
+                    // let frame = frames.first().unwrap();
                     stream_socket
                     .send_to(
                         // &stream_to_acq_fast(&buf)
@@ -201,8 +206,8 @@ async fn gather_frames(
                                 header.seq,
                                 0x0001,
                                 0xfefe,
-                                frame.fragment_offset,
-                                frame.fragment_id,
+                                fragment.header.fragment_offset,
+                                fragment.header.fragment_id,
                         ))
                         , 
                         tqdc_stream_addr)
@@ -226,26 +231,32 @@ async fn gather_frames(
     Ok(frames)
 }
 
-fn frames_to_events(frames: Vec<[u8; 1456]>) -> Result<Vec<MStreamFragment>> {
-    let mut events = vec![];
+fn frames_to_events(frames: Vec<[u8; FRAME_SIZE]>) -> Result<Vec<MStreamADCBlocks>> {
+    let mut fragments = BTreeMap::new();
+
     for frame in frames {
-        let message = MlinkMessage::from_datagram(&frame);
-        match message {
-            MlinkMessage::StreamReq { header: _, frames } => {
-                if frames.first().is_some() {
-                    events.extend(frames);
-                } else {
-                    Err(Report::msg(
-                        "(gather_frames) - incoming stream packet has no frames",
-                    ))?
-                }
-            }
-            _ => Err(Report::msg(
+        if let MlinkMessage::StreamReq { fragment, .. } = MlinkMessage::from_datagram(&frame) {
+            fragments.entry(fragment.header.fragment_id).or_insert(vec![]).push(fragment);
+        } else {
+            Err(Report::msg(
                 "(gather_frames) - incoming packet is not STREAM type",
-            ))?,
+            ))?
         }
-    }
-    Ok(events)
+    };
+
+    Ok(fragments.iter().map(|(_, fragments)| {
+        let merged = MStreamTriggerAndUserData::from(fragments.as_slice());
+        let adc_blocks = extract_data_blocks(&merged.user_data);
+
+        MStreamADCBlocks {
+            device_serial: merged.device_serial,
+            event_number: merged.event_number,
+            user_defined_bits: merged.user_defined_bits,
+            tai_sec: merged.tai_sec,
+            tai_nano_sec: merged.tai_nano_sec,
+            adc_blocks,
+        }
+    }).collect::<Vec<_>>())
 }
 
 pub async fn acquire_point(
@@ -256,7 +267,7 @@ pub async fn acquire_point(
     tqdc_ip: IpAddr,
     tqdc_control_port: u16,
     tqdc_stream_port: u16,
-) -> Result<Vec<MStreamFragment>> {
+) -> Result<Vec<MStreamADCBlocks>> {
     let acquisition_time_ms = acquisition_time_s * 1000;
 
     let host_control_address = SocketAddr::new(host_ip, host_control_port);

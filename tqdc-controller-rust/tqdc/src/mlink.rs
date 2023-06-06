@@ -1,13 +1,13 @@
 use std::convert::TryFrom;
-use ux::*;
 
 use crate::regs::{is_reg16, is_reg32, Register16, Register32};
+use crate::mstream::MStreamFragment;
 
 #[derive(Debug)]
 pub enum MlinkMessage {
     StreamReq {
         header: MLinkHeader,
-        frames: Vec<MStreamFragment>,
+        fragment: MStreamFragment,
     },
     StreamAcq {
         header: MLinkHeader,
@@ -15,11 +15,11 @@ pub enum MlinkMessage {
         id: u16,
     },
     CtrlReq {
-        header: MLinkHeader,
+        header: MLinkHeader, // TODO: remove header
         regs: Vec<CtrlReg>,
     },
     CtrlAck {
-        header: MLinkHeader,
+        header: MLinkHeader, // TODO: remove header
         regs: Vec<CtrlReg>,
     },
 }
@@ -85,28 +85,13 @@ impl MlinkMessage {
             "packet length less than header length (12 bytes)"
         );
         let header = MLinkHeader::from_bytes(&data[..12]);
-        let data = &data[..(header.len as usize) * 4];
+        let data = &data[12..(header.len as usize) * 4];
 
         match header.type_ {
             MessageType::Stream => {
-                if header.len == 5 {
-                    MlinkMessage::StreamAcq {
-                        header,
-                        offset: u16::from_le_bytes(data[16..18].try_into().unwrap()),
-                        id: u16::from_le_bytes(data[18..20].try_into().unwrap()),
-                    }
-                } else {
-                    let mut offset = 12;
-                    let mut frames = vec![];
 
-                    while offset < data.len() - 4 {
-                        let frame = MStreamFragment::from_bytes(&data[offset..]);
-                        offset += (frame.length + 8) as usize;
-                        frames.push(frame);
-                    }
-
-                    MlinkMessage::StreamReq { header, frames }
-                }
+                let fragment = MStreamFragment::from(data);
+                MlinkMessage::StreamReq { header, fragment }
             }
 
             MessageType::CtrlAck => {
@@ -139,10 +124,7 @@ impl MlinkMessage {
                 buffer
             }
 
-            MlinkMessage::StreamReq {
-                header: _,
-                frames: _,
-            } => {
+            MlinkMessage::StreamReq { .. } => {
                 panic!("serialization is not defined for MlinkMessage::StreamReq");
             }
 
@@ -170,7 +152,6 @@ impl MlinkMessage {
 
     fn read_word(data: &[u8], offset: usize) -> (bool, u16, u16) {
         let word = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap());
-
         (
             (word >> 31) == 1,
             ((word >> 16) & 0x7FFF) as u16,
@@ -181,29 +162,18 @@ impl MlinkMessage {
     fn calculate_regs_len(regs: &[CtrlReg]) -> u16 {
         regs.iter()
             .map(|r| match r {
-                CtrlReg::Read16 {
-                    address: _,
-                    value: _,
-                } => 1,
-                CtrlReg::Write16 {
-                    address: _,
-                    value: _,
-                } => 1,
-                CtrlReg::Read32 {
-                    address: _,
-                    value: _,
-                } => 2,
-                CtrlReg::Write32 {
-                    address: _,
-                    value: _,
-                } => 2,
+                CtrlReg::Read16 { .. } => 1,
+                CtrlReg::Write16 { .. } => 1,
+                CtrlReg::Read32 { .. } => 2,
+                CtrlReg::Write32 { .. } => 2,
             })
             .reduce(|s1, s2| s1 + s2)
             .unwrap()
     }
 
+    /// ! data should not contain header and crc
     fn extract_regs(data: &[u8]) -> Vec<CtrlReg> {
-        let mut offset = 12;
+        let mut offset = 0;
 
         let mut regs = vec![];
         while offset < data.len() - 4 {
@@ -347,7 +317,7 @@ pub struct MLinkHeader {
 }
 
 impl MLinkHeader {
-    fn from_bytes(bytes: &[u8]) -> MLinkHeader {
+    pub fn from_bytes(bytes: &[u8]) -> MLinkHeader {
         assert!(bytes.len() >= 12); // TODO: remove duplicate check?
 
         let type_ =
@@ -364,156 +334,6 @@ impl MLinkHeader {
             dst: u16::from_le_bytes(bytes[10..12].try_into().unwrap()),
         }
     }
-}
-
-#[derive(Debug)]
-pub struct ADCDataBlock {
-    pub ch_num: u8,
-    pub waveform: Vec<i16>,
-}
-
-#[derive(Debug)]
-pub struct MStreamFragment {
-    pub length: u16, // ! actual frame length is = lenght + 8
-    pub subtype_and_flags: u8,
-    pub device_id: u8,
-    pub fragment_offset: u16,
-    pub fragment_id: u16,
-    pub device_serial: u32,
-    pub event_number: u24,
-    pub user_defined_bits: u8,
-    pub tai_sec: u32,
-    pub tai_nano_sec: u32,
-    pub channels: Vec<ADCDataBlock>,
-}
-
-impl MStreamFragment {
-    fn from_bytes(bytes: &[u8]) -> MStreamFragment {
-        assert!(
-            bytes.len() >= 32,
-            "buffer size ({}) < 32 bytes needed for header",
-            bytes.len()
-        );
-
-        // TODO: add bytes len checking
-        // M-Stream Header
-        // Word #1
-        let length = u16::from_le_bytes(bytes[..2].try_into().unwrap()); // 15:0
-        let subtype_and_flags = u8::from_le_bytes(bytes[2..3].try_into().unwrap()); // 23:16
-                                                                                    // TODO add subtype and flags parsing
-        assert!(
-            subtype_and_flags == 128,
-            "unexpected subtype and flags byte: {subtype_and_flags}"
-        );
-        let device_id = u8::from_le_bytes(bytes[3..4].try_into().unwrap()); // 31:24
-
-        // Word #2
-        let fragment_offset = u16::from_le_bytes(bytes[4..6].try_into().unwrap()); // 15:0
-        assert!(
-            fragment_offset == 0,
-            "splitted packets (offset = {fragment_offset}) is not supported"
-        );
-        let fragment_id = u16::from_le_bytes(bytes[6..8].try_into().unwrap()); //31:16
-
-        // Word #3
-        let device_serial = u32::from_le_bytes(bytes[8..12].try_into().unwrap()); // 31:0
-
-        // Word #4
-        let event_number =
-            u24::new(u32::from_le_bytes(bytes[12..16].try_into().unwrap()) & 0x00FFFFFF);
-        let user_defined_bits = u8::from_le_bytes(bytes[15..16].try_into().unwrap());
-
-        let tai_sec = u32::from_le_bytes(bytes[16..20].try_into().unwrap());
-        let tai_nano_sec = u32::from_le_bytes(bytes[20..24].try_into().unwrap()); // ! 1:0 - flag
-
-        // M-Stream Subtype 0
-        let mut offset = 24;
-        let mut channels = vec![];
-
-        while offset < (length + 8) as usize {
-            let data_payload_length =
-                u16::from_le_bytes(bytes[offset..offset + 2].try_into().unwrap()); // 15:0
-                                                                                   // let adc_data_block_specific = {
-                                                                                   //     let combined = u8::from_le_bytes(bytes[offset+2..offset+3].try_into().unwrap()); // 23:16
-                                                                                   //     combined & 0b11 // 16..18
-                                                                                   // };
-
-            let (data_type, channel_number) = {
-                let combined = u8::from_le_bytes(bytes[offset + 3..offset + 4].try_into().unwrap());
-                (combined >> 4, combined & 0b1111)
-            };
-
-            match data_type {
-                0 => {
-                    // TODO add TDC event parsing
-                }
-                1 => {
-                    // let adc_timestamp = u16::from_le_bytes(bytes[offset+4..offset+6].try_into().unwrap());
-                    let adc_data_length =
-                        u16::from_le_bytes(bytes[offset + 6..offset + 8].try_into().unwrap());
-
-                    let bins_number = (adc_data_length / 2) as usize;
-                    let mut waveform = Vec::with_capacity(bins_number);
-                    for n in 0..bins_number {
-                        waveform.push(i16::from_le_bytes(
-                            bytes[offset + 8 + (n * 2)..offset + 8 + ((n + 1) * 2)]
-                                .try_into()
-                                .unwrap(),
-                        ));
-                    }
-                    channels.push(ADCDataBlock {
-                        ch_num: channel_number,
-                        waveform,
-                    });
-                }
-                other => panic!("unexpected MStream Data Block format {other}"),
-            }
-            offset += data_payload_length as usize + 4;
-        }
-
-        MStreamFragment {
-            length,
-            subtype_and_flags,
-            device_id,
-            fragment_offset,
-            fragment_id,
-            device_serial,
-            event_number,
-            user_defined_bits,
-            tai_sec,
-            tai_nano_sec,
-            channels,
-        }
-    }
-}
-
-pub fn stream_to_acq_fast(datagram: &[u8]) -> [u8; 24] {
-    [
-        0x54u8,
-        0x53, // type
-        0x50,
-        0x2a, // sync
-        datagram[4],
-        datagram[5], // seq
-        6,
-        0, // size
-        1,
-        1, // src
-        1,
-        0, // dst
-        0,
-        0,
-        64,
-        1, // first word
-        datagram[16],
-        datagram[17],
-        datagram[18],
-        datagram[19], // fragment + offset
-        0,
-        0,
-        0,
-        0, // crc
-    ]
 }
 
 #[cfg(test)]
@@ -542,42 +362,6 @@ mod tests {
         let message = MlinkMessage::from_datagram(&contents[..]);
 
         println!("{message:?}");
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn compare_fast() -> tokio::io::Result<()> {
-        let mut file = tokio::fs::File::open(
-            "../resources/test/frames/0l.bin", // "./resources/test/frames/subs-overflow.bin"
-                                               // "./resources/test/frames/trash-3.bin"
-                                               // "../resources/test/frames/0l-cropped-2.bin"
-                                               // "./resources/test/frames/408ns-7ch.bin"
-        )
-        .await?;
-
-        let mut contents = [0u8; 2048];
-        let size = file.read(&mut contents).await?;
-        assert!(size != 0);
-
-        let acq_fast = stream_to_acq_fast(&contents);
-        println!("{acq_fast:?}");
-
-        let message = MlinkMessage::from_datagram(&contents[..]);
-
-        if let MlinkMessage::StreamReq { header, frames } = message {
-            if let Some(frame) = frames.first() {
-                let acq = MlinkMessage::to_datagram(&MlinkMessage::new_stream_acq(
-                    header.seq,
-                    0x0101,
-                    0x0001,
-                    frame.fragment_offset,
-                    frame.fragment_id,
-                ));
-
-                println!("{acq:?}")
-            }
-        }
 
         Ok(())
     }
