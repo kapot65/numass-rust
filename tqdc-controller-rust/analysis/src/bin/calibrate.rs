@@ -1,16 +1,16 @@
+use {
+    processing::{
+        process_waveform,
+        histogram::PointHistogram, waveform_to_events, Algorithm,
+        numass::{protos::rsb_event, NumassMeta}
+    },
+    protobuf::Message,
+    std::{collections::HashMap, sync::Arc},
+    tokio::sync::Mutex,
+};
+
 #[tokio::main]
 async fn main() {
-    use {
-        processing::{
-            process_waveform,
-            histogram::PointHistogram, waveform_to_events, Algorithm,
-            numass::{protos::rsb_event, NumassMeta}
-        },
-        protobuf::Message,
-        std::{collections::HashMap, sync::Arc},
-        tokio::sync::Mutex,
-    };
-
     // let algorithm = Algorithm::Max;
     // let algorithm = Algorithm::Likhovid { left: 15, right: 36 };
 

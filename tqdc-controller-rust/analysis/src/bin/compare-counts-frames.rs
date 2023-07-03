@@ -25,7 +25,6 @@ async fn main() {
         // &PostProcessingParams::default()
 
         &PostProcessingParams {
-            // TODO: add to KeV corrections
             convert_to_kev: true,
             merge_close_events: false,
             use_dead_time: false,

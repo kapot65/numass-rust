@@ -11,7 +11,6 @@ use tokio::sync::Mutex;
 const ALGORITHM: Algorithm = Algorithm::FirstPeak { threshold: 15, left: 8 };
 
 const POST_PROCESSING: PostProcessingParams = PostProcessingParams {
-    // TODO: add to KeV corrections
     convert_to_kev: true,
     merge_close_events: true,
     use_dead_time: false,
@@ -32,7 +31,7 @@ const E_MAX: f32 = 40.0;
 
 const E_PEAK: f32 = 19.0;
 
-const L_COEFF: f32 = 0.80;
+const L_COEFF: f32 = 0.85;
 
 const HISTOGRAM_PARAMS: HistogramParams = HistogramParams { range: E_MIN..E_MAX, bins: 360 };
 
@@ -46,6 +45,7 @@ struct ProducedPoint {
     l: f64,
     m: f64,
     d: f64,
+    d_sum: f64,
     origins: Vec<PathBuf>,
     time: u64
 }
@@ -54,8 +54,11 @@ struct ProducedPoint {
 async fn main() {
 
     // let db_root = "/data/numass-server";
-    let db_root = "/data-ssd";
+    // let db_root = "/data-ssd";
+    let db_root = "/data-nvme";
     let run = "2023_03";
+
+    let workspace = PathBuf::from("/home/chernov/produced/patrial");
 
     // === Background 1 ===
     // let pattern = format!("/{run}/Background_1/set_[12]/p*");
@@ -90,24 +93,24 @@ async fn main() {
     // let group = "tritium-1-bgr-2";
 
     // === Tritium 2 ===
-    let pattern = format!("/{run}/Tritium_2/set_*/p*");
-    let exclude: Vec<String> = vec![
-        "Tritium_2/set_5/p18".to_owned(),
-        "Tritium_2/set_5/p19".to_owned(),
-        "Tritium_2/set_14/p20".to_owned(),
-        "Tritium_2/set_14/p22".to_owned(),
-    ];
-    let correct_to_monitor = true;
-    let group = "tritium-2";
-
-    // === Tritium 3 ===
-    // let pattern = format!("/{run}/Tritium_3/set_*/p*");
+    // let pattern = format!("/{run}/Tritium_2/set_*/p*");
     // let exclude: Vec<String> = vec![
-    //     "Tritium_3/set_25_short".to_owned(),
-    //     "Tritium_2/set_29/p37".to_owned()
+    //     "Tritium_2/set_5/p18".to_owned(),
+    //     "Tritium_2/set_5/p19".to_owned(),
+    //     "Tritium_2/set_14/p20".to_owned(),
+    //     "Tritium_2/set_14/p22".to_owned(),
     // ];
     // let correct_to_monitor = true;
-    // let group = "tritium-3";
+    // let group = "tritium-2";
+
+    // === Tritium 3 ===
+    let pattern = format!("/{run}/Tritium_3/set_2[0123456789]/p*");
+    let exclude: Vec<String> = vec![
+        "Tritium_3/set_25_short".to_owned(),
+        "Tritium_2/set_29/p37".to_owned()
+    ];
+    let correct_to_monitor = true;
+    let group = "tritium-3-last";
 
     // === Tritium 4 ===
     // let pattern = format!("/{run}/Tritium_4/set_*/p*");
@@ -128,8 +131,6 @@ async fn main() {
     // let group = "tritium-5";
 
     // === End ===
-
-    let workspace = PathBuf::from("/home/chernov/produced");
     std::fs::create_dir_all(&workspace).unwrap();
 
     let bgr_dir = workspace.join(group);
@@ -166,6 +167,7 @@ async fn main() {
                 l: 0.0,
                 m: 0.0,
                 d: 0.0,
+                d_sum: 0.0,
                 origins: vec![],
                 time: 0
             };
@@ -198,8 +200,12 @@ async fn main() {
                             } else if (out_point.l_curr..E_PEAK).contains(amp) {
                                 out_point.m += monitor_coeff;
                             }
-                        } else if (E_PEAK..E_MAX).contains(amp) && *ch_num == 5 {
-                            out_point.d += monitor_coeff;
+                        } else if (E_PEAK..E_MAX).contains(amp)  {
+                            out_point.d_sum += monitor_coeff;
+                        
+                            if *ch_num == 5 {
+                                out_point.d += monitor_coeff;
+                            }
                         }
                     })
                 });
@@ -236,10 +242,10 @@ async fn main() {
         handle.await.unwrap();
     }
 
-    let mut table_data = format!("u_sp\te_curr\tl_curr\tk\tl\tm\td\ttime\n");
+    let mut table_data = format!("u_sp\te_curr\tl_curr\tk\tl\tm\td\td_sum\ttime\n");
     table.try_lock().unwrap().clone().iter().for_each(|(u_sp, point)| {
         table_data.push_str(&format!(
-            "{u_sp}\t{e_curr}\t{l_curr}\t{k}\t{l}\t{m}\t{d}\t{time}\n",
+            "{u_sp}\t{e_curr}\t{l_curr}\t{k}\t{l}\t{m}\t{d}\t{d_sum}\t{time}\n",
             u_sp = u_sp,
             e_curr = point.e_curr,
             l_curr = point.l_curr,
@@ -247,6 +253,7 @@ async fn main() {
             l = point.l.round() as u64,
             m = point.m.round() as u64,
             d = point.d.round() as u64,
+            d_sum = point.d_sum.round() as u64,
             time = point.time
         ).replace(".", ","));
     });

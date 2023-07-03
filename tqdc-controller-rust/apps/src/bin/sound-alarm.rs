@@ -1,9 +1,3 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-#[cfg(target_arch = "wasm32")]
-fn main() {
-    todo!()
-}
-#[cfg(not(target_arch = "wasm32"))]
 fn main() {
     use chrono::{Local, NaiveDateTime};
     use clap::Parser;
