@@ -7,27 +7,18 @@ use clap::Parser;
 use eframe::egui;
 use eframe::egui::plot::{Legend, Plot};
 
-use apps::defaults::{BOARD_IP, HOST_IP, HOST_STREAM_PORT, STREAM_PORT};
+use apps::defaults::BOARD_IP;
 use processing::{process_waveform, waveform_to_events, Algorithm, ProcessedWaveform, EguiLine, color_for_index};
 use processing::histogram::PointHistogram;
-use tqdc::MTU_SIZE;
+use tqdc::{MTU_SIZE, TQDC_STREAM_PORT};
 use tqdc::mlink::MlinkMessage;
 use tqdc::mstream::{MStreamTriggerAndUserData, ADCDataBlock};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(long, default_value_t = HOST_IP)]
-    host_ip: std::net::IpAddr,
-
-    #[arg(long, default_value_t = HOST_STREAM_PORT)]
-    host_stream_port: u16,
-
     #[arg(long, default_value_t = BOARD_IP)]
     tqdc_ip: std::net::IpAddr,
-
-    #[arg(long, default_value_t = STREAM_PORT)]
-    tqdc_stream_port: u16,
 
     #[arg(long, default_value_t = 0.0)]
     hist_min: f32,
@@ -68,10 +59,9 @@ fn main() {
     let count_rate = Arc::clone(&count_rate_bg);
 
     std::thread::spawn(move || {
-        let bind_address = SocketAddr::new(args.host_ip, args.host_stream_port);
-        let tqdc_address = SocketAddr::new(args.tqdc_ip, args.tqdc_stream_port);
+        let tqdc_address = SocketAddr::new(args.tqdc_ip, TQDC_STREAM_PORT);
 
-        let sock = UdpSocket::bind(bind_address).unwrap();
+        let sock = UdpSocket::bind("0.0.0.0:0").unwrap();
         
         sock.send_to(
             &MlinkMessage::to_datagram(&MlinkMessage::new_stream_acq(
@@ -92,7 +82,7 @@ fn main() {
         let mut channels = BTreeMap::new();
         let mut histogram = empty_hist.clone();
 
-        let mut fragments_buf = BTreeMap::new();
+        let mut fragments_buf: BTreeMap<u16, Vec<tqdc::mstream::MStreamFragment>> = BTreeMap::new();
         
         let mut seq = 0;
 
@@ -134,6 +124,7 @@ fn main() {
                     let elapsed_ms = plots_refresh_timer.elapsed().as_millis();
                     if elapsed_ms > plots_refresh_interval_ms {
                         fragments_buf.iter().for_each(|(_, fragments)| {
+                            let fragments = fragments.iter().collect::<Vec<_>>();
                             if let Ok(combined) = MStreamTriggerAndUserData::try_from(&fragments[..]) {
                                 channels = combined.extract_data_blocks().into_iter().map(|ADCDataBlock {ch_num, waveform }| {
                                     let waveform = process_waveform(waveform);

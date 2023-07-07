@@ -102,11 +102,11 @@ pub struct MStreamADCBlocks {
     pub adc_blocks: Vec<ADCDataBlock>,
 }
 
-impl TryFrom<&[MStreamFragment]> for MStreamTriggerAndUserData {
+impl TryFrom<&[&MStreamFragment]> for MStreamTriggerAndUserData {
 
     type Error = &'static str;
 
-    fn try_from(fragments: &[MStreamFragment]) -> Result<Self, Self::Error> {
+    fn try_from(fragments: &[&MStreamFragment]) -> Result<Self, Self::Error> {
 
         let mut fragments = fragments.iter().collect::<Vec<_>>();
         fragments.sort_by_key(|fragment| fragment.header.fragment_offset);
@@ -234,7 +234,7 @@ mod tests {
                 let data = std::fs::read("../resources/test/frames/multi-2.bin").unwrap();
                 MStreamFragment::from(&data[12..data.len() - 4])
             };
-            MStreamTriggerAndUserData::try_from([fragment_1, fragment_2].as_slice()).unwrap()
+            MStreamTriggerAndUserData::try_from([&fragment_1, &fragment_2].as_slice()).unwrap()
         };
 
         let blocks = payload.extract_data_blocks();
@@ -252,7 +252,7 @@ mod tests {
                 let data = std::fs::read("../resources/test/frames/multi-1.bin").unwrap();
                 MStreamFragment::from(&data[12..data.len() - 4])
             };
-            MStreamTriggerAndUserData::try_from([fragment_1, fragment_2].as_slice()).unwrap()
+            MStreamTriggerAndUserData::try_from([&fragment_1, &fragment_2].as_slice()).unwrap()
         };
 
         let blocks = payload.extract_data_blocks();

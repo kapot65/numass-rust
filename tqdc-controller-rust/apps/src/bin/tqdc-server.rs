@@ -15,34 +15,18 @@ use serde_json::Value;
 use apps::events_to_point;
 use dataforge::{read_df_message, write_df_message};
 use processing::numass::{self, NumassMeta, ZeroSuppressionParams};
+use tqdc::TQDC;
 
-use apps::defaults::{
-    BOARD_IP, CONTROL_PORT, HOST_CONTROL_PORT, HOST_IP, HOST_STREAM_PORT, STREAM_PORT,
-};
+use apps::defaults::BOARD_IP;
 
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(long, default_value_t = HOST_IP)]
-    host_ip: std::net::IpAddr,
-
     #[arg(long, default_value_t = 8080)]
     host_dataforge_port: u16,
 
-    #[arg(long, default_value_t = HOST_CONTROL_PORT)]
-    host_control_port: u16,
-
-    #[arg(long, default_value_t = HOST_STREAM_PORT)]
-    host_stream_port: u16,
-
     #[arg(long, default_value_t = BOARD_IP)]
     tqdc_ip: std::net::IpAddr,
-
-    #[arg(long, default_value_t = CONTROL_PORT)]
-    tqdc_control_port: u16,
-
-    #[arg(long, default_value_t = STREAM_PORT)]
-    tqdc_stream_port: u16,
 
     #[arg(long)]
     backup_folder: Option<PathBuf>,
@@ -68,6 +52,7 @@ struct Args {
 async fn acquire_point(
     acquisition_time: f32,
     external_meta: Option<Value>,
+    board: &TQDC,
     args: Args,
 ) -> Result<(NumassMeta, Option<Vec<u8>>)> {
     let lockfile_path = if let Some(lockfile) = args.lockfile {
@@ -84,16 +69,7 @@ async fn acquire_point(
     lockfile.lock_exclusive()?;
 
     let start_time = Utc::now().naive_local();
-    let events = tqdc::acquire_point(
-        acquisition_time as u32,
-        args.host_ip,
-        args.host_control_port,
-        args.host_stream_port,
-        args.tqdc_ip,
-        args.tqdc_control_port,
-        args.tqdc_stream_port,
-    )
-    .await?;
+    let events = board.acquire_point(acquisition_time as u32).await?;
 
     if events.is_empty() {
         return Err(Report::msg(
@@ -150,11 +126,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     let listener =
-        TcpListener::bind(SocketAddr::new(args.host_ip, args.host_dataforge_port)).await?;
-    println!(
-        "tqdc-server works on {}:{}",
-        args.host_ip, args.host_dataforge_port
-    );
+        TcpListener::bind(SocketAddr::new([0,0,0,0].into(), args.host_dataforge_port)).await?;
+    println!("tqdc-server works on 0.0.0.0:{}", args.host_dataforge_port);
 
     let current_connection: Mutex<Option<JoinHandle<_>>> = Mutex::new(None);
 
@@ -171,6 +144,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         *current_connection_lock = Some(tokio::spawn(async move {
             loop {
                 let args = args.to_owned();
+                let board = TQDC::new(args.tqdc_ip);
                 let msg = read_df_message(&mut socket)
                     .await
                     .expect("catch IO error on receiving DF message");
@@ -194,9 +168,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         numass::Command::AcquirePoint {
                             split: _,
                             acquisition_time,
+                            path: _,
                             external_meta,
                         } => {
-                            match acquire_point(acquisition_time, external_meta, args.clone()).await
+                            match acquire_point(
+                                acquisition_time, 
+                                external_meta, 
+                                &board,
+                                args.clone()
+                            ).await
                             {
                                 Ok((meta, data)) => {
                                     if let Some(backup_folder) = args.backup_folder {

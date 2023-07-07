@@ -4,24 +4,16 @@ use tokio::net::UdpSocket;
 
 use clap::Parser;
 
-use apps::defaults::{BOARD_IP, CONTROL_PORT, HOST_CONTROL_PORT, HOST_IP};
+use apps::defaults::BOARD_IP;
+use tqdc::TQDC_CONTROL_PORT;
 use tqdc::mlink::{CtrlReg, MlinkMessage};
 use tqdc::regs::{Register16, Register32, RunLogicControl, RunMode};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(long, default_value_t = HOST_IP)]
-    host_ip: std::net::IpAddr,
-
-    #[arg(long, default_value_t = HOST_CONTROL_PORT)]
-    host_control_port: u16,
-
     #[arg(long, default_value_t = BOARD_IP)]
     tqdc_ip: std::net::IpAddr,
-
-    #[arg(long, default_value_t = CONTROL_PORT)]
-    tqdc_control_port: u16,
 }
 
 #[tokio::main]
@@ -70,10 +62,9 @@ async fn main() -> io::Result<()> {
         ],
     );
 
-    let host_address = SocketAddr::new(args.host_ip, args.host_control_port);
-    let tqdc_address = SocketAddr::new(args.tqdc_ip, args.tqdc_control_port);
+    let tqdc_address = SocketAddr::new(args.tqdc_ip, TQDC_CONTROL_PORT);
 
-    let sock = UdpSocket::bind(host_address).await?;
+    let sock = UdpSocket::bind("0.0.0.0:0").await?;
 
     sock.send_to(&MlinkMessage::to_datagram(&msg), tqdc_address)
         .await?;
