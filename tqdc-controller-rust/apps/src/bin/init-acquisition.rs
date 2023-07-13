@@ -1,6 +1,4 @@
-use apps::defaults::{
-    BOARD_IP
-};
+use apps::defaults::BOARD_IP;
 use clap::Parser;
 
 #[derive(Parser, Debug)]

@@ -1,5 +1,5 @@
 use analysis::get_points_by_pattern;
-use processing::{extract_amplitudes, numass::NumassMeta};
+use processing::{extract_amplitudes, numass::NumassMeta, ProcessParams};
 
 use {
     processing::{
@@ -36,9 +36,11 @@ async fn main() {
     // let u_sp = [12000, 13000, 14000, 15000, 16000];
     let u_sp = [12500, 13500, 14500, 15500, 16500, 17000];
 
-    let algorithm = Algorithm::default();
+    let processing_params = ProcessParams {
+        algorithm: Algorithm::default(),
+        convert_to_kev: false,
+    };
 
-    let convert_kev = false;
     let hist = PointHistogram::new(0.0..120.0, 480);
 
     // let convert_kev = true;
@@ -54,6 +56,7 @@ async fn main() {
             let filepath = filepath.to_owned();
             let histogram = Arc::clone(&histogram);
             let pb = Arc::clone(&pb);
+            let processing_params = processing_params.clone();
 
             tokio::spawn(async move {
                 let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
@@ -62,7 +65,7 @@ async fn main() {
                     .unwrap();
 
                 let point =rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
-                let amps = extract_amplitudes(&point, &algorithm, convert_kev);
+                let amps = extract_amplitudes(&point, &processing_params);
                 {
                     let mut histogram = histogram.lock().await;
                     for (_, amps) in amps {

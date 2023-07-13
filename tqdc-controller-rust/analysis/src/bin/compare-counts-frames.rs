@@ -1,6 +1,5 @@
-use processing::{numass::{protos::rsb_event, NumassMeta}, Algorithm, post_process, PostProcessingParams};
+use processing::{numass::{protos::rsb_event, NumassMeta}, post_process, PostProcessParams, ProcessParams};
 use protobuf::Message;
-
 
 #[tokio::main]
 async fn main() {
@@ -15,8 +14,8 @@ async fn main() {
     let point =
         rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
 
-    let algorithm = Algorithm::default();
-    let amlitudes = processing::extract_amplitudes(&point, &algorithm, true);
+    let processing = ProcessParams::default();
+    let amlitudes = processing::extract_amplitudes(&point, &processing);
 
     let frames = amlitudes.len();
 
@@ -24,8 +23,7 @@ async fn main() {
         amlitudes, 
         // &PostProcessingParams::default()
 
-        &PostProcessingParams {
-            convert_to_kev: true,
+        &PostProcessParams {
             merge_close_events: false,
             use_dead_time: false,
             effective_dead_time: 4000,

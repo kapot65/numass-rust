@@ -4,7 +4,7 @@ use analysis::{get_points_by_pattern, CorrectionCoeffs};
 use chrono::NaiveDateTime;
 use dataforge::read_df_message;
 use plotly::{Plot, Layout, common::{Title, Mode}, layout::Axis, Scatter};
-use processing::{numass::{NumassMeta, protos::rsb_event}, Algorithm, post_process, extract_amplitudes, PostProcessingParams};
+use processing::{numass::{NumassMeta, protos::rsb_event}, post_process, extract_amplitudes, PostProcessParams, ProcessParams};
 use protobuf::Message;
 use tokio::sync::Mutex;
 
@@ -46,9 +46,8 @@ async fn main() {
 
             let amps = post_process(extract_amplitudes(
                 &point, 
-                &Algorithm::FirstPeak { threshold: 10, left: 8 }, 
-                true
-            ), &PostProcessingParams::default());
+                &ProcessParams::default(),
+            ), &PostProcessParams::default());
 
             let count_rate = amps.iter().map(|(_, frames)| {
                 frames.len()

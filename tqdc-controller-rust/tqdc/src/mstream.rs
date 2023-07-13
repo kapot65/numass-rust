@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use arrayref::array_ref;
 use ux::u24;
 
@@ -108,8 +110,13 @@ impl TryFrom<&[&MStreamFragment]> for MStreamTriggerAndUserData {
 
     fn try_from(fragments: &[&MStreamFragment]) -> Result<Self, Self::Error> {
 
-        let mut fragments = fragments.iter().collect::<Vec<_>>();
-        fragments.sort_by_key(|fragment| fragment.header.fragment_offset);
+        let mut frames = BTreeMap::new();
+
+        fragments.iter().for_each(|fragment| {
+            let group = frames.entry(fragment.header.fragment_id)
+                .or_insert(BTreeMap::new());
+            group.insert(fragment.header.fragment_offset, fragment);
+        });
 
         // check if all fragments are present and in order
         let mut total_length = 0;
@@ -119,6 +126,7 @@ impl TryFrom<&[&MStreamFragment]> for MStreamTriggerAndUserData {
             
             for fragment in fragments.clone() {
                 if fragment.header.fragment_offset != current_offset {
+                    fragments.iter().for_each(|fragment| println!("{:?}", fragment.header));
                     Err("missing intermediate fragment")?;
                 }
                 if fragment.header.subtype_and_flags.last_fragment() {

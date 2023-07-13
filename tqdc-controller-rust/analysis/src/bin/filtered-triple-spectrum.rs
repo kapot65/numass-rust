@@ -4,7 +4,7 @@ use analysis::get_points_by_pattern;
 use plotly::{common::Title, layout::Axis, Layout, Plot};
 use processing::{
     numass::{protos::rsb_event, NumassMeta},
-    histogram::PointHistogram, extract_amplitudes, Algorithm
+    histogram::PointHistogram, extract_amplitudes, ProcessParams
 };
 use protobuf::Message;
 
@@ -46,10 +46,10 @@ async fn main() {
 
             let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
 
-            let algorithm = Algorithm::FirstPeak { threshold: 10, left: 8 };
+            let processing = ProcessParams::default();
 
             let events = extract_amplitudes(
-                &point, &algorithm, true
+                &point, &processing
             );
             
             let amps = events.iter().filter_map(|(_, amps)| {

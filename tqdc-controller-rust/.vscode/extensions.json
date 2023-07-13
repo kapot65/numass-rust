@@ -1,10 +1,7 @@
 {
     "recommendations": [
-        "aaron-bond.better-comments",
         "bungcip.better-toml",
-        "usernamehw.errorlens",
         "rust-lang.rust-analyzer",
-        "belfz.search-crates-io",
         "vadimcn.vscode-lldb"
     ]
 }

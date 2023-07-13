@@ -1,9 +1,8 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use chrono::{Local, Utc};
+use chrono::Local;
 use clap::Parser;
-use fs2::FileExt;
 use protobuf::Message;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
@@ -41,34 +40,21 @@ struct Args {
     #[arg(long, default_value_t = 34)]
     zero_suppression_threshold: i16,
 
-    #[arg(long)]
-    lockfile: Option<PathBuf>,
-
     /// path to AFI-TQDC2 configuration file
     #[arg(long)]
     afi_config: Option<PathBuf>,
 }
 
+/// Acquire point from TQDC and wrap it with additional metadata
 async fn acquire_point(
     acquisition_time: f32,
     external_meta: Option<Value>,
     board: &TQDC,
     args: Args,
 ) -> Result<(NumassMeta, Option<Vec<u8>>)> {
-    let lockfile_path = if let Some(lockfile) = args.lockfile {
-        lockfile
-    } else {
-        let home = home::home_dir().wrap_err_with(|| "unable to get home directory")?;
-        home.join::<std::path::PathBuf>(".config/AFI Electronics/TQDC2/lock".into())
-    };
-    let lockfile = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .open(&lockfile_path)?;
-    lockfile.lock_exclusive()?;
-
-    let start_time = Utc::now().naive_local();
+    
+    let start_time = Local::now().naive_local();
+    
     let events = board.acquire_point(acquisition_time as u32).await?;
 
     if events.is_empty() {
@@ -78,7 +64,7 @@ async fn acquire_point(
         ));
     }
 
-    let end_time = Utc::now().naive_local();
+    let end_time = Local::now().naive_local();
     let config_filepath = if let Some(afi_config) = args.afi_config {
         afi_config
     } else {
@@ -114,9 +100,6 @@ async fn acquire_point(
         point.write_to_vec(&mut buf)?;
         buf
     });
-
-    lockfile.unlock()?;
-    std::fs::remove_file(lockfile_path)?;
 
     Ok((meta, data))
 }

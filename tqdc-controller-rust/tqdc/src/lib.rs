@@ -9,7 +9,6 @@ use std::vec;
 
 use eyre::{Context, ContextCompat, Report, Result};
 
-use itertools::Itertools;
 use tokio::net::UdpSocket;
 use tokio::time::{self, sleep, Duration};
 
@@ -274,7 +273,8 @@ impl TQDC {
     
         for frame in frames {
             if let MlinkMessage::StreamReq { fragment, .. } = MlinkMessage::from_datagram(&frame) {
-                fragments.entry(fragment.header.fragment_id).or_insert(vec![]).push(fragment);
+                fragments.entry(fragment.header.fragment_id).or_insert(BTreeMap::new()).insert(
+                    fragment.header.fragment_offset, fragment);
             } else {
                 Err(Report::msg(
                     "(gather_frames) - incoming packet is not STREAM type",
@@ -283,14 +283,10 @@ impl TQDC {
         };
     
         Ok(fragments.iter().map(|(_, fragments)| {
-
-            // ! for some reason, fragments can be duplicated
-            let deduped = fragments.into_iter().dedup_by(|a, b| {
-                a.header.fragment_offset == b.header.fragment_offset &&
-                a.header.fragment_id == b.header.fragment_id
-            }).collect::<Vec<_>>();
             
-            let merged = MStreamTriggerAndUserData::try_from(deduped.as_slice()).unwrap(); // TODO: handle error
+            let merged = MStreamTriggerAndUserData::try_from(
+                fragments.values().collect::<Vec<_>>().as_slice()
+            ).unwrap(); // TODO: handle error
             let adc_blocks = merged.extract_data_blocks();
     
             MStreamADCBlocks {

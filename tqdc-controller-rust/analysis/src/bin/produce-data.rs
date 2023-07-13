@@ -3,15 +3,17 @@ use std::{path::PathBuf, collections::BTreeMap, vec, sync::Arc};
 use analysis::{get_points_by_pattern, CorrectionCoeffs};
 use dataforge::read_df_message;
 use indicatif::ProgressStyle;
-use processing::{Algorithm, numass::{NumassMeta, protos::rsb_event}, PostProcessingParams, histogram::{HistogramParams, PointHistogram}, post_process, extract_amplitudes};
+use processing::{Algorithm, numass::{NumassMeta, protos::rsb_event}, PostProcessParams, histogram::{HistogramParams, PointHistogram}, post_process, extract_amplitudes, ProcessParams};
 use protobuf::Message;
 use serde::{Serialize, Deserialize};
 use tokio::sync::Mutex;
 
-const ALGORITHM: Algorithm = Algorithm::FirstPeak { threshold: 15, left: 8 };
-
-const POST_PROCESSING: PostProcessingParams = PostProcessingParams {
+const PROCESSING: ProcessParams = ProcessParams {
+    algorithm: Algorithm::FirstPeak { threshold: 15, left: 8 },
     convert_to_kev: true,
+};
+
+const POST_PROCESSING: PostProcessParams = PostProcessParams {
     merge_close_events: true,
     use_dead_time: false,
     effective_dead_time: 0,
@@ -104,13 +106,52 @@ async fn main() {
     // let group = "tritium-2";
 
     // === Tritium 3 ===
-    let pattern = format!("/{run}/Tritium_3/set_2[0123456789]/p*");
-    let exclude: Vec<String> = vec![
-        "Tritium_3/set_25_short".to_owned(),
-        "Tritium_2/set_29/p37".to_owned()
-    ];
-    let correct_to_monitor = true;
-    let group = "tritium-3-last";
+    // let pattern = format!("/{run}/Tritium_3/set_*/p*");
+    // let exclude: Vec<String> = vec![
+    //     "Tritium_3/set_1/".to_owned(),
+    //     "Tritium_3/set_2/".to_owned(),
+    //     "Tritium_3/set_3/".to_owned(),
+    //     "Tritium_3/set_4/".to_owned(),
+
+    //     "Tritium_3/set_5/".to_owned(),
+    //     "Tritium_3/set_6/".to_owned(),
+    //     "Tritium_3/set_7/".to_owned(),
+    //     "Tritium_3/set_8/".to_owned(),
+
+    //     "Tritium_3/set_9/".to_owned(),
+    //     "Tritium_3/set_10/".to_owned(),
+    //     "Tritium_3/set_11/".to_owned(),
+    //     "Tritium_3/set_12/".to_owned(),
+
+    //     "Tritium_3/set_13/".to_owned(),
+    //     "Tritium_3/set_14/".to_owned(),
+    //     "Tritium_3/set_15/".to_owned(),
+    //     "Tritium_3/set_16/".to_owned(),
+
+    //     "Tritium_3/set_17/".to_owned(),
+    //     "Tritium_3/set_18/".to_owned(),
+    //     "Tritium_3/set_19/".to_owned(),
+    //     "Tritium_3/set_20/".to_owned(),
+
+    //     "Tritium_3/set_21/".to_owned(),
+    //     "Tritium_3/set_22/".to_owned(),
+    //     "Tritium_3/set_23/".to_owned(),
+    //     "Tritium_3/set_24/".to_owned(),
+
+    //     "Tritium_3/set_25/".to_owned(),
+    //     "Tritium_3/set_26/".to_owned(),
+    //     "Tritium_3/set_27/".to_owned(),
+    //     "Tritium_3/set_28/".to_owned(),
+
+    //     // "Tritium_3/set_29/".to_owned(),
+    //     // "Tritium_3/set_30/".to_owned(),
+    //     // "Tritium_3/set_31/".to_owned(),
+
+    //     "Tritium_3/set_25_short".to_owned(),
+    //     "Tritium_2/set_29/p37".to_owned()
+    // ];
+    // let correct_to_monitor = true;
+    // let group = "tritium-3-(29-31)";
 
     // === Tritium 4 ===
     // let pattern = format!("/{run}/Tritium_4/set_*/p*");
@@ -123,12 +164,28 @@ async fn main() {
     // let group = "tritium-4";
 
     // === Tritium 5 ===
-    // let pattern = format!("/{run}/Tritium_5/set_*/p*");
-    // let exclude: Vec<String> = vec![
-    //     "Tritium_5/set_10".to_owned()
-    // ];
-    // let correct_to_monitor = true;
-    // let group = "tritium-5";
+    let pattern = format!("/{run}/Tritium_5/set_*/p*");
+    let exclude: Vec<String> = vec![
+        "Tritium_5/set_1/".to_owned(),
+        "Tritium_5/set_2/".to_owned(),
+        "Tritium_5/set_3/".to_owned(),
+        "Tritium_5/set_4/".to_owned(),
+
+        "Tritium_5/set_5/".to_owned(),
+        "Tritium_5/set_6/".to_owned(),
+        "Tritium_5/set_7/".to_owned(),
+        "Tritium_5/set_8/".to_owned(),
+
+        // "Tritium_5/set_9/".to_owned(),
+        // "Tritium_5/set_10/".to_owned(),
+        // "Tritium_5/set_11/".to_owned(),
+        // "Tritium_5/set_12/".to_owned(),
+
+        "Tritium_5/set_10".to_owned()
+    ];
+
+    let correct_to_monitor = true;
+    let group = "tritium-5(9,11,12)";
 
     // === End ===
     std::fs::create_dir_all(&workspace).unwrap();
@@ -184,7 +241,7 @@ async fn main() {
                 } else { 1.0 };
 
                 let amps = post_process(
-                    extract_amplitudes(&point, &ALGORITHM, true) , &POST_PROCESSING);
+                    extract_amplitudes(&point, &PROCESSING) , &POST_PROCESSING);
                 
                 amps.iter().for_each(|(_, frames): (&u64, &std::collections::BTreeMap<usize, f32>)| {
                     frames.iter().for_each(|(ch_num, amp)| {
