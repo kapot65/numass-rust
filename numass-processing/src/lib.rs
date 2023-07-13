@@ -6,7 +6,7 @@ pub extern crate numass;
 use {histogram::PointHistogram, numass::protos::rsb_event, std::collections::BTreeMap};
 pub mod histogram;
 
-pub mod web; // TODO: move to numass-processing with web feature
+pub mod viewer; // TODO: move to numass-processing with viewer feature
 
 #[cfg(feature = "egui")]
 use egui::{Color32, epaint::Hsva, plot::{PlotUi, Line}};
@@ -72,27 +72,32 @@ pub fn check_neigbors_fast<T>(frames: &BTreeMap<usize, T>) -> bool {
 } 
 
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
-pub struct ProcessingParams {
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct ProcessParams {
     pub algorithm: Algorithm,
-    pub post_processing: PostProcessingParams,
-    pub histogram: HistogramParams,
+    pub convert_to_kev: bool,
+}
+
+impl Default for ProcessParams {
+    fn default() -> Self {
+        Self {
+            algorithm: Algorithm::default(),
+            convert_to_kev: true,
+        }
+    }
 }
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
-pub struct PostProcessingParams {
-    pub convert_to_kev: bool, // TODO: remove from this structure or from extract_amps
+pub struct PostProcessParams {
     pub merge_close_events: bool,
     pub merge_map: [[bool; 7]; 7],
     pub use_dead_time: bool,
     pub effective_dead_time: u64,
 }
 
-impl Default for PostProcessingParams {
+impl Default for PostProcessParams {
     fn default() -> Self {
         Self {
-            // TODO: add to KeV corrections
-            convert_to_kev: true,
             merge_close_events: true,
             use_dead_time: false,
             effective_dead_time: 4000,
@@ -113,16 +118,6 @@ impl Default for PostProcessingParams {
 pub struct DeviceFrame {
     pub time: u64,
     pub waveforms: BTreeMap<u8, ProcessedWaveform>,
-}
-
-impl Default for ProcessingParams {
-    fn default() -> Self {
-        Self {
-            algorithm: Algorithm::default(),
-            post_processing: PostProcessingParams::default(),
-            histogram: HistogramParams { range: 0.0..27.0, bins: 270 }
-        }
-    }
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
@@ -255,7 +250,6 @@ const KEV_COEFF_FIRST_PEAK: [[f32; 2]; 7] = [
     ]
 ];
 
-
 // Calibration by Tritium (12-16 kev)
 // const KEV_COEFF_FIRST_PEAK: [[f32; 2]; 7] = [
 //     [0.298225, 0.122968],
@@ -278,8 +272,7 @@ const KEV_COEFF_FIRST_PEAK: [[f32; 2]; 7] = [
 //     [0.2477852, -0.0318],
 // ];
 
-
-pub fn extract_amplitudes(point: &rsb_event::Point, algorithm: &Algorithm, to_kev: bool) -> BTreeMap<u64, BTreeMap<usize, f32>> {
+pub fn extract_amplitudes(point: &rsb_event::Point, params: &ProcessParams) -> BTreeMap<u64, BTreeMap<usize, f32>> {
 
     let mut amplitudes = BTreeMap::new();
 
@@ -290,9 +283,9 @@ pub fn extract_amplitudes(point: &rsb_event::Point, algorithm: &Algorithm, to_ke
 
                 let waveform = process_waveform(frame);
 
-                for (_, amp) in waveform_to_events(&waveform, algorithm) {
-                    let amp = if to_kev {
-                        convert_to_kev(&amp, channel.id as u8, algorithm)
+                for (_, amp) in waveform_to_events(&waveform, &params.algorithm) {
+                    let amp = if params.convert_to_kev {
+                        convert_to_kev(&amp, channel.id as u8, &params.algorithm)
                     } else {
                         amp
                     };
@@ -305,21 +298,21 @@ pub fn extract_amplitudes(point: &rsb_event::Point, algorithm: &Algorithm, to_ke
     amplitudes
 }
 
-pub fn post_process(mut amplitudes: BTreeMap<u64, BTreeMap<usize, f32>>, post_processing: &PostProcessingParams) -> BTreeMap<u64, BTreeMap<usize, f32>> {
+pub fn post_process(mut amplitudes: BTreeMap<u64, BTreeMap<usize, f32>>, params: &PostProcessParams) -> BTreeMap<u64, BTreeMap<usize, f32>> {
 
     let mut last_time: u64 = 0;
     amplitudes.iter_mut().filter_map(|(time, channels)| {
 
-        if post_processing.use_dead_time && last_time.abs_diff(*time) < post_processing.effective_dead_time {
+        if params.use_dead_time && last_time.abs_diff(*time) < params.effective_dead_time {
             return None;
         }
 
         last_time = *time;
 
-        if post_processing.merge_close_events {
+        if params.merge_close_events {
             for ch_1 in 0..7 {
                 for ch_2 in 0..7 {
-                    if post_processing.merge_map[ch_1][ch_2]
+                    if params.merge_map[ch_1][ch_2]
                         && channels.contains_key(&ch_1)
                         && channels.contains_key(&ch_2)
                     {
