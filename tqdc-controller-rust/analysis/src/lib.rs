@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{collections::BTreeMap, path::{PathBuf, Path}};
 
 use processing::numass::protos::rsb_event::Point;
 use serde::Deserialize;
@@ -56,7 +56,7 @@ impl CorrectionCoeffs {
         self.coeffs.get(fill)?.get(set).map(|params| &params.corr_coef)
     }
 
-    pub fn get_for_point(&self, filepath: &PathBuf, point: &Point) -> f32{
+    pub fn get_for_point(&self, filepath: &Path, point: &Point) -> f32{
 
         let (fill, set) = {
             let set_folder = filepath.parent().unwrap();
@@ -67,8 +67,6 @@ impl CorrectionCoeffs {
         };
 
         let Coeffs {a, b} = self.get(fill, set).unwrap();
-        let time = point.channels.first().unwrap().blocks.first().unwrap().time as f32;
-        Some((a * time + b, time));
 
         let secs = point.channels.first().unwrap().blocks.first().unwrap().time / 
                 1_000_000_000 + (3600 * 4);

@@ -82,9 +82,10 @@ async fn main() {
 
     // === Tritium 1, Bgr 1 ===
     // let pattern = format!("/{run}/Tritium_1/set_[1234567]/p*");
-    // let exclude = [];
-    // let correct_to_monitor = true;
-    // let group = "tritium-1-bgr-1";
+    let pattern = format!("/{run}/Tritium_1/set_[567]/p*");
+    let exclude = [];
+    let correct_to_monitor = true;
+    let group = "tritium-1-bgr-1(5-7)";
 
     // === Tritium 1, Bgr 2 ===
     // let pattern = format!("/{run}/Tritium_1/set_[123][0123456789]/p*");
@@ -164,28 +165,28 @@ async fn main() {
     // let group = "tritium-4";
 
     // === Tritium 5 ===
-    let pattern = format!("/{run}/Tritium_5/set_*/p*");
-    let exclude: Vec<String> = vec![
-        "Tritium_5/set_1/".to_owned(),
-        "Tritium_5/set_2/".to_owned(),
-        "Tritium_5/set_3/".to_owned(),
-        "Tritium_5/set_4/".to_owned(),
+    // let pattern = format!("/{run}/Tritium_5/set_*/p*");
+    // let exclude: Vec<String> = vec![
+    //     "Tritium_5/set_1/".to_owned(),
+    //     "Tritium_5/set_2/".to_owned(),
+    //     "Tritium_5/set_3/".to_owned(),
+    //     "Tritium_5/set_4/".to_owned(),
 
-        "Tritium_5/set_5/".to_owned(),
-        "Tritium_5/set_6/".to_owned(),
-        "Tritium_5/set_7/".to_owned(),
-        "Tritium_5/set_8/".to_owned(),
+    //     "Tritium_5/set_5/".to_owned(),
+    //     "Tritium_5/set_6/".to_owned(),
+    //     "Tritium_5/set_7/".to_owned(),
+    //     "Tritium_5/set_8/".to_owned(),
 
-        // "Tritium_5/set_9/".to_owned(),
-        // "Tritium_5/set_10/".to_owned(),
-        // "Tritium_5/set_11/".to_owned(),
-        // "Tritium_5/set_12/".to_owned(),
+    //     // "Tritium_5/set_9/".to_owned(),
+    //     // "Tritium_5/set_10/".to_owned(),
+    //     // "Tritium_5/set_11/".to_owned(),
+    //     // "Tritium_5/set_12/".to_owned(),
 
-        "Tritium_5/set_10".to_owned()
-    ];
+    //     "Tritium_5/set_10".to_owned()
+    // ];
 
-    let correct_to_monitor = true;
-    let group = "tritium-5(9,11,12)";
+    // let correct_to_monitor = true;
+    // let group = "tritium-5(9,11,12)";
 
     // === End ===
     std::fs::create_dir_all(&workspace).unwrap();
@@ -219,7 +220,7 @@ async fn main() {
             let mut out_point = ProducedPoint {
                 u_sp: u_sp_v,
                 e_curr: E_MIN.max(18.5 - u_sp_kev),
-                l_curr: u_sp_kev as f32 * L_COEFF,
+                l_curr: u_sp_kev * L_COEFF,
                 k: 0.0,
                 l: 0.0,
                 m: 0.0,
@@ -276,7 +277,7 @@ async fn main() {
                 serde_json::to_string(&out_point).unwrap()).await.unwrap();
 
             // TODO: move to PointHistogram trait
-            let mut ascii_hist = format!("u\tcounts\n");
+            let mut ascii_hist = "u\tcounts\n".to_string();
             {
                 let(_, counts) = hist.channels.iter().find(|(ch_id, _)| **ch_id == 5).unwrap();
                 counts.iter().enumerate().for_each(|(i, val)| {
@@ -299,7 +300,7 @@ async fn main() {
         handle.await.unwrap();
     }
 
-    let mut table_data = format!("u_sp\te_curr\tl_curr\tk\tl\tm\td\td_sum\ttime\n");
+    let mut table_data = "u_sp\te_curr\tl_curr\tk\tl\tm\td\td_sum\ttime\n".to_string();
     table.try_lock().unwrap().clone().iter().for_each(|(u_sp, point)| {
         table_data.push_str(&format!(
             "{u_sp}\t{e_curr}\t{l_curr}\t{k}\t{l}\t{m}\t{d}\t{d_sum}\t{time}\n",
@@ -312,7 +313,7 @@ async fn main() {
             d = point.d.round() as u64,
             d_sum = point.d_sum.round() as u64,
             time = point.time
-        ).replace(".", ","));
+        ).replace('.', ","));
     });
     std::fs::write(bgr_dir.join("all.tsv"), table_data).unwrap()
 }

@@ -78,7 +78,7 @@ async fn main() {
         .collect::<Vec<_>>();
 
     let mut histogram = PointHistogram::new_step(0.0..27.0, 0.1);
-    histogram.add_batch(0, deltas.iter().map(|x| *x as f32).collect::<Vec<_>>());
+    histogram.add_batch(0, deltas.to_vec());
 
     let mut plot = Plot::new();
 

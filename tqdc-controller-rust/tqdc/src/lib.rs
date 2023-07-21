@@ -249,7 +249,7 @@ impl TQDC {
         let gather_loop = {
             let control = control.clone();
             let stream = stream.clone();
-            let clone = self.clone();
+            let clone = *self;
             tokio::spawn(TQDC::gather_frames(clone, control, stream))
         };
     
@@ -282,7 +282,7 @@ impl TQDC {
             }
         };
     
-        Ok(fragments.iter().map(|(_, fragments)| {
+        Ok(fragments.values().map(|fragments| {
             
             let merged = MStreamTriggerAndUserData::try_from(
                 fragments.values().collect::<Vec<_>>().as_slice()

@@ -54,11 +54,9 @@ async fn main() {
             
             let amps = events.iter().filter_map(|(_, amps)| {
                 if  amps.len() == 1 ||
-                    processing::check_neigbors_fast::<f32>(&amps) 
+                    processing::check_neigbors_fast::<f32>(amps) 
                 { None } else {
-                    Some(amps.into_iter().map(|(_, amp)| *amp)
-                        .sum::<f32>()
-                    )
+                    Some(amps.values().sum::<f32>())
                 }
             }).collect::<Vec<_>>();
 
@@ -77,7 +75,7 @@ async fn main() {
             let amps_all = events.iter()
             .filter_map(|(_, frames)| {
                 if frames.len() > 1 && frames.contains_key(&5) {
-                    Some(frames.into_iter().map(|(_, amp)| amp).sum::<f32>())
+                    Some(frames.values().sum::<f32>())
                 } else { None }
             }).collect::<Vec<_>>();
 
@@ -107,8 +105,8 @@ async fn main() {
     
     {
         let histogram = histogram.try_lock().unwrap();
-        let under_hist = histogram.events_in_window_all(10.2, 19.0);
-        let total = histogram.events_in_window_all(4.0, 40.0);
+        let under_hist = histogram.events_all(Some(10.2..19.0));
+        let total = histogram.events_all(Some(4.0..40.0));
         println!("{}", under_hist as f32 / total as f32);
         histogram.draw_plotly(&mut plot, None);
     }

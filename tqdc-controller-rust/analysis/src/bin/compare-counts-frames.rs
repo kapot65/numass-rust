@@ -40,7 +40,7 @@ async fn main() {
     
     );
 
-    let counts = amps.iter().map(|(_, frames)| {
+    let counts = amps.values().map(|frames| {
         frames.values().count()
     }).sum::<usize>();
 

@@ -49,7 +49,7 @@ async fn main() {
                 &ProcessParams::default(),
             ), &PostProcessParams::default());
 
-            let count_rate = amps.iter().map(|(_, frames)| {
+            let count_rate = amps.values().map(|frames| {
                 frames.len()
             }).sum::<usize>();
 

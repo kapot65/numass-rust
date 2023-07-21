@@ -124,7 +124,7 @@ impl TryFrom<&[&MStreamFragment]> for MStreamTriggerAndUserData {
             let mut last_fragment_found = false;
             let mut current_offset = 0;
             
-            for fragment in fragments.clone() {
+            for fragment in fragments {
                 if fragment.header.fragment_offset != current_offset {
                     fragments.iter().for_each(|fragment| println!("{:?}", fragment.header));
                     Err("missing intermediate fragment")?;
@@ -149,7 +149,7 @@ impl TryFrom<&[&MStreamFragment]> for MStreamTriggerAndUserData {
         let mut tai_sec = None;
         let mut tai_nano_sec = None;
 
-        fragments.into_iter().for_each(|fragment| {
+        fragments.iter().for_each(|fragment| {
             let length = fragment.header.length as usize;
             
             if fragment.header.fragment_offset == 0 {
@@ -184,7 +184,7 @@ impl MStreamTriggerAndUserData {
         let mut offset = 0;
         let mut channels = vec![];
     
-        while offset < self.user_data.len() as usize {
+        while offset < self.user_data.len() {
             let data_payload_length = u16::from_le_bytes(*array_ref![self.user_data, offset, 2]); // 15:0
     
             // let adc_data_block_specific = {

@@ -56,7 +56,7 @@ async fn main() {
             let filepath = filepath.to_owned();
             let histogram = Arc::clone(&histogram);
             let pb = Arc::clone(&pb);
-            let processing_params = processing_params.clone();
+            let processing_params = processing_params;
 
             tokio::spawn(async move {
                 let mut point_file = tokio::fs::File::open(filepath).await.unwrap();

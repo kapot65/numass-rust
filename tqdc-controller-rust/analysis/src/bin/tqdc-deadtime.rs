@@ -19,7 +19,7 @@ async fn main() {
     // let filepath = "/data/2022_12/Tritium_7/set_1/p120(30s)(HV1=12000)";
     // let filepath = "/data/2022_12/Tritium_7/set_1/p0(30s)(HV1=14000)";
     // let filepath = "/data/2022_12/Tritium_7/set_1/p6(30s)(HV1=18100)";
-    let pattern = format!("/{run}/Tritium_3/set_*/p*(HV1=12000)");
+    let pattern = format!("/{run}/Tritium_2/set_1/p*(HV1=12000)");
     // let pattern = format!("/{run}/Tritium_3/set_*/p*(HV1=15000)");
     let exclude: Vec<String> = vec![
         "Tritium_3/set_25_short".to_owned(),
@@ -32,7 +32,7 @@ async fn main() {
         Mutex::new(PointHistogram::new_step(0.0..3e5, 24.0 * 4.0)));
 
     let handles = points.iter().flat_map(|(_, filepaths)| {
-        filepaths.into_iter().map(|filepath| {
+        filepaths.iter().map(|filepath| {
             let hist = Arc::clone(&hist);
             let filepath = filepath.clone();
             tokio::spawn(async move {
