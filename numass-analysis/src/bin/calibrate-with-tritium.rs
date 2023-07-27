@@ -1,0 +1,97 @@
+use analysis::get_points_by_pattern;
+use processing::{extract_amplitudes, numass::NumassMeta, ProcessParams};
+
+use {
+    processing::{
+        histogram::PointHistogram, Algorithm,
+        numass::protos::rsb_event
+    },
+    protobuf::Message,
+    std::sync::Arc,
+    tokio::sync::Mutex,
+};
+
+#[tokio::main]
+async fn main() {
+
+    let db_root = "/data-nvme";
+    // let db_root = "/data-ssd/numass-server";
+    let run = "2023_03";
+
+    let pattern = format!("/{run}/Tritium_*/set_[1234]/p*");
+    let exclude = vec![
+        "Tritium_1/set_10".to_owned(),
+        "Tritium_2/set_5/p18".to_owned(),
+        "Tritium_2/set_5/p19".to_owned(),
+        "Tritium_2/set_14/p20".to_owned(),
+        "Tritium_2/set_14/p22".to_owned(),
+        "Tritium_3/set_25_short".to_owned(),
+        "Tritium_2/set_29/p37".to_owned(),
+        "Tritium_4/set_10_short".to_owned(),
+        "Tritium_4/set_25/p7".to_owned(),
+        "Tritium_4/set_25_18000V_bad".to_owned(),
+        "Tritium_5/set_10".to_owned()
+    ];
+
+    // let u_sp = [12000, 12500, 13000, 13500, 14000, 14500, 15000, 15500, 16000, 16500, 17000];
+ 
+    // let processing_params = ProcessParams {
+    //     algorithm: Algorithm::default(),
+    //     convert_to_kev: false,
+    // };
+
+    // let hist = PointHistogram::new(0.0..120.0, 480);
+
+    let u_sp = [12000, 12500, 13000, 13500, 14000, 14500, 15000, 15500, 16000, 16500, 17000];
+
+    let processing_params = ProcessParams {
+        algorithm: Algorithm::default(),
+        convert_to_kev: true,
+    };
+
+    let hist = PointHistogram::new(0.0..20.0, 400);
+    
+    for u_sp in u_sp {
+        let points = get_points_by_pattern(db_root, &pattern, &exclude);
+        let points = points[&u_sp].clone();
+        let pb = Arc::new(Mutex::new(indicatif::ProgressBar::new(points.len() as u64)));
+        let histogram = Arc::new(Mutex::new(hist.clone()));
+
+        let handles = points.iter().map(|filepath| {
+            let filepath = filepath.to_owned();
+            let histogram = Arc::clone(&histogram);
+            let pb = Arc::clone(&pb);
+            let processing_params = processing_params;
+
+            tokio::spawn(async move {
+                let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
+                let message = dataforge::read_df_message::<NumassMeta>(&mut point_file)
+                    .await
+                    .unwrap();
+
+                let point =rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
+                let amps = extract_amplitudes(&point, &processing_params);
+                {
+                    let mut histogram = histogram.lock().await;
+                    for (_, amps) in amps {
+                        for (ch_id, amp) in amps {
+                            histogram.add(ch_id as u8, amp);
+                        }
+                    }
+                }
+                pb.lock().await.inc(1) 
+            })
+        })
+        // .collect::<Vec<_>>()
+        ;
+
+        for handle in handles {
+            handle.await.unwrap();
+        }
+
+        {
+            let histogram = histogram.lock().await;
+            tokio::fs::write(format!("{u_sp}.csv"), histogram.to_csv(',')).await.unwrap();
+        }
+    }
+}

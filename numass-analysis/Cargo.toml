@@ -1,0 +1,31 @@
+[package]
+name = "analysis"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+eframe = "0.22.0"
+serde = { version = "1.0.163", features = ["derive"] }
+serde_json = "1.0.91"
+tokio = { version = "1.21.2", features = ["full"] }
+protobuf = "3.2.0"
+dataforge = { git = "https://bitbucket.org/Kapot/dataforge-parser-rust.git", tag = "0.1.2", features = ["tokio"]  }
+processing = { git = "https://bitbucket.org/Kapot/numass-processing.git", features = ["egui", "plotly"], tag = "0.1.2" }
+
+serde_with = "3.0.0"
+linreg = "0.2.0"
+statrs = "0.16.0"
+plotters = "0.3.1"
+plotly = { version = "0.8.3", features = ["kaleido"]}
+unzip3 = "1.0.0"
+indicatif = "0.17.3"
+unzip-n = "0.1.2"
+glob = "0.3.1"
+chrono = "0.4.19"
+
+[patch."https://bitbucket.org/Kapot/dataforge-parser-rust.git"]
+dataforge = { path = "../dataforge-parser-rust" }
+
+[patch."https://bitbucket.org/Kapot/numass-processing.git"]
+processing = { path = "../numass-processing" }
