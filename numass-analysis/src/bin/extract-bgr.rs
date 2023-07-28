@@ -1,201 +1,120 @@
-use std::sync::Arc;
+use std::path::PathBuf;
 
+use analysis::{get_points_by_pattern, ethalon::get_ethalon};
 use plotly::{common::{Title, Line, LineShape}, layout::Axis, Layout, Plot, Scatter};
 use protobuf::Message;
 
 use dataforge::read_df_message;
 use processing::{
-    histogram::{PointHistogram, HistogramParams}, numass::{protos::rsb_event, NumassMeta}, extract_amplitudes, ProcessParams, amplitudes_to_histogram
+    histogram::HistogramParams, numass::{protos::rsb_event, NumassMeta}, extract_amplitudes, ProcessParams, amplitudes_to_histogram
 };
-use tokio::sync::Mutex;
-
 
 #[tokio::main]
 async fn main() {
     
+    // ===== configuration =====
     let db_root = "/data-nvme";
     let run = "2023_03";
 
     let range = 2.0..20.0;
     let bins = 180;
 
-    // 12 kev
-    // let ethalon_pattern = format!("/{run}/Tritium_1/set_[1234]/p*(HV1=12000)");
-    // let samples = [
-    //     ("trit-2-set-1", "/data-nvme/2023_03/Tritium_2/set_1/p118(30s)(HV1=12000)"),
-    //     ("trit-2-set-15", "/data-nvme/2023_03/Tritium_2/set_15/p118(30s)(HV1=12000)"),
-    //     ("trit-2-set-29", "/data-nvme/2023_03/Tritium_2/set_29/p118(30s)(HV1=12000)"),
-    //     ("trit-3-set-1", "/data-nvme/2023_03/Tritium_3/set_1/p118(30s)(HV1=12000)"),
-    //     ("trit-3-set-15", "/data-nvme/2023_03/Tritium_3/set_15/p118(30s)(HV1=12000)"),
-    //     ("trit-3-set-30", "/data-nvme/2023_03/Tritium_3/set_30/p118(30s)(HV1=12000)"),
-    //     ("trit-4-set-1", "/data-nvme/2023_03/Tritium_4/set_1/p118(30s)(HV1=12000)"),
-    //     ("trit-4-set-15", "/data-nvme/2023_03/Tritium_4/set_15/p118(30s)(HV1=12000)"),
-    //     ("trit-4-set-30", "/data-nvme/2023_03/Tritium_4/set_30/p118(30s)(HV1=12000)"),
-    //     ("trit-5-set-1", "/data-nvme/2023_03/Tritium_5/set_1/p118(30s)(HV1=12000)"),
-    //     ("trit-5-set-12", "/data-nvme/2023_03/Tritium_5/set_12/p118(30s)(HV1=12000)"),
-    // ];
-    // let range_l = 4.0..10.0;
-    // let range_r = 13.0..20.0;
+    let voltage = 12000u16;
+    let y_range = [-1000, 4000];
 
-    // 13 kev
-    // let ethalon_pattern = format!("/{run}/Tritium_1/set_[1234]/p*(HV1=13000)");
-    // let samples = [
-    //     ("trit-2-set-1", "/data-nvme/2023_03/Tritium_2/set_1/p96(30s)(HV1=13000)"),
-    //     ("trit-2-set-15", "/data-nvme/2023_03/Tritium_2/set_15/p96(30s)(HV1=13000)"),
-    //     ("trit-2-set-29", "/data-nvme/2023_03/Tritium_2/set_29/p96(30s)(HV1=13000)"),
-    //     ("trit-3-set-1", "/data-nvme/2023_03/Tritium_3/set_1/p96(30s)(HV1=13000)"),
-    //     ("trit-3-set-15", "/data-nvme/2023_03/Tritium_3/set_15/p96(30s)(HV1=13000)"),
-    //     ("trit-3-set-30", "/data-nvme/2023_03/Tritium_3/set_30/p96(30s)(HV1=13000)"),
-    //     ("trit-4-set-1", "/data-nvme/2023_03/Tritium_4/set_1/p96(30s)(HV1=13000)"),
-    //     ("trit-4-set-15", "/data-nvme/2023_03/Tritium_4/set_15/p96(30s)(HV1=13000)"),
-    //     ("trit-4-set-30", "/data-nvme/2023_03/Tritium_4/set_30/p96(30s)(HV1=13000)"),
-    //     ("trit-5-set-1", "/data-nvme/2023_03/Tritium_5/set_1/p96(30s)(HV1=13000)"),
-    //     ("trit-5-set-12", "/data-nvme/2023_03/Tritium_5/set_12/p96(30s)(HV1=13000)"),
-    // ];
-    // let range_l = 4.0..11.0;
-    // let range_r = 14.0..20.0;
+    // ===== processing code =====
+    let out_folder = PathBuf::from(format!("workspace/extract-bgr/{voltage}"));
+    std::fs::create_dir_all(&out_folder).unwrap();
 
+    let mut paths = get_points_by_pattern(
+        db_root, format!("/{run}/Tritium_[45]/set_*/p*(HV1={voltage})").as_str(), &[]).into_values().flatten().collect::<Vec<_>>();
+    paths.sort_by(|a, b|
+        natord::compare(a.to_str().unwrap(), b.to_str().unwrap())
+    );
 
-    // 15 kev
-    let ethalon_pattern = format!("/{run}/Tritium_1/set_[1234]/p*(HV1=15000)");
-    let samples = [
-        ("trit-2-set-1", "/data-nvme/2023_03/Tritium_2/set_1/p52(30s)(HV1=15000)"),
-        ("trit-2-set-15", "/data-nvme/2023_03/Tritium_2/set_15/p52(30s)(HV1=15000)"),
-        ("trit-2-set-29", "/data-nvme/2023_03/Tritium_2/set_29/p52(30s)(HV1=15000)"),
-        ("trit-3-set-1", "/data-nvme/2023_03/Tritium_3/set_1/p52(30s)(HV1=15000)"),
-        ("trit-3-set-15", "/data-nvme/2023_03/Tritium_3/set_15/p52(30s)(HV1=15000)"),
-        ("trit-3-set-30", "/data-nvme/2023_03/Tritium_3/set_30/p52(30s)(HV1=15000)"),
-        ("trit-4-set-1", "/data-nvme/2023_03/Tritium_4/set_1/p52(30s)(HV1=15000)"),
-        ("trit-4-set-15", "/data-nvme/2023_03/Tritium_4/set_15/p52(30s)(HV1=15000)"),
-        ("trit-4-set-30", "/data-nvme/2023_03/Tritium_4/set_30/p52(30s)(HV1=15000)"),
-        ("trit-5-set-1", "/data-nvme/2023_03/Tritium_5/set_1/p52(30s)(HV1=15000)"),
-        ("trit-5-set-12", "/data-nvme/2023_03/Tritium_5/set_12/p52(30s)(HV1=15000)"),
-    ];
-    let range_l = 4.0..13.0;
-    let range_r = 16.0..20.0;
-
-
-    // 16 kev
-    // let ethalon_pattern = format!("/{run}/Tritium_1/set_[1234]/p*(HV1=16000)");
-    // let samples = [
-    //     ("trit-2-set-1", "/data-nvme/2023_03/Tritium_2/set_1/p30(30s)(HV1=16000)"),
-    //     ("trit-2-set-15", "/data-nvme/2023_03/Tritium_2/set_15/p30(30s)(HV1=16000)"),
-    //     ("trit-2-set-29", "/data-nvme/2023_03/Tritium_2/set_29/p30(30s)(HV1=16000)"),
-    //     ("trit-3-set-1", "/data-nvme/2023_03/Tritium_3/set_1/p30(30s)(HV1=16000)"),
-    //     ("trit-3-set-15", "/data-nvme/2023_03/Tritium_3/set_15/p30(30s)(HV1=16000)"),
-    //     ("trit-3-set-30", "/data-nvme/2023_03/Tritium_3/set_30/p30(30s)(HV1=16000)"),
-    //     ("trit-4-set-1", "/data-nvme/2023_03/Tritium_4/set_1/p30(30s)(HV1=16000)"),
-    //     ("trit-4-set-15", "/data-nvme/2023_03/Tritium_4/set_15/p30(30s)(HV1=16000)"),
-    //     ("trit-4-set-30", "/data-nvme/2023_03/Tritium_4/set_30/p30(30s)(HV1=16000)"),
-    //     ("trit-5-set-1", "/data-nvme/2023_03/Tritium_5/set_1/p30(30s)(HV1=16000)"),
-    //     ("trit-5-set-12", "/data-nvme/2023_03/Tritium_5/set_12/p30(30s)(HV1=16000)"),
-    // ];
-    // let range_l = 4.0..14.0;
-    // let range_r = 17.0..20.0;
-
-    let eth_hist = {
-        let eth_points = {
-            
-            let exclude: Vec<String> = vec![];
-            analysis::get_points_by_pattern(db_root, &ethalon_pattern, &exclude)
-        };
-    
-        let hist = Arc::new(Mutex::new(
-            PointHistogram::new(range.clone(), bins)
-        ));
-    
-        let handles = eth_points.iter().flat_map(|(_, filepaths)| {
-            filepaths.iter().map(|filepath| {
-                let hist = Arc::clone(&hist);
-                let filepath = filepath.clone();
-                tokio::spawn(async move {
-    
-                    let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
-                    let message = read_df_message::<NumassMeta>(&mut point_file)
-                        .await
-                        .unwrap();
-                    let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
-                    
-                    let amps = extract_amplitudes(
-                        &point, 
-                        &ProcessParams::default()
-                    );
-    
-                    {
-                        let mut hist = hist.lock().await;
-                        amps.into_iter().for_each(|(_, block)| {
-                            block.into_iter().for_each(|(ch_num, amp)| {
-                                hist.add(ch_num as u8, amp);
-                            });
-                        });
-                    }
-                })
-            })
-        }).collect::<Vec<_>>();
-    
-        for handle in handles {
-            handle.await.unwrap();
+    let samples = paths.into_iter().enumerate().map(|(idx, point)| {
+            (format!("trit-4-5-{}", idx), point)
         }
-    
-        hist
-    };
-    let eth_hist = eth_hist.lock().await;
+    ).collect::<Vec<_>>();
 
-    for (outfile, sample) in samples {
-        let sample_hist = {
-            let mut point_file = tokio::fs::File::open(sample).await.unwrap();
-            let message = read_df_message::<NumassMeta>(&mut point_file)
-                .await
-                .unwrap();
-            let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
+    let range_l = 4.0..(voltage as f32 / 1000.0 - 2.0);
+    let range_r = (voltage as f32 / 1000.0 + 1.0)..20.0;
+    
+    let eth_hist = get_ethalon(voltage).await.unwrap();
+
+    let handles = samples.iter().map(|(outfile, sample)| {
+
+        let outfile = outfile.clone();
+        let sample = sample.clone();
+        let eth_hist = eth_hist.clone();
+        let range = range.clone();
+        let range_l = range_l.clone();
+        let range_r = range_r.clone();
+        let y_range = y_range;
+        let out_folder = out_folder.clone();
+
+        tokio::spawn(async move {
+            let sample_hist = {
+                let mut point_file = tokio::fs::File::open(&sample).await.unwrap();
+                let message = read_df_message::<NumassMeta>(&mut point_file)
+                    .await
+                    .unwrap();
+                let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
+                
+                amplitudes_to_histogram(extract_amplitudes(
+                    &point, 
+                    &ProcessParams::default()
+                ), HistogramParams {
+                    range: range.clone(),
+                    bins
+                })
+            };
+        
+            let eth_counts = eth_hist.events_all(Some(range_l.clone())) 
+            + eth_hist.events_all(Some(range_r.clone()))
+            ;
+            let sample_counts = sample_hist.events_all(Some(range_l.clone()))
+             + sample_hist.events_all(Some(range_r.clone()))
+            ;
+            let ratio = sample_counts as f64 / eth_counts as f64;
+        
+            let mut plot = Plot::new();
+        
+            let layout = Layout::new()
+            .title(Title::new(format!("{sample:?}").as_str()))
+                .x_axis(
+                    Axis::new().title(Title::new("U_sp, kV")
+                ))
+                .y_axis(Axis::new().range(y_range.to_vec()).title(Title::new("counts")))
+                .height(1000);
+        
+            plot.set_layout(layout);
             
-            amplitudes_to_histogram(extract_amplitudes(
-                &point, 
-                &ProcessParams::default()
-            ), HistogramParams {
-                range: range.clone(),
-                bins
-            })
-        };
-    
-        let eth_counts = eth_hist.events_all(Some(range_l.clone())) 
-        + eth_hist.events_all(Some(range_r.clone()))
-        ;
-        let sample_counts = sample_hist.events_all(Some(range_l.clone()))
-         + sample_hist.events_all(Some(range_r.clone()))
-        ;
-        let ratio = sample_counts as f64 / eth_counts as f64;
-    
-        let mut plot = Plot::new();
-    
-        let layout = Layout::new()
-        .title(Title::new(sample))
-            .x_axis(Axis::new().title(Title::new("U_sp, kV")))
-            .height(1000);
-    
-        plot.set_layout(layout);
+            let y1 = eth_hist.merge_channels().into_iter().map(|val| val * ratio as f32).collect::<Vec<_>>();
         
-        let y1 = eth_hist.merge_channels().into_iter().map(|val| val * ratio as f32).collect::<Vec<_>>();
-    
-        let difference = sample_hist.merge_channels().iter().zip(y1.iter()).map(|(sample, eth)| *sample - eth).collect::<Vec<_>>();
+            let difference = sample_hist.merge_channels().iter().zip(y1.iter()).map(|(sample, eth)| *sample - eth).collect::<Vec<_>>();
+            
+            let eth_shape = Scatter::new(
+                eth_hist.x.clone(), y1
+            ).line(Line::new().shape(LineShape::Hvh)).name("ethalon");
+            plot.add_trace(eth_shape);
         
-    
-        let eth_shape = Scatter::new(
-            eth_hist.x.clone(), y1
-        ).line(Line::new().shape(LineShape::Hvh)).name("ethalon");
-        plot.add_trace(eth_shape);
-    
-        let diff_shape = Scatter::new(
-            eth_hist.x.clone(), difference
-        ).line(Line::new().shape(LineShape::Hvh)).name("difference");
-        plot.add_trace(diff_shape);
-    
-        let sample_shape = Scatter::new(
-            sample_hist.x.clone(), sample_hist.merge_channels()
-        ).line(Line::new().shape(LineShape::Hvh)).name("sample");
-        plot.add_trace(sample_shape);
-    
-        plot.write_html(format!("{}.html", outfile));
-        plot.write_image(format!("{}.png", outfile), plotly::ImageFormat::PNG, 1024, 768, 1.0)
+            let diff_shape = Scatter::new(
+                eth_hist.x.clone(), difference
+            ).line(Line::new().shape(LineShape::Hvh)).name("difference");
+            plot.add_trace(diff_shape);
+        
+            let sample_shape = Scatter::new(
+                sample_hist.x.clone(), sample_hist.merge_channels()
+            ).line(Line::new().shape(LineShape::Hvh)).name("sample");
+            plot.add_trace(sample_shape);
+        
+            // plot.write_html(format!("{}.html", outfile));
+            plot.write_image(out_folder.join(format!("{outfile}.png")) , plotly::ImageFormat::PNG, 1024, 768, 1.0)
+        })
+    }).collect::<Vec<_>>();
+
+    for handle in handles {
+        handle.await.unwrap();
     }
 }

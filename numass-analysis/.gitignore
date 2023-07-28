@@ -1,3 +1,5 @@
+workspace
+
 # --- VSCODE ---
 .vscode/*
 !.vscode/settings.json
