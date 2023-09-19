@@ -360,6 +360,66 @@ pub fn post_process(mut amplitudes: BTreeMap<u64, BTreeMap<usize, f32>>, params:
     
 }
 
+// TODO: merge with extract_amplitudes
+pub fn extract_events(point: &rsb_event::Point, params: &ProcessParams) -> BTreeMap<u64, BTreeMap<usize, (u16, f32)>> {
+
+    let mut amplitudes = BTreeMap::new();
+
+    for channel in &point.channels {
+        for block in &channel.blocks {
+            for frame in &block.frames {
+                let entry = amplitudes.entry(frame.time).or_insert(BTreeMap::new());
+
+                let waveform = process_waveform(frame);
+
+                for (time, amp) in waveform_to_events(&waveform, &params.algorithm) {
+                    let amp = if params.convert_to_kev {
+                        convert_to_kev(&amp, channel.id as u8, &params.algorithm)
+                    } else {
+                        amp
+                    };
+                    entry.insert(channel.id as usize, (time as u16, amp));
+                }
+            }
+        }
+    }
+
+    amplitudes
+}
+
+// TODO: merge with post_process
+pub fn post_process_events(mut events: BTreeMap<u64, BTreeMap<usize, (u16, f32)>>, params: &PostProcessParams) -> BTreeMap<u64, BTreeMap<usize, (u16, f32)>> {
+
+    let mut last_time: u64 = 0;
+    events.iter_mut().filter_map(|(time, channels)| {
+
+        if params.use_dead_time && last_time.abs_diff(*time) < params.effective_dead_time {
+            return None;
+        }
+
+        last_time = *time;
+
+        if params.merge_close_events {
+            for ch_1 in 0..7 {
+                for ch_2 in 0..7 {
+                    if params.merge_map[ch_1][ch_2]
+                        && channels.contains_key(&ch_1)
+                        && channels.contains_key(&ch_2)
+                    {
+                        // TODO: consider about right offset
+                        let (_, amp2) = channels.get(&ch_2).unwrap().to_owned();
+                        channels.entry(ch_1).and_modify(|(_, amp)| *amp += amp2);
+                        channels.remove_entry(&ch_2).unwrap();
+                    }
+                }
+            }
+        }
+
+        Some((*time, channels.clone()))
+    }).collect::<BTreeMap<_,_>>()
+    
+}
+
 pub fn amplitudes_to_histogram(
         amplitudes: BTreeMap<u64, BTreeMap<usize, f32>>, 
         histogram: HistogramParams
