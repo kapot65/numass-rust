@@ -67,13 +67,16 @@ impl Default for ViewerState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ViewerMode {
-    FilterEvents {
+    FilteredEvents {
         filepath: PathBuf,
         range: Range<f32>,
         neighborhood: usize,
         processing: ProcessParams,
     },
-    SplitTimeChunks {
+    Waveforms {
+        filepath: PathBuf,
+    },
+    Bundles {
         filepath: PathBuf,
     },
 }
