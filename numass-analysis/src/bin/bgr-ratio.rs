@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
 use analysis::{get_points_by_pattern, ethalon::get_ethalon, CorrectionCoeffs, workspace::{get_workspace, get_db_fast_root, get_hist_range, get_hist_bins}};
 use plotly::{common::{Title, Line, LineShape}, layout::Axis, Layout, Plot, Scatter};

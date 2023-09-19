@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc, collections::hash_map::DefaultHasher, hash::{Hash, Hasher}};
+use std::{sync::Arc, collections::hash_map::DefaultHasher, hash::{Hash, Hasher}};
 use crate::workspace::{get_workspace, get_db_fast_root, get_hist_range, get_hist_bins};
 
 use super::cache::CacacheBackend;

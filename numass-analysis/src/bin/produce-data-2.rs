@@ -266,16 +266,14 @@ async fn main() {
                             } else if  (E_PEAK..E_MAX).contains(amp) {
                                 out_point.d += monitor_coeff;
                             }
-                        } else {
-                            if (out_point.e_curr..u_sp_kev-2.0).contains(amp) {
-                                out_point.a_oth += monitor_coeff;
-                            } else if (u_sp_kev-2.0..u_sp_kev+1.0).contains(amp) {
-                                out_point.b_oth += monitor_coeff;
-                            } else if u_sp_kev < 18.0 && (u_sp_kev+1.0..E_PEAK).contains(amp) {
-                                out_point.c_oth += monitor_coeff;
-                            } else if  (E_PEAK..E_MAX).contains(amp) {
-                                out_point.d_oth += monitor_coeff;
-                            }
+                        } else if (out_point.e_curr..u_sp_kev-2.0).contains(amp) {
+                            out_point.a_oth += monitor_coeff;
+                        } else if (u_sp_kev-2.0..u_sp_kev+1.0).contains(amp) {
+                            out_point.b_oth += monitor_coeff;
+                        } else if u_sp_kev < 18.0 && (u_sp_kev+1.0..E_PEAK).contains(amp) {
+                            out_point.c_oth += monitor_coeff;
+                        } else if  (E_PEAK..E_MAX).contains(amp) {
+                            out_point.d_oth += monitor_coeff;
                         };
                     })
                 });

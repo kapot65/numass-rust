@@ -1,9 +1,8 @@
 use std::{path::PathBuf, collections::BTreeMap, vec, sync::Arc, ops::Range};
 
-use analysis::{get_points_by_pattern, CorrectionCoeffs, workspace::{get_db_fast_root, get_hist_range, get_hist_bins, get_workspace}, amps::get_amps, ethalon::get_ethalon};
-use dataforge::read_df_message;
+use analysis::{get_points_by_pattern, workspace::{get_db_fast_root, get_hist_range, get_hist_bins, get_workspace}, amps::get_amps, ethalon::get_ethalon};
 use indicatif::ProgressStyle;
-use processing::{Algorithm, numass::{NumassMeta, protos::rsb_event}, PostProcessParams, histogram::{HistogramParams, PointHistogram}, post_process, extract_amplitudes, ProcessParams, amplitudes_to_histogram};
+use processing::{Algorithm, PostProcessParams, histogram::HistogramParams, post_process, ProcessParams, amplitudes_to_histogram};
 use serde::{Serialize, Deserialize};
 use tokio::sync::Mutex;
 
@@ -33,8 +32,6 @@ const E_MAX: f32 = 40.0;
 const E_PEAK: f32 = 19.0;
 
 const L_COEFF: f32 = 0.85;
-
-const HISTOGRAM_PARAMS: HistogramParams = HistogramParams { range: E_MIN..E_MAX, bins: 360 };
 
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -91,7 +88,7 @@ async fn main() {
     let bgr_dir = workspace.join(group);
     std::fs::create_dir_all(&bgr_dir).unwrap();
 
-    let coeffs = Arc::new(CorrectionCoeffs::load(&format!("/{db_root}/monitor.json")));
+    // let coeffs = Arc::new(CorrectionCoeffs::load(&format!("/{db_root}/monitor.json")));
     let points = get_points_by_pattern(&db_root, &pattern, &exclude);
 
     let pb: indicatif::ProgressBar = indicatif::ProgressBar::new(points.len() as u64);

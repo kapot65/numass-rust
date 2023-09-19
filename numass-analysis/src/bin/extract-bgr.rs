@@ -1,5 +1,3 @@
-use std::{path::PathBuf, fmt::format};
-
 use analysis::{get_points_by_pattern, ethalon::get_ethalon, workspace::{get_db_fast_root, get_hist_range, get_hist_bins, get_workspace}, amps::get_amps};
 use plotly::{common::{Title, Line, LineShape}, layout::Axis, Layout, Plot, Scatter};
 
