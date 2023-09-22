@@ -36,11 +36,9 @@ pub enum NumassMeta {
     Reply(Reply),
     #[serde(rename="info_file")]
     InfoFile {
-
     },
     #[serde(rename="voltage")]
     Voltage {
-
     }
 }
 
@@ -54,7 +52,7 @@ pub enum Command {
         split: bool,
         acquisition_time: f32,
         path: Option<PathBuf>,
-        external_meta: Option<serde_json::Value>
+        external_meta: Option<ExternalMeta>
     }
 }
 
@@ -91,7 +89,7 @@ pub enum Reply {
         acquisition_time: f32,
         start_time: NaiveDateTime,
         end_time: NaiveDateTime,
-        external_meta: Option<serde_json::Value>,
+        external_meta: Option<ExternalMeta>,
         config: Option<serde_json::Value>,
         zero_suppression: Option<ZeroSuppressionParams>,
         // split: bool,
@@ -103,4 +101,20 @@ pub enum Reply {
         current_time: f32,
         total_time: f32,
     }
+}
+
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ExternalMeta {
+    #[serde(rename="HV1_value")]
+    #[serde_as(as = "Option<PickFirst<(_, DisplayFromStr)>>")]
+    pub hv1_value: Option<f32>,
+    #[serde(rename="HV2_value")]
+    #[serde_as(as = "Option<PickFirst<(_, DisplayFromStr)>>")]
+    pub hv2_value: Option<f32>,
+    pub group: Option<String>,
+    pub iteration: Option<usize>,
+    #[serde_as(as = "Option<PickFirst<(_, DisplayFromStr)>>")]
+    pub point_index: Option<usize>,
+    pub session: Option<String>,
 }
