@@ -13,7 +13,7 @@ use serde_json::Value;
 
 use apps::events_to_point;
 use dataforge::{read_df_message, write_df_message};
-use processing::numass::{self, NumassMeta, ZeroSuppressionParams};
+use processing::numass::{self, NumassMeta, ZeroSuppressionParams, ExternalMeta};
 use tqdc::TQDC;
 
 use apps::defaults::BOARD_IP;
@@ -48,7 +48,7 @@ struct Args {
 /// Acquire point from TQDC and wrap it with additional metadata
 async fn acquire_point(
     acquisition_time: f32,
-    external_meta: Option<Value>,
+    external_meta: Option<ExternalMeta>,
     board: &TQDC,
     args: Args,
 ) -> Result<(NumassMeta, Option<Vec<u8>>)> {

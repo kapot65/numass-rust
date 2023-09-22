@@ -1,1 +1,0 @@
-This repository contains common numass processing algorithms used in 2022_12 run
