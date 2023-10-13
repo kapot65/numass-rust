@@ -303,33 +303,8 @@ const KEV_COEFF_FIRST_PEAK: [[f32; 2]; 7] = [
 //     [0.2477852, -0.0318],
 // ];
 
-pub fn extract_amplitudes(point: &rsb_event::Point, params: &ProcessParams) -> BTreeMap<u64, BTreeMap<usize, f32>> {
 
-    let mut amplitudes = BTreeMap::new();
-
-    for channel in &point.channels {
-        for block in &channel.blocks {
-            for frame in &block.frames {
-                let entry = amplitudes.entry(frame.time).or_insert(BTreeMap::new());
-
-                let waveform = process_waveform(frame);
-
-                for (_, amp) in waveform_to_events(&waveform, &params.algorithm) {
-                    let amp = if params.convert_to_kev {
-                        convert_to_kev(&amp, channel.id as u8, &params.algorithm)
-                    } else {
-                        amp
-                    };
-                    entry.insert(channel.id as usize, amp);
-                }
-            }
-        }
-    }
-
-    amplitudes
-}
-
-pub fn post_process(mut amplitudes: BTreeMap<u64, BTreeMap<usize, f32>>, params: &PostProcessParams) -> BTreeMap<u64, BTreeMap<usize, f32>> {
+pub fn post_process(mut amplitudes: BTreeMap<u64, BTreeMap<usize, (u16, f32)>>, params: &PostProcessParams) -> BTreeMap<u64, BTreeMap<usize, (u16, f32)>> {
 
     let mut last_time: u64 = 0;
     amplitudes.iter_mut().filter_map(|(time, channels)| {
@@ -340,6 +315,7 @@ pub fn post_process(mut amplitudes: BTreeMap<u64, BTreeMap<usize, f32>>, params:
 
         last_time = *time;
 
+        // TODO: add time analysis
         if params.merge_close_events {
             for ch_1 in 0..7 {
                 for ch_2 in 0..7 {
@@ -347,8 +323,8 @@ pub fn post_process(mut amplitudes: BTreeMap<u64, BTreeMap<usize, f32>>, params:
                         && channels.contains_key(&ch_1)
                         && channels.contains_key(&ch_2)
                     {
-                        let amp2 = channels.get(&ch_2).unwrap().to_owned();
-                        channels.entry(ch_1).and_modify(|amp| *amp += amp2);
+                        let amp2 = channels.get(&ch_2).unwrap().to_owned().1;
+                        channels.entry(ch_1).and_modify(|(_, amp)| *amp += amp2);
                         channels.remove_entry(&ch_2).unwrap();
                     }
                 }
@@ -360,7 +336,6 @@ pub fn post_process(mut amplitudes: BTreeMap<u64, BTreeMap<usize, f32>>, params:
     
 }
 
-// TODO: merge with extract_amplitudes
 pub fn extract_events(point: &rsb_event::Point, params: &ProcessParams) -> BTreeMap<u64, BTreeMap<usize, (u16, f32)>> {
 
     let mut amplitudes = BTreeMap::new();
@@ -378,7 +353,7 @@ pub fn extract_events(point: &rsb_event::Point, params: &ProcessParams) -> BTree
                     } else {
                         amp
                     };
-                    entry.insert(channel.id as usize, (time as u16, amp));
+                    entry.insert(channel.id as usize, (time, amp));
                 }
             }
         }
@@ -387,49 +362,16 @@ pub fn extract_events(point: &rsb_event::Point, params: &ProcessParams) -> BTree
     amplitudes
 }
 
-// TODO: merge with post_process
-pub fn post_process_events(mut events: BTreeMap<u64, BTreeMap<usize, (u16, f32)>>, params: &PostProcessParams) -> BTreeMap<u64, BTreeMap<usize, (u16, f32)>> {
-
-    let mut last_time: u64 = 0;
-    events.iter_mut().filter_map(|(time, channels)| {
-
-        if params.use_dead_time && last_time.abs_diff(*time) < params.effective_dead_time {
-            return None;
-        }
-
-        last_time = *time;
-
-        if params.merge_close_events {
-            for ch_1 in 0..7 {
-                for ch_2 in 0..7 {
-                    if params.merge_map[ch_1][ch_2]
-                        && channels.contains_key(&ch_1)
-                        && channels.contains_key(&ch_2)
-                    {
-                        // TODO: consider about right offset
-                        let (_, amp2) = channels.get(&ch_2).unwrap().to_owned();
-                        channels.entry(ch_1).and_modify(|(_, amp)| *amp += amp2);
-                        channels.remove_entry(&ch_2).unwrap();
-                    }
-                }
-            }
-        }
-
-        Some((*time, channels.clone()))
-    }).collect::<BTreeMap<_,_>>()
-    
-}
-
-pub fn amplitudes_to_histogram(
-        amplitudes: BTreeMap<u64, BTreeMap<usize, f32>>, 
+pub fn events_to_histogram(
+        amplitudes: BTreeMap<u64, BTreeMap<usize, (u16, f32)>>, 
         histogram: HistogramParams
     ) -> PointHistogram {
 
     let mut histogram = PointHistogram::from(histogram);
 
     for (_, channels) in amplitudes {
-        for (ch_num, amplitude) in channels {
-            histogram.add(ch_num as u8, amplitude)
+        for (ch_num, (_, amp)) in channels {
+            histogram.add(ch_num as u8, amp)
         }
     }
 
@@ -549,7 +491,8 @@ pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 
     }
 }
 
-pub fn waveform_to_events(waveform: &ProcessedWaveform, algorithm: &Algorithm) -> Vec<(u64, f32)> {
+
+pub fn waveform_to_events(waveform: &ProcessedWaveform, algorithm: &Algorithm) -> Vec<(u16, f32)> {
     let (x, y) = waveform.0
         .iter()
         .enumerate()
@@ -559,7 +502,7 @@ pub fn waveform_to_events(waveform: &ProcessedWaveform, algorithm: &Algorithm) -
         .unwrap();
 
     match algorithm {
-        Algorithm::Max => vec![(x as u64 * 8, *y)],
+        Algorithm::Max => vec![(x as u16 * 8, *y)],
         Algorithm::Likhovid { left, right } => {
             let amplitude = {
                 let left = if x >= *left { x - left } else { 0 };
@@ -568,7 +511,7 @@ pub fn waveform_to_events(waveform: &ProcessedWaveform, algorithm: &Algorithm) -
                 crop.iter().sum::<f32>() / crop.len() as f32
             };
 
-            vec![(x as u64 * 8, amplitude)]
+            vec![(x as u16 * 8, amplitude)]
         }
         Algorithm::FirstPeak { threshold, left } => {
             let pos = find_first_peak(waveform, *threshold as f32);
@@ -580,7 +523,7 @@ pub fn waveform_to_events(waveform: &ProcessedWaveform, algorithm: &Algorithm) -
                 };
                 // let length = (waveform.0.len() - pos) as f32;
                 let amplitude = waveform.0[left..waveform.0.len()].iter().sum::<f32>();
-                vec![(pos as u64 * 8, amplitude / 50.0)]
+                vec![(pos as u16 * 8, amplitude / 50.0)]
             } else {
                 vec![]
             }
