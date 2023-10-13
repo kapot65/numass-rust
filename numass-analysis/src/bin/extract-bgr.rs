@@ -2,7 +2,7 @@ use analysis::{get_points_by_pattern, ethalon::get_ethalon, workspace::{get_db_f
 use plotly::{common::{Title, Line, LineShape}, layout::Axis, Layout, Plot, Scatter};
 
 use processing::{
-    histogram::HistogramParams, ProcessParams, amplitudes_to_histogram, PostProcessParams, post_process
+    histogram::HistogramParams, ProcessParams, events_to_histogram, PostProcessParams, post_process
 };
 
 #[tokio::main]
@@ -59,7 +59,7 @@ async fn main() {
                 let processed = post_process(
                     amplitudes, &PostProcessParams::default());
 
-                amplitudes_to_histogram(processed, HistogramParams {
+                events_to_histogram(processed, HistogramParams {
                     range: get_hist_range(),
                     bins: get_hist_bins()
                 })

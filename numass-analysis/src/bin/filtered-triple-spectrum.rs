@@ -4,7 +4,7 @@ use analysis::get_points_by_pattern;
 use plotly::{common::Title, layout::Axis, Layout, Plot};
 use processing::{
     numass::{protos::rsb_event, NumassMeta},
-    histogram::PointHistogram, extract_amplitudes, ProcessParams
+    histogram::PointHistogram, extract_events, ProcessParams
 };
 use protobuf::Message;
 
@@ -48,15 +48,15 @@ async fn main() {
 
             let processing = ProcessParams::default();
 
-            let events = extract_amplitudes(
+            let events = extract_events(
                 &point, &processing
             );
             
             let amps = events.iter().filter_map(|(_, amps)| {
                 if  amps.len() == 1 ||
-                    processing::check_neigbors_fast::<f32>(amps) 
+                    processing::check_neigbors_fast::<(u16, f32)>(amps) 
                 { None } else {
-                    Some(amps.values().sum::<f32>())
+                    Some(amps.values().map(|(_, amp)| amp).sum::<f32>())
                 }
             }).collect::<Vec<_>>();
 
@@ -75,7 +75,7 @@ async fn main() {
             let amps_all = events.iter()
             .filter_map(|(_, frames)| {
                 if frames.len() > 1 && frames.contains_key(&5) {
-                    Some(frames.values().sum::<f32>())
+                    Some(frames.values().map(|(_, amp)| amp).sum::<f32>())
                 } else { None }
             }).collect::<Vec<_>>();
 

@@ -1,5 +1,5 @@
 use analysis::get_points_by_pattern;
-use processing::{extract_amplitudes, numass::NumassMeta, ProcessParams};
+use processing::{extract_events, numass::NumassMeta, ProcessParams};
 
 use {
     processing::{
@@ -70,11 +70,11 @@ async fn main() {
                     .unwrap();
 
                 let point =rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
-                let amps = extract_amplitudes(&point, &processing_params);
+                let amps = extract_events(&point, &processing_params);
                 {
                     let mut histogram = histogram.lock().await;
                     for (_, amps) in amps {
-                        for (ch_id, amp) in amps {
+                        for (ch_id, (_, amp)) in amps {
                             histogram.add(ch_id as u8, amp);
                         }
                     }

@@ -3,7 +3,7 @@ use std::{path::PathBuf, collections::BTreeMap, vec, sync::Arc};
 use analysis::{get_points_by_pattern, CorrectionCoeffs};
 use dataforge::read_df_message;
 use indicatif::ProgressStyle;
-use processing::{Algorithm, numass::{NumassMeta, protos::rsb_event}, PostProcessParams, histogram::{HistogramParams, PointHistogram}, post_process, extract_amplitudes, ProcessParams};
+use processing::{Algorithm, numass::{NumassMeta, protos::rsb_event}, PostProcessParams, histogram::{HistogramParams, PointHistogram}, post_process, extract_events, ProcessParams};
 use protobuf::Message;
 use serde::{Serialize, Deserialize};
 use tokio::sync::Mutex;
@@ -88,23 +88,112 @@ async fn main() {
     // let group = "tritium-1-bgr-1(5-7)";
 
     // === Tritium 1, Bgr 2 ===
-    let pattern = format!("/{run}/Tritium_1/set_[34]/p*");
-    let exclude = [
-        "Tritium_1/set_10".to_owned()
-    ];
-    let correct_to_monitor = true;
-    let group = "tritium-1-bgr-2(3,4)";
+    // let pattern = format!("/{run}/Tritium_1/set_*/p*");
+    // let exclude = [
 
-    // === Tritium 2 ===
-    // let pattern = format!("/{run}/Tritium_2/set_*/p*");
-    // let exclude: Vec<String> = vec![
-    //     "Tritium_2/set_5/p18".to_owned(),
-    //     "Tritium_2/set_5/p19".to_owned(),
-    //     "Tritium_2/set_14/p20".to_owned(),
-    //     "Tritium_2/set_14/p22".to_owned(),
+    //     "Tritium_1/set_10/".to_owned(),
+
+    //     "Tritium_1/set_1/".to_owned(),
+    //     "Tritium_1/set_2/".to_owned(),
+    //     "Tritium_1/set_3/".to_owned(),
+    //     "Tritium_1/set_4/".to_owned(),
+
+    //     "Tritium_1/set_5/".to_owned(),
+    //     "Tritium_1/set_6/".to_owned(),
+    //     "Tritium_1/set_7/".to_owned(),
+    //     "Tritium_1/set_8/".to_owned(),
+        
+    //     "Tritium_1/set_9/".to_owned(),
+    //     "Tritium_1/set_10/".to_owned(),
+    //     "Tritium_1/set_11/".to_owned(),
+    //     "Tritium_1/set_12/".to_owned(),
+
+    //     "Tritium_1/set_13/".to_owned(),
+    //     "Tritium_1/set_14/".to_owned(),
+    //     "Tritium_1/set_15/".to_owned(),
+    //     "Tritium_1/set_16/".to_owned(),
+
+    //     "Tritium_1/set_17/".to_owned(),
+    //     "Tritium_1/set_18/".to_owned(),
+    //     "Tritium_1/set_19/".to_owned(),
+    //     "Tritium_1/set_20/".to_owned(),
+
+    //     "Tritium_1/set_21/".to_owned(),
+    //     "Tritium_1/set_22/".to_owned(),
+    //     "Tritium_1/set_23/".to_owned(),
+    //     "Tritium_1/set_24/".to_owned(),
+
+    //     "Tritium_1/set_25/".to_owned(),
+    //     "Tritium_1/set_26/".to_owned(),
+    //     "Tritium_1/set_27/".to_owned(),
+    //     "Tritium_1/set_28/".to_owned(),
+
+    //     // "Tritium_1/set_29/".to_owned(),
+    //     // "Tritium_1/set_30/".to_owned(),
+    //     // "Tritium_1/set_31/".to_owned(),
     // ];
     // let correct_to_monitor = true;
-    // let group = "tritium-2";
+    // // let group = "tritium-1(9-12)";
+    // // let group = "tritium-1(13-16)";
+    // // let group = "tritium-1(17-20)";
+    // // let group = "tritium-1(21-24)";
+    // // let group = "tritium-1(25-28)";
+    // let group = "tritium-1(29-31)";
+
+
+    // === Tritium 2 ===
+    let pattern = format!("/{run}/Tritium_2/set_*/p*");
+    let exclude: Vec<String> = vec![
+        "Tritium_2/set_5/p18".to_owned(),
+        "Tritium_2/set_5/p19".to_owned(),
+        "Tritium_2/set_14/p20".to_owned(),
+        "Tritium_2/set_14/p22".to_owned(),
+
+        "Tritium_2/set_1/".to_owned(),
+        "Tritium_2/set_2/".to_owned(),
+        "Tritium_2/set_3/".to_owned(),
+        "Tritium_2/set_4/".to_owned(),
+
+        "Tritium_2/set_5/".to_owned(),
+        "Tritium_2/set_6/".to_owned(),
+        "Tritium_2/set_7/".to_owned(),
+        "Tritium_2/set_8/".to_owned(),
+        
+        "Tritium_2/set_9/".to_owned(),
+        "Tritium_2/set_10/".to_owned(),
+        "Tritium_2/set_11/".to_owned(),
+        "Tritium_2/set_12/".to_owned(),
+
+        "Tritium_2/set_13/".to_owned(),
+        "Tritium_2/set_14/".to_owned(),
+        "Tritium_2/set_15/".to_owned(),
+        "Tritium_2/set_16/".to_owned(),
+
+        "Tritium_2/set_17/".to_owned(),
+        "Tritium_2/set_18/".to_owned(),
+        "Tritium_2/set_19/".to_owned(),
+        "Tritium_2/set_20/".to_owned(),
+
+        // "Tritium_2/set_21/".to_owned(),
+        // "Tritium_2/set_22/".to_owned(),
+        // "Tritium_2/set_23/".to_owned(),
+        // "Tritium_2/set_24/".to_owned(),
+
+        "Tritium_2/set_25/".to_owned(),
+        "Tritium_2/set_26/".to_owned(),
+        "Tritium_2/set_27/".to_owned(),
+        "Tritium_2/set_28/".to_owned(),
+        "Tritium_2/set_29/".to_owned(),
+    ];
+    let correct_to_monitor = true;
+    // let group = "tritium-2(1,2)";
+    // let group = "tritium-2(3,4)";
+    // let group = "tritium-2(5-8)";
+    // let group = "tritium-2(9-12)";
+    // let group = "tritium-2(13-16)";
+    // let group = "tritium-2(17-20)";
+    let group = "tritium-2(21-24)";
+    // let group = "tritium-2(25-29)";
 
     // === Tritium 3 ===
     // let pattern = format!("/{run}/Tritium_3/set_*/p*");
@@ -131,8 +220,8 @@ async fn main() {
 
     //     "Tritium_3/set_17/".to_owned(),
     //     "Tritium_3/set_18/".to_owned(),
-    //     "Tritium_3/set_19/".to_owned(),
-    //     "Tritium_3/set_20/".to_owned(),
+    //     // "Tritium_3/set_19/".to_owned(),
+    //     // "Tritium_3/set_20/".to_owned(),
 
     //     "Tritium_3/set_21/".to_owned(),
     //     "Tritium_3/set_22/".to_owned(),
@@ -144,25 +233,82 @@ async fn main() {
     //     "Tritium_3/set_27/".to_owned(),
     //     "Tritium_3/set_28/".to_owned(),
 
-    //     // "Tritium_3/set_29/".to_owned(),
-    //     // "Tritium_3/set_30/".to_owned(),
-    //     // "Tritium_3/set_31/".to_owned(),
+    //     "Tritium_3/set_29/".to_owned(),
+    //     "Tritium_3/set_30/".to_owned(),
+    //     "Tritium_3/set_31/".to_owned(),
 
     //     "Tritium_3/set_25_short".to_owned(),
     //     "Tritium_2/set_29/p37".to_owned()
     // ];
     // let correct_to_monitor = true;
-    // let group = "tritium-3-(29-31)";
+    // // let group = "tritium-3-(1,2)";
+    // // let group = "tritium-3-(3,4)";
+    // // let group = "tritium-3-(17-18)";
+    // let group = "tritium-3-(19-20)";
+    // // let group = "tritium-3-(29-31)";
 
     // === Tritium 4 ===
     // let pattern = format!("/{run}/Tritium_4/set_*/p*");
     // let exclude: Vec<String> = vec![
     //     "Tritium_4/set_10_short".to_owned(),
     //     "Tritium_4/set_25/p7".to_owned(),
-    //     "Tritium_4/set_25_18000V_bad".to_owned()
+    //     "Tritium_4/set_25_18000V_bad".to_owned(),
+
+    //     "Tritium_4/set_1/".to_owned(),
+    //     "Tritium_4/set_2/".to_owned(),
+    //     "Tritium_4/set_3/".to_owned(),
+    //     "Tritium_4/set_4/".to_owned(),
+
+    //     "Tritium_4/set_5/".to_owned(),
+    //     "Tritium_4/set_6/".to_owned(),
+    //     "Tritium_4/set_7/".to_owned(),
+    //     "Tritium_4/set_8/".to_owned(),
+        
+    //     "Tritium_4/set_9/".to_owned(),
+    //     "Tritium_4/set_10/".to_owned(),
+    //     "Tritium_4/set_11/".to_owned(),
+    //     "Tritium_4/set_12/".to_owned(),
+
+    //     "Tritium_4/set_13/".to_owned(),
+    //     "Tritium_4/set_14/".to_owned(),
+    //     // "Tritium_4/set_15/".to_owned(),
+    //     // "Tritium_4/set_16/".to_owned(),
+
+    //     "Tritium_4/set_17/".to_owned(),
+    //     "Tritium_4/set_18/".to_owned(),
+    //     "Tritium_4/set_19/".to_owned(),
+    //     "Tritium_4/set_20/".to_owned(),
+
+    //     "Tritium_4/set_21/".to_owned(),
+    //     "Tritium_4/set_22/".to_owned(),
+    //     "Tritium_4/set_23/".to_owned(),
+    //     "Tritium_4/set_24/".to_owned(),
+
+    //     "Tritium_4/set_25/".to_owned(),
+    //     "Tritium_4/set_26/".to_owned(),
+    //     "Tritium_4/set_27/".to_owned(),
+    //     "Tritium_4/set_28/".to_owned(),
+
+    //     "Tritium_4/set_29/".to_owned(),
+    //     "Tritium_4/set_30/".to_owned(),
+    //     "Tritium_4/set_31/".to_owned(),
+    //     "Tritium_4/set_32/".to_owned(),
+
+    //     "Tritium_4/set_33/".to_owned(),
+    //     "Tritium_4/set_34/".to_owned(),
+    //     "Tritium_4/set_35/".to_owned(),
+    //     "Tritium_4/set_36/".to_owned(),
+
+    //     "Tritium_4/set_37/".to_owned(),
+    //     "Tritium_4/set_38/".to_owned(),
+    //     "Tritium_4/set_39/".to_owned(),
+    //     "Tritium_4/set_40/".to_owned(),
+
+    //     "Tritium_4/set_41/".to_owned(),
     // ];
     // let correct_to_monitor = true;
-    // let group = "tritium-4";
+    // // let group = "tritium-4(13-14)";
+    // let group = "tritium-4(15-16)";
 
     // === Tritium 5 ===
     // let pattern = format!("/{run}/Tritium_5/set_*/p*");
@@ -242,10 +388,10 @@ async fn main() {
                 } else { 1.0 };
 
                 let amps = post_process(
-                    extract_amplitudes(&point, &PROCESSING) , &POST_PROCESSING);
+                    extract_events(&point, &PROCESSING) , &POST_PROCESSING);
                 
-                amps.iter().for_each(|(_, frames): (&u64, &std::collections::BTreeMap<usize, f32>)| {
-                    frames.iter().for_each(|(ch_num, amp)| {
+                amps.iter().for_each(|(_, frames): (&u64, &std::collections::BTreeMap<usize, (u16, f32)>)| {
+                    frames.iter().for_each(|(ch_num, (_, amp))| {
 
                         hist.add(*ch_num as u8, *amp);
 
@@ -315,5 +461,5 @@ async fn main() {
             time = point.time
         ).replace('.', ","));
     });
-    std::fs::write(bgr_dir.join("all.tsv"), table_data).unwrap()
+    std::fs::write(bgr_dir.join(format!("{group}.tsv")), table_data).unwrap()
 }

@@ -2,7 +2,7 @@ use std::{path::PathBuf, collections::BTreeMap, vec, sync::Arc, ops::Range};
 
 use analysis::{get_points_by_pattern, workspace::{get_db_fast_root, get_hist_range, get_hist_bins, get_workspace}, amps::get_amps, ethalon::get_ethalon};
 use indicatif::ProgressStyle;
-use processing::{Algorithm, PostProcessParams, histogram::HistogramParams, post_process, ProcessParams, amplitudes_to_histogram};
+use processing::{Algorithm, PostProcessParams, histogram::HistogramParams, post_process, ProcessParams, events_to_histogram};
 use serde::{Serialize, Deserialize};
 use tokio::sync::Mutex;
 
@@ -127,7 +127,7 @@ async fn main() {
 
             for filepath in points {
 
-                let point_hist = amplitudes_to_histogram(
+                let point_hist = events_to_histogram(
                     post_process(get_amps(
                         &filepath, PROCESSING).await.unwrap(),
                             &POST_PROCESSING), 

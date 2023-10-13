@@ -1,5 +1,5 @@
 use dataforge::read_df_message;
-use processing::numass::{protos::rsb_event, NumassMeta};
+use processing::{numass::{protos::rsb_event, NumassMeta}, extract_events};
 use protobuf::Message;
 
 #[tokio::main]
@@ -16,7 +16,7 @@ async fn main() {
     let params = processing::ProcessParams::default();
     let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
 
-    let amplitudes = processing::extract_amplitudes(&point, &params);
+    let amplitudes = extract_events(&point, &params);
 
     let amplitudes =  amplitudes.into_keys().collect::<Vec<_>>();
 

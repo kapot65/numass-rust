@@ -1,4 +1,4 @@
-use processing::{numass::{protos::rsb_event, NumassMeta}, post_process, PostProcessParams, ProcessParams};
+use processing::{numass::{protos::rsb_event, NumassMeta}, post_process, PostProcessParams, ProcessParams, extract_events};
 use protobuf::Message;
 
 #[tokio::main]
@@ -15,7 +15,7 @@ async fn main() {
         rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
 
     let processing = ProcessParams::default();
-    let amlitudes = processing::extract_amplitudes(&point, &processing);
+    let amlitudes = extract_events(&point, &processing);
 
     let frames = amlitudes.len();
 

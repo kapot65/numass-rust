@@ -6,7 +6,7 @@ use protobuf::Message;
 
 use dataforge::read_df_message;
 use processing::{
-    histogram::HistogramParams, numass::{protos::rsb_event, NumassMeta, Reply, ExternalMeta}, extract_amplitudes, ProcessParams, amplitudes_to_histogram, PostProcessParams, post_process
+    histogram::HistogramParams, numass::{protos::rsb_event, NumassMeta, Reply, ExternalMeta}, extract_events, ProcessParams, events_to_histogram, PostProcessParams, post_process
 };
 
 #[tokio::main]
@@ -60,8 +60,8 @@ async fn main() {
             let monitor_coeff = coeffs.get_for_point(&filepath, &point);
             // println!("{filepath:?} -> {monitor_coeff}");
 
-            let sample_hist = amplitudes_to_histogram(post_process(
-                extract_amplitudes(
+            let sample_hist = events_to_histogram(post_process(
+                extract_events(
                     &point, 
                     &ProcessParams::default()), &PostProcessParams::default()
             ), HistogramParams {

@@ -4,7 +4,7 @@ use analysis::{get_points_by_pattern, CorrectionCoeffs};
 use chrono::NaiveDateTime;
 use dataforge::read_df_message;
 use plotly::{Plot, Layout, common::{Title, Mode}, layout::Axis, Scatter};
-use processing::{numass::{NumassMeta, protos::rsb_event}, post_process, extract_amplitudes, PostProcessParams, ProcessParams};
+use processing::{numass::{NumassMeta, protos::rsb_event}, post_process, extract_events, PostProcessParams, ProcessParams};
 use protobuf::Message;
 use tokio::sync::Mutex;
 
@@ -44,7 +44,7 @@ async fn main() {
             let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
             let k = coeffs.get_for_point(&filepath, &point);
 
-            let amps = post_process(extract_amplitudes(
+            let amps = post_process(extract_events(
                 &point, 
                 &ProcessParams::default(),
             ), &PostProcessParams::default());

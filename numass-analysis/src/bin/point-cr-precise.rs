@@ -1,6 +1,6 @@
 use dataforge::read_df_message_sync;
 use plotly::{Plot, Layout, common::Title, layout::Axis};
-use processing::{numass::{protos::rsb_event, NumassMeta}, histogram::PointHistogram, ProcessParams};
+use processing::{numass::{protos::rsb_event, NumassMeta}, histogram::PointHistogram, ProcessParams, extract_events};
 use protobuf::Message;
 
 fn main() {
@@ -14,7 +14,7 @@ fn main() {
     };
 
     let params = ProcessParams::default();
-    let amplitudes = processing::extract_amplitudes(&point, &params);
+    let amplitudes = extract_events(&point, &params);
 
     let mut histogram = PointHistogram::new_step(0.0..31.0, 0.1);
 

@@ -6,13 +6,13 @@ use dataforge::read_df_message;
 use protobuf::Message;
 use cached::proc_macro::io_cached;
 use eyre::Result;
-use processing::{numass::{NumassMeta, protos::rsb_event}, extract_amplitudes, ProcessParams};
+use processing::{numass::{NumassMeta, protos::rsb_event}, extract_events, ProcessParams};
 
 /// do extract_amplitudes for given point or get it from cache
 #[io_cached(
     map_error = r##"|e| e"##,
-    type = "CacacheBackend<u64, BTreeMap<u64, BTreeMap<usize, f32>>>",
-    create = r#"{ CacacheBackend::new(get_workspace().join("cache/extract_amplitudes")) }"#, // TODO: make it configurable
+    type = "CacacheBackend<u64, BTreeMap<u64, BTreeMap<usize, (u16, f32)>>>",
+    create = r#"{ CacacheBackend::new(get_workspace().join("cache/extract_events")) }"#, // TODO: make it configurable
     convert = r#"{ {
         let mut hasher = DefaultHasher::new();
         params.hash(&mut hasher);
@@ -20,7 +20,7 @@ use processing::{numass::{NumassMeta, protos::rsb_event}, extract_amplitudes, Pr
         hasher.finish()
     } }"#
 )]
-pub async fn get_amps(point: &PathBuf, params: ProcessParams) -> Result<BTreeMap<u64, BTreeMap<usize, f32>>> {
+pub async fn get_amps(point: &PathBuf, params: ProcessParams) -> Result<BTreeMap<u64, BTreeMap<usize, (u16, f32)>>> {
 
     let filepath = {
         // first try to find point in fast db
@@ -38,7 +38,7 @@ pub async fn get_amps(point: &PathBuf, params: ProcessParams) -> Result<BTreeMap
         .unwrap();
     let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
 
-    let amps = extract_amplitudes(
+    let amps = extract_events(
         &point, 
         &params
     );

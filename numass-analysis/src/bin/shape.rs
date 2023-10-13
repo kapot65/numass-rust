@@ -5,7 +5,7 @@ use protobuf::Message;
 
 use dataforge::read_df_message;
 use processing::{
-    histogram::{PointHistogram, HistogramParams}, numass::{protos::rsb_event, NumassMeta}, extract_amplitudes, ProcessParams, amplitudes_to_histogram
+    histogram::{PointHistogram, HistogramParams}, numass::{protos::rsb_event, NumassMeta}, extract_events, ProcessParams, events_to_histogram
 };
 use tokio::sync::Mutex;
 
@@ -49,7 +49,7 @@ async fn main() {
                 let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
                 
 
-                let hist = amplitudes_to_histogram(extract_amplitudes(
+                let hist = events_to_histogram(extract_events(
                     &point, 
                     &ProcessParams::default()
                 ), HistogramParams {

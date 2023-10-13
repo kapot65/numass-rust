@@ -7,7 +7,7 @@ use analysis::{get_points_by_pattern, workspace::get_db_fast_root};
 use dataforge::read_df_message;
 use indicatif::ProgressStyle;
 use plotly::{Plot, Scatter, common::{Mode, Title}, Layout, layout::Axis};
-use processing::{numass::{NumassMeta, protos::rsb_event}, extract_amplitudes, ProcessParams, PostProcessParams, post_process};
+use processing::{numass::{NumassMeta, protos::rsb_event}, extract_events, ProcessParams, PostProcessParams, post_process};
 use protobuf::Message;
 use tokio::sync::Mutex;
 
@@ -34,12 +34,12 @@ async fn calc_count_rates(groups: BTreeMap<u16, Vec<PathBuf>>, process_params: P
                 let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
 
                 // processing
-                let amps = extract_amplitudes(&point, &process_params);
+                let amps = extract_events(&point, &process_params);
                 // post processing
                 let amps = post_process(amps, &post_process_params);
 
                 for (_, amps) in amps {
-                    for (ch, amp) in amps {
+                    for (ch, (_, amp)) in amps {
                         if (2.0..20.0).contains(&amp) {
                             counts[ch] += 1.0;
                         }

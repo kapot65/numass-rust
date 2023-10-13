@@ -7,7 +7,7 @@ use protobuf::Message;
 use tokio::sync::Mutex;
 use cached::proc_macro::io_cached;
 use eyre::Result;
-use processing::{histogram::PointHistogram, numass::{NumassMeta, protos::rsb_event}, extract_amplitudes, ProcessParams, PostProcessParams, post_process};
+use processing::{histogram::PointHistogram, numass::{NumassMeta, protos::rsb_event}, extract_events, ProcessParams, PostProcessParams, post_process};
 
 
 /// Calculate ethalon histogram for given pattern or get it from cache
@@ -61,7 +61,7 @@ pub async fn get_ethalon(
                     let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
                     
                     let amps = post_process(
-                        extract_amplitudes(
+                        extract_events(
                             &point, 
                             &process_params
                         ),
@@ -71,7 +71,7 @@ pub async fn get_ethalon(
                     {
                         let mut hist = hist.lock().await;
                         amps.into_iter().for_each(|(_, block)| {
-                            block.into_iter().for_each(|(ch_num, amp)| {
+                            block.into_iter().for_each(|(ch_num, (_, amp))| {
                                 hist.add(ch_num as u8, amp);
                             });
                         });

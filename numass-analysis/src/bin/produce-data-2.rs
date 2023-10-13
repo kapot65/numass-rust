@@ -3,7 +3,7 @@ use std::{path::PathBuf, collections::BTreeMap, vec, sync::Arc};
 use analysis::{get_points_by_pattern, CorrectionCoeffs};
 use dataforge::read_df_message;
 use indicatif::ProgressStyle;
-use processing::{Algorithm, numass::{NumassMeta, protos::rsb_event}, PostProcessParams, histogram::{HistogramParams, PointHistogram}, post_process, extract_amplitudes, ProcessParams};
+use processing::{Algorithm, numass::{NumassMeta, protos::rsb_event}, PostProcessParams, histogram::{HistogramParams, PointHistogram}, post_process, extract_events, ProcessParams};
 use protobuf::Message;
 use serde::{Serialize, Deserialize};
 use tokio::sync::Mutex;
@@ -251,10 +251,10 @@ async fn main() {
                 } else { 1.0 };
 
                 let amps = post_process(
-                    extract_amplitudes(&point, &PROCESSING) , &POST_PROCESSING);
+                    extract_events(&point, &PROCESSING) , &POST_PROCESSING);
                 
-                amps.iter().for_each(|(_, frames): (&u64, &std::collections::BTreeMap<usize, f32>)| {
-                    frames.iter().for_each(|(ch_num, amp)| {
+                amps.iter().for_each(|(_, frames): (&u64, &std::collections::BTreeMap<usize, (u16, f32)>)| {
+                    frames.iter().for_each(|(ch_num, (_, amp))| {
                         hist.add(*ch_num as u8, *amp);
                         if *ch_num == 5 {
                             if (out_point.e_curr..u_sp_kev-2.0).contains(amp) {
