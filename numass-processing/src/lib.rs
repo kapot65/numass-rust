@@ -1,12 +1,15 @@
 use std::vec;
 
+pub extern crate numass;
+pub mod histogram;
+pub mod viewer; // TODO: move to numass-processing with viewer feature
+
+mod constants;
+
 use histogram::HistogramParams;
 use serde::{Deserialize, Serialize};
-pub extern crate numass;
 use {histogram::PointHistogram, numass::protos::rsb_event, std::collections::BTreeMap};
-pub mod histogram;
-
-pub mod viewer; // TODO: move to numass-processing with viewer feature
+use constants::{KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_MAX};
 
 #[cfg(feature = "egui")]
 use egui::{Color32, epaint::Hsva, plot::{PlotUi, Line}};
@@ -133,176 +136,31 @@ impl Default for Algorithm {
     }
 }
 
-// TODO remove hardcode
-const KEV_COEFF_MAX: [[f32; 2]; 7] = [
-    [0.059379287, 0.31509972],
-    [0.060557768, 0.26772976],
-    [0.06317734, 0.23027992],
-    [0.062333938, 0.26050186],
-    [0.062186483, 0.25954437],
-    [0.06751788, 0.2222414],
-    [0.05806803, 0.14519024],
-];
+pub fn extract_events(point: &rsb_event::Point, params: &ProcessParams) -> BTreeMap<u64, BTreeMap<usize, (u16, f32)>> {
 
-// coeffs for (3,19)
-// const KEV_COEFF_LIKHOVID: [[f32; 2]; 7] = [
-//     [0.134678, 0.09647 ],
-//     [0.141536, 0.060275],
-//     [0.147718, 0.027412],
-//     [0.150288, 0.038774],
-//     [0.15131 , 0.071923],
-//     [0.15336 , 0.029206],
-//     [0.136762, 0.041848]
-// ];
+    let mut amplitudes = BTreeMap::new();
 
-const KEV_COEFF_LIKHOVID: [[f32; 2]; 7] = [
-    [
-        0.3175972,
-        0.071510315,
-    ],
-    [
-        0.2723175,
-        0.08074951,
-    ],
-    [
-        0.2869933,
-        0.082289696,
-    ],
-    [
-        0.29424095,
-        -0.0075092316,
-    ],
-    [
-        0.29598197,
-        0.06416798,
-    ],
-    [
-        0.2869933,
-        0.082289696,
-    ],
-    [
-        0.26007754,
-        -0.017463684,
-    ],
-];
+    for channel in &point.channels {
+        for block in &channel.blocks {
+            for frame in &block.frames {
+                let entry = amplitudes.entry(frame.time).or_insert(BTreeMap::new());
 
-// const KEV_COEFF_FIRST_PEAK: [[f32; 2]; 7] = [
-//     [
-//         0.30209273,
-//         0.058135986,
-//     ],
-//     [
-//         0.25891086,
-//         -0.0007972717,
-//     ],
-//     [
-//         0.2746626,
-//         -0.036146164,
-//     ],
-//     [
-//         0.27816013,
-//         0.050985336,
-//     ],
-//     [
-//         0.28441244,
-//         -0.08033466,
-//     ],
-//     [
-//         0.27044022,
-//         0.05974865,
-//     ],
-//     [
-//         0.2477852,
-//         -0.06184864,
-//     ],
-// ];
+                let waveform = process_waveform(frame);
 
-// Calibration by Tritium_1 (set1-set4) (12-17 kev, step = 0.5 kev)
-const KEV_COEFF_FIRST_PEAK: [[f32; 2]; 7] = [
-    [
-        0.299_610_6,
-        0.059_213_154
-    ],
-    [
-        0.255_681_04,
-        0.144_415_51
-    ],
-    [
-        0.272_929_82,
-        0.010_163_521
-    ],
-    [
-        0.279_582_2,
-        -0.006_109_655
-    ],
-    [
-        0.281_541_05,
-        0.055_051_66
-    ],
-    [
-        0.269_443_1,
-        0.055_028_245
-    ],
-    [
-        0.246_677_89,
-        0.039_841_548
-    ]
-];
+                for (time, amp) in waveform_to_events(&waveform, &params.algorithm) {
+                    let amp = if params.convert_to_kev {
+                        convert_to_kev(&amp, channel.id as u8, &params.algorithm)
+                    } else {
+                        amp
+                    };
+                    entry.insert(channel.id as usize, (time, amp));
+                }
+            }
+        }
+    }
 
-// Calibration by Tritium (12-17 kev, step = 0.5 kev)
-// const KEV_COEFF_FIRST_PEAK: [[f32; 2]; 7] = [
-//     [
-//         0.298_225_46,
-//         0.122_968_49
-//     ],
-//     [
-//         0.255_483_93,
-//         0.143_287_4
-//     ],
-//     [
-//         0.271_925_8,
-//         0.055_675_175
-//     ],
-//     [
-//         0.278_973_28,
-//         0.021_011_2
-//     ],
-//     [
-//         0.280_811_55,
-//         0.082_378_61
-//     ],
-//     [
-//         0.269_180_54,
-//         0.067_159_49
-//     ],
-//     [
-//         0.246_528_28,
-//         0.053_119_823
-//     ]
-// ];
-
-// Calibration by Tritium (12-16 kev)
-// const KEV_COEFF_FIRST_PEAK: [[f32; 2]; 7] = [
-//     [0.298225, 0.122968],
-//     [0.255484, 0.143287],
-//     [0.271926, 0.0556752],
-//     [0.278973, 0.0210112],
-//     [0.280812, 0.0823786],
-//     [0.269181, 0.0671595],
-//     [0.246528, 0.0531198]
-// ];
-
-// calibration by Electrode_2
-// const KEV_COEFF_FIRST_PEAK: [[f32; 2]; 7] = [
-//     [0.30209273, -0.022],
-//     [0.25891086, -0.0007972717],
-//     [0.2746626, -0.036146164],
-//     [0.27816013, 0.081],
-//     [0.28441244, -0.0133],
-//     [0.27044022, -0.01026],
-//     [0.2477852, -0.0318],
-// ];
-
+    amplitudes
+}
 
 pub fn post_process(mut amplitudes: BTreeMap<u64, BTreeMap<usize, (u16, f32)>>, params: &PostProcessParams) -> BTreeMap<u64, BTreeMap<usize, (u16, f32)>> {
 
@@ -334,32 +192,6 @@ pub fn post_process(mut amplitudes: BTreeMap<u64, BTreeMap<usize, (u16, f32)>>, 
         Some((*time, channels.clone()))
     }).collect::<BTreeMap<_,_>>()
     
-}
-
-pub fn extract_events(point: &rsb_event::Point, params: &ProcessParams) -> BTreeMap<u64, BTreeMap<usize, (u16, f32)>> {
-
-    let mut amplitudes = BTreeMap::new();
-
-    for channel in &point.channels {
-        for block in &channel.blocks {
-            for frame in &block.frames {
-                let entry = amplitudes.entry(frame.time).or_insert(BTreeMap::new());
-
-                let waveform = process_waveform(frame);
-
-                for (time, amp) in waveform_to_events(&waveform, &params.algorithm) {
-                    let amp = if params.convert_to_kev {
-                        convert_to_kev(&amp, channel.id as u8, &params.algorithm)
-                    } else {
-                        amp
-                    };
-                    entry.insert(channel.id as usize, (time, amp));
-                }
-            }
-        }
-    }
-
-    amplitudes
 }
 
 pub fn events_to_histogram(
@@ -453,14 +285,6 @@ impl From<&rsb_event::point::channel::block::Frame> for RawWaveform {
     }
 }
 
-// TODO: add static correction
-pub fn process_waveform(waveform: impl Into<RawWaveform>) -> ProcessedWaveform {
-    let waveform = waveform.into();
-    // let baseline = 0.0;
-    let baseline = waveform.0.iter().take(16).sum::<i16>() as f32 / 16.0;
-    ProcessedWaveform(waveform.0.iter().map(|bin| *bin as f32 - baseline).collect::<Vec<_>>())
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessedWaveform(pub Vec<f32>);
 
@@ -471,6 +295,14 @@ impl From<ProcessedWaveform> for Vec<[f64; 2]> {
             .map(|(x, y)| [x as f64, *y as f64])
             .collect::<Vec<_>>()
     }
+}
+
+// TODO: add static correction
+pub fn process_waveform(waveform: impl Into<RawWaveform>) -> ProcessedWaveform {
+    let waveform = waveform.into();
+    // let baseline = 0.0;
+    let baseline = waveform.0.iter().take(16).sum::<i16>() as f32 / 16.0;
+    ProcessedWaveform(waveform.0.iter().map(|bin| *bin as f32 - baseline).collect::<Vec<_>>())
 }
 
 pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 {
@@ -490,7 +322,6 @@ pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 
         }
     }
 }
-
 
 pub fn waveform_to_events(waveform: &ProcessedWaveform, algorithm: &Algorithm) -> Vec<(u16, f32)> {
     let (x, y) = waveform.0
