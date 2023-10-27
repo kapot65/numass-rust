@@ -74,6 +74,7 @@ pub fn check_neigbors_fast<T>(frames: &BTreeMap<usize, T>) -> bool {
     }
 } 
 
+pub type NumassAmps = BTreeMap<u64, BTreeMap<usize, (u16, f32)>>;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub struct ProcessParams {
@@ -136,7 +137,7 @@ impl Default for Algorithm {
     }
 }
 
-pub fn extract_events(point: &rsb_event::Point, params: &ProcessParams) -> BTreeMap<u64, BTreeMap<usize, (u16, f32)>> {
+pub fn extract_events(point: &rsb_event::Point, params: &ProcessParams) -> NumassAmps {
 
     let mut amplitudes = BTreeMap::new();
 
@@ -162,7 +163,7 @@ pub fn extract_events(point: &rsb_event::Point, params: &ProcessParams) -> BTree
     amplitudes
 }
 
-pub fn post_process(mut amplitudes: BTreeMap<u64, BTreeMap<usize, (u16, f32)>>, params: &PostProcessParams) -> BTreeMap<u64, BTreeMap<usize, (u16, f32)>> {
+pub fn post_process(mut amplitudes: NumassAmps, params: &PostProcessParams) -> NumassAmps {
 
     let mut last_time: u64 = 0;
     amplitudes.iter_mut().filter_map(|(time, channels)| {
@@ -195,7 +196,7 @@ pub fn post_process(mut amplitudes: BTreeMap<u64, BTreeMap<usize, (u16, f32)>>, 
 }
 
 pub fn events_to_histogram(
-        amplitudes: BTreeMap<u64, BTreeMap<usize, (u16, f32)>>, 
+        amplitudes: NumassAmps, 
         histogram: HistogramParams
     ) -> PointHistogram {
 
