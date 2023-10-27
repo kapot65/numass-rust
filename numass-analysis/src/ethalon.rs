@@ -1,20 +1,18 @@
 use std::{sync::Arc, collections::hash_map::DefaultHasher, hash::{Hash, Hasher}};
-use crate::workspace::{get_workspace, get_db_fast_root, get_hist_range, get_hist_bins};
+use crate::{workspace::{get_cache_root, get_db_fast_root, get_hist_range, get_hist_bins}, amps::get_amps};
 
 use super::cache::CacacheBackend;
-use dataforge::read_df_message;
-use protobuf::Message;
 use tokio::sync::Mutex;
 use cached::proc_macro::io_cached;
 use eyre::Result;
-use processing::{histogram::PointHistogram, numass::{NumassMeta, protos::rsb_event}, extract_events, ProcessParams, PostProcessParams, post_process};
+use processing::{histogram::PointHistogram, ProcessParams, PostProcessParams, post_process};
 
 
 /// Calculate ethalon histogram for given pattern or get it from cache
 #[io_cached(
     map_error = r##"|e| e"##,
     type = "CacacheBackend<u64, PointHistogram>",
-    create = r#"{ CacacheBackend::new(get_workspace().join("cache/ethalon")) }"#, // TODO: make it configurable
+    create = r#"{ CacacheBackend::new(get_cache_root().join("ethalon")) }"#, // TODO: make it configurable
     convert = r#"{ {
         let mut hasher = DefaultHasher::new();
         pattern.hash(&mut hasher);
@@ -54,17 +52,8 @@ pub async fn get_ethalon(
                 let post_process_params = post_process_params;
 
                 tokio::spawn(async move {
-                    let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
-                    let message = read_df_message::<NumassMeta>(&mut point_file)
-                        .await
-                        .unwrap();
-                    let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
-                    
                     let amps = post_process(
-                        extract_events(
-                            &point, 
-                            &process_params
-                        ),
+                        get_amps(&filepath, &process_params).await.unwrap(),
                         &post_process_params
                     );
 

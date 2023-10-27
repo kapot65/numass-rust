@@ -1,9 +1,9 @@
-use analysis::get_points_by_pattern;
+use analysis::{get_points_by_pattern, workspace::{get_workspace, get_db_fast_root}};
 use processing::{extract_events, numass::NumassMeta, ProcessParams};
 
 use {
     processing::{
-        histogram::PointHistogram, Algorithm,
+        histogram::PointHistogram,
         numass::protos::rsb_event
     },
     protobuf::Message,
@@ -14,11 +14,9 @@ use {
 #[tokio::main]
 async fn main() {
 
-    let db_root = "/data-nvme";
-    // let db_root = "/data-ssd/numass-server";
-    let run = "2023_03";
-
-    let pattern = format!("/{run}/Tritium_*/set_[1234]/p*");
+    let pattern = format!("{run}/Tritium_*/set_[1234]/p*",
+        run = "2023_03"
+    );
     let exclude = vec![
         "Tritium_1/set_10".to_owned(),
         "Tritium_2/set_5/p18".to_owned(),
@@ -44,15 +42,12 @@ async fn main() {
 
     let u_sp = [12000, 12500, 13000, 13500, 14000, 14500, 15000, 15500, 16000, 16500, 17000];
 
-    let processing_params = ProcessParams {
-        algorithm: Algorithm::default(),
-        convert_to_kev: true,
-    };
+    let processing_params = ProcessParams::default();
 
     let hist = PointHistogram::new(0.0..20.0, 400);
     
     for u_sp in u_sp {
-        let points = get_points_by_pattern(db_root, &pattern, &exclude);
+        let points = get_points_by_pattern(get_db_fast_root().to_str().unwrap(), &pattern, &exclude);
         let points = points[&u_sp].clone();
         let pb = Arc::new(Mutex::new(indicatif::ProgressBar::new(points.len() as u64)));
         let histogram = Arc::new(Mutex::new(hist.clone()));
@@ -64,6 +59,8 @@ async fn main() {
             let processing_params = processing_params;
 
             tokio::spawn(async move {
+                // load point manually because it must not be used from cache
+                // TODO: add cache expiration based on calibration parameters change
                 let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
                 let message = dataforge::read_df_message::<NumassMeta>(&mut point_file)
                     .await
@@ -81,9 +78,7 @@ async fn main() {
                 }
                 pb.lock().await.inc(1) 
             })
-        })
-        // .collect::<Vec<_>>()
-        ;
+        }).collect::<Vec<_>>();
 
         for handle in handles {
             handle.await.unwrap();
@@ -91,7 +86,8 @@ async fn main() {
 
         {
             let histogram = histogram.lock().await;
-            tokio::fs::write(format!("{u_sp}.csv"), histogram.to_csv(',')).await.unwrap();
+            std::fs::create_dir_all(&get_workspace().join("calibrations")).unwrap();
+            tokio::fs::write(get_workspace().join(format!("calibrations/{u_sp}.csv")), histogram.to_csv(',')).await.unwrap();
         }
     }
 }

@@ -63,7 +63,7 @@ async fn main() {
     let db_root = "/data-nvme";
     let run = "2023_03";
 
-    let workspace = PathBuf::from("/home/chernov/produced/patrial-abcd");
+    let workspace = PathBuf::from("/home/chernov/Documents/produced/patrial-abcd");
 
     // === Background 1 ===
     // let pattern = format!("/{run}/Background_1/set_[12]/p*");
@@ -247,7 +247,7 @@ async fn main() {
                     .unwrap();
                 let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
                 let monitor_coeff = if correct_to_monitor {
-                    coeffs.get_for_point(&filepath, &point) as f64
+                    coeffs.get_from_meta(&filepath, &message.meta) as f64
                 } else { 1.0 };
 
                 let amps = post_process(

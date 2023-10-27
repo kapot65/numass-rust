@@ -1,12 +1,15 @@
 use std::sync::Arc;
 
-use analysis::{get_points_by_pattern, ethalon::get_ethalon, CorrectionCoeffs, workspace::{get_workspace, get_db_fast_root, get_hist_range, get_hist_bins}};
+use analysis::{
+    get_points_by_pattern, ethalon::get_ethalon, 
+    CorrectionCoeffs, workspace::{get_workspace, get_db_fast_root, get_hist_range, get_hist_bins}, 
+    amps::get_amps
+};
 use plotly::{common::{Title, Line, LineShape}, layout::Axis, Layout, Plot, Scatter};
-use protobuf::Message;
 
-use dataforge::read_df_message;
+use dataforge::read_df_header_and_meta_sync;
 use processing::{
-    histogram::HistogramParams, numass::{protos::rsb_event, NumassMeta, Reply, ExternalMeta}, extract_events, ProcessParams, events_to_histogram, PostProcessParams, post_process
+    histogram::HistogramParams, numass::{NumassMeta, Reply, ExternalMeta}, ProcessParams, events_to_histogram, PostProcessParams, post_process
 };
 
 #[tokio::main]
@@ -37,14 +40,11 @@ async fn main() {
         let coeffs = Arc::clone(&coeffs);
 
         tokio::spawn(async move {
-            let mut point_file = tokio::fs::File::open(&filepath).await.unwrap();
-            let message = read_df_message::<NumassMeta>(&mut point_file)
-                .await
-                .unwrap();
+            let (_, meta) = read_df_header_and_meta_sync::<NumassMeta>(&mut std::fs::File::open(&filepath).unwrap()).unwrap();
 
             let voltage = if let NumassMeta::Reply(Reply::AcquirePoint { external_meta: Some(ExternalMeta {
                 hv1_value: Some(voltage), ..
-            }), .. }) = message.meta {
+            }), .. }) = meta {
                 voltage
             } else {
                 panic!("wrong message type")
@@ -55,15 +55,11 @@ async fn main() {
             let range_l = 4.0..(voltage_kev - 4.0);
             let range_r = (voltage_kev + 1.0)..20.0;
 
-            let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
-
-            let monitor_coeff = coeffs.get_for_point(&filepath, &point);
+            let monitor_coeff = coeffs.get_from_meta(&filepath, &meta);
             // println!("{filepath:?} -> {monitor_coeff}");
 
             let sample_hist = events_to_histogram(post_process(
-                extract_events(
-                    &point, 
-                    &ProcessParams::default()), &PostProcessParams::default()
+                get_amps(&filepath, &ProcessParams::default()).await.unwrap(), &PostProcessParams::default()
             ), HistogramParams {
                 range: get_hist_range(),
                 bins: get_hist_bins()

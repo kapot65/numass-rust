@@ -60,7 +60,7 @@ async fn main() {
     let db_root = "/data-nvme";
     let run = "2023_03";
 
-    let workspace = PathBuf::from("/home/chernov/produced/patrial");
+    let workspace = PathBuf::from("/home/chernov/Documents/produced/patrial");
 
     // === Background 1 ===
     // let pattern = format!("/{run}/Background_1/set_[12]/p*");
@@ -88,112 +88,111 @@ async fn main() {
     // let group = "tritium-1-bgr-1(5-7)";
 
     // === Tritium 1, Bgr 2 ===
-    // let pattern = format!("/{run}/Tritium_1/set_*/p*");
-    // let exclude = [
+    let pattern = format!("/{run}/Tritium_1/set_2/p*");
+    let exclude = [
+        // "Tritium_1/set_10/".to_owned(),
 
-    //     "Tritium_1/set_10/".to_owned(),
+        // "Tritium_1/set_1/".to_owned(),
+        // "Tritium_1/set_2/".to_owned(),
+        // "Tritium_1/set_3/".to_owned(),
+        // "Tritium_1/set_4/".to_owned(),
 
-    //     "Tritium_1/set_1/".to_owned(),
-    //     "Tritium_1/set_2/".to_owned(),
-    //     "Tritium_1/set_3/".to_owned(),
-    //     "Tritium_1/set_4/".to_owned(),
-
-    //     "Tritium_1/set_5/".to_owned(),
-    //     "Tritium_1/set_6/".to_owned(),
-    //     "Tritium_1/set_7/".to_owned(),
-    //     "Tritium_1/set_8/".to_owned(),
+        // "Tritium_1/set_5/".to_owned(),
+        // "Tritium_1/set_6/".to_owned(),
+        // "Tritium_1/set_7/".to_owned(),
+        // "Tritium_1/set_8/".to_owned(),
         
-    //     "Tritium_1/set_9/".to_owned(),
-    //     "Tritium_1/set_10/".to_owned(),
-    //     "Tritium_1/set_11/".to_owned(),
-    //     "Tritium_1/set_12/".to_owned(),
+        // "Tritium_1/set_9/".to_owned(),
+        // "Tritium_1/set_10/".to_owned(),
+        // "Tritium_1/set_11/".to_owned(),
+        // "Tritium_1/set_12/".to_owned(),
 
-    //     "Tritium_1/set_13/".to_owned(),
-    //     "Tritium_1/set_14/".to_owned(),
-    //     "Tritium_1/set_15/".to_owned(),
-    //     "Tritium_1/set_16/".to_owned(),
+        // "Tritium_1/set_13/".to_owned(),
+        // "Tritium_1/set_14/".to_owned(),
+        // "Tritium_1/set_15/".to_owned(),
+        // "Tritium_1/set_16/".to_owned(),
 
-    //     "Tritium_1/set_17/".to_owned(),
-    //     "Tritium_1/set_18/".to_owned(),
-    //     "Tritium_1/set_19/".to_owned(),
-    //     "Tritium_1/set_20/".to_owned(),
+        // "Tritium_1/set_17/".to_owned(),
+        // "Tritium_1/set_18/".to_owned(),
+        // "Tritium_1/set_19/".to_owned(),
+        // "Tritium_1/set_20/".to_owned(),
 
-    //     "Tritium_1/set_21/".to_owned(),
-    //     "Tritium_1/set_22/".to_owned(),
-    //     "Tritium_1/set_23/".to_owned(),
-    //     "Tritium_1/set_24/".to_owned(),
+        // "Tritium_1/set_21/".to_owned(),
+        // "Tritium_1/set_22/".to_owned(),
+        // "Tritium_1/set_23/".to_owned(),
+        // "Tritium_1/set_24/".to_owned(),
 
-    //     "Tritium_1/set_25/".to_owned(),
-    //     "Tritium_1/set_26/".to_owned(),
-    //     "Tritium_1/set_27/".to_owned(),
-    //     "Tritium_1/set_28/".to_owned(),
+        // "Tritium_1/set_25/".to_owned(),
+        // "Tritium_1/set_26/".to_owned(),
+        // "Tritium_1/set_27/".to_owned(),
+        // "Tritium_1/set_28/".to_owned(),
 
-    //     // "Tritium_1/set_29/".to_owned(),
-    //     // "Tritium_1/set_30/".to_owned(),
-    //     // "Tritium_1/set_31/".to_owned(),
-    // ];
-    // let correct_to_monitor = true;
-    // // let group = "tritium-1(9-12)";
-    // // let group = "tritium-1(13-16)";
-    // // let group = "tritium-1(17-20)";
-    // // let group = "tritium-1(21-24)";
-    // // let group = "tritium-1(25-28)";
-    // let group = "tritium-1(29-31)";
+        // // "Tritium_1/set_29/".to_owned(),
+        // // "Tritium_1/set_30/".to_owned(),
+        // // "Tritium_1/set_31/".to_owned(),
+    ];
+    let correct_to_monitor = true;
+    // let group = "tritium-1(9-12)";
+    // let group = "tritium-1(13-16)";
+    // let group = "tritium-1(17-20)";
+    // let group = "tritium-1(21-24)";
+    // let group = "tritium-1(25-28)";
+    let group = "tritium-1(2)";
 
 
     // === Tritium 2 ===
-    let pattern = format!("/{run}/Tritium_2/set_*/p*");
-    let exclude: Vec<String> = vec![
-        "Tritium_2/set_5/p18".to_owned(),
-        "Tritium_2/set_5/p19".to_owned(),
-        "Tritium_2/set_14/p20".to_owned(),
-        "Tritium_2/set_14/p22".to_owned(),
+    // let pattern = format!("/{run}/Tritium_2/set_*/p*");
+    // let exclude: Vec<String> = vec![
+    //     "Tritium_2/set_5/p18".to_owned(),
+    //     "Tritium_2/set_5/p19".to_owned(),
+    //     "Tritium_2/set_14/p20".to_owned(),
+    //     "Tritium_2/set_14/p22".to_owned(),
 
-        "Tritium_2/set_1/".to_owned(),
-        "Tritium_2/set_2/".to_owned(),
-        "Tritium_2/set_3/".to_owned(),
-        "Tritium_2/set_4/".to_owned(),
+    //     "Tritium_2/set_1/".to_owned(),
+    //     "Tritium_2/set_2/".to_owned(),
+    //     "Tritium_2/set_3/".to_owned(),
+    //     "Tritium_2/set_4/".to_owned(),
 
-        "Tritium_2/set_5/".to_owned(),
-        "Tritium_2/set_6/".to_owned(),
-        "Tritium_2/set_7/".to_owned(),
-        "Tritium_2/set_8/".to_owned(),
+    //     "Tritium_2/set_5/".to_owned(),
+    //     "Tritium_2/set_6/".to_owned(),
+    //     "Tritium_2/set_7/".to_owned(),
+    //     "Tritium_2/set_8/".to_owned(),
         
-        "Tritium_2/set_9/".to_owned(),
-        "Tritium_2/set_10/".to_owned(),
-        "Tritium_2/set_11/".to_owned(),
-        "Tritium_2/set_12/".to_owned(),
+    //     "Tritium_2/set_9/".to_owned(),
+    //     "Tritium_2/set_10/".to_owned(),
+    //     "Tritium_2/set_11/".to_owned(),
+    //     "Tritium_2/set_12/".to_owned(),
 
-        "Tritium_2/set_13/".to_owned(),
-        "Tritium_2/set_14/".to_owned(),
-        "Tritium_2/set_15/".to_owned(),
-        "Tritium_2/set_16/".to_owned(),
+    //     "Tritium_2/set_13/".to_owned(),
+    //     "Tritium_2/set_14/".to_owned(),
+    //     "Tritium_2/set_15/".to_owned(),
+    //     "Tritium_2/set_16/".to_owned(),
 
-        "Tritium_2/set_17/".to_owned(),
-        "Tritium_2/set_18/".to_owned(),
-        "Tritium_2/set_19/".to_owned(),
-        "Tritium_2/set_20/".to_owned(),
+    //     "Tritium_2/set_17/".to_owned(),
+    //     "Tritium_2/set_18/".to_owned(),
+    //     "Tritium_2/set_19/".to_owned(),
+    //     "Tritium_2/set_20/".to_owned(),
 
-        // "Tritium_2/set_21/".to_owned(),
-        // "Tritium_2/set_22/".to_owned(),
-        // "Tritium_2/set_23/".to_owned(),
-        // "Tritium_2/set_24/".to_owned(),
+    //     // "Tritium_2/set_21/".to_owned(),
+    //     // "Tritium_2/set_22/".to_owned(),
+    //     // "Tritium_2/set_23/".to_owned(),
+    //     // "Tritium_2/set_24/".to_owned(),
 
-        "Tritium_2/set_25/".to_owned(),
-        "Tritium_2/set_26/".to_owned(),
-        "Tritium_2/set_27/".to_owned(),
-        "Tritium_2/set_28/".to_owned(),
-        "Tritium_2/set_29/".to_owned(),
-    ];
-    let correct_to_monitor = true;
-    // let group = "tritium-2(1,2)";
-    // let group = "tritium-2(3,4)";
-    // let group = "tritium-2(5-8)";
-    // let group = "tritium-2(9-12)";
-    // let group = "tritium-2(13-16)";
-    // let group = "tritium-2(17-20)";
-    let group = "tritium-2(21-24)";
-    // let group = "tritium-2(25-29)";
+    //     "Tritium_2/set_25/".to_owned(),
+    //     "Tritium_2/set_26/".to_owned(),
+    //     "Tritium_2/set_27/".to_owned(),
+    //     "Tritium_2/set_28/".to_owned(),
+    //     "Tritium_2/set_29/".to_owned(),
+    // ];
+    // let correct_to_monitor = true;
+    // // let group = "tritium-2(1,2)";
+    // // let group = "tritium-2(3,4)";
+    // // let group = "tritium-2(5-8)";
+    // // let group = "tritium-2(9-12)";
+    // // let group = "tritium-2(13-16)";
+    // // let group = "tritium-2(17-20)";
+    // let group = "tritium-2(21-24)";
+    // // let group = "tritium-2(25-29)";
 
     // === Tritium 3 ===
     // let pattern = format!("/{run}/Tritium_3/set_*/p*");
@@ -384,7 +383,7 @@ async fn main() {
                     .unwrap();
                 let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
                 let monitor_coeff = if correct_to_monitor {
-                    coeffs.get_for_point(&filepath, &point) as f64
+                    coeffs.get_from_meta(&filepath, &message.meta) as f64
                 } else { 1.0 };
 
                 let amps = post_process(

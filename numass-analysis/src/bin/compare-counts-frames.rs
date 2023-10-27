@@ -1,21 +1,14 @@
-use processing::{numass::{protos::rsb_event, NumassMeta}, post_process, PostProcessParams, ProcessParams, extract_events};
-use protobuf::Message;
+use std::path::PathBuf;
+
+use analysis::amps::get_amps;
+use processing::{post_process, PostProcessParams, ProcessParams};
 
 #[tokio::main]
 async fn main() {
 
-    let filepath = "/data/numass-server/2023_03/Tritium_5/set_1/p118(30s)(HV1=12000)";
+    let filepath = PathBuf::from("/data/numass-server/2023_03/Tritium_5/set_1/p118(30s)(HV1=12000)");
 
-    let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
-    let message = dataforge::read_df_message::<NumassMeta>(&mut point_file)
-        .await
-        .unwrap();
-
-    let point =
-        rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
-
-    let processing = ProcessParams::default();
-    let amlitudes = extract_events(&point, &processing);
+    let amlitudes = get_amps(&filepath, &ProcessParams::default()).await.unwrap();
 
     let frames = amlitudes.len();
 

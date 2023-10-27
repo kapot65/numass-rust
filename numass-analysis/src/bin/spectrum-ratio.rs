@@ -58,6 +58,7 @@ async fn calc_count_rates(groups: BTreeMap<u16, Vec<PathBuf>>, process_params: P
     }
     
     let cr = count_rates.lock().await.clone();
+    #[allow(clippy::let_and_return)]
     cr
 }
 

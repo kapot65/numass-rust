@@ -1,13 +1,8 @@
-use {
-    processing::{
-        process_waveform,
-        histogram::PointHistogram, waveform_to_events, Algorithm,
-        numass::{protos::rsb_event, NumassMeta}
-    },
-    protobuf::Message,
-    std::{collections::HashMap, sync::Arc},
-    tokio::sync::Mutex,
-};
+use std::{collections::HashMap, sync::Arc, path::PathBuf};
+
+use analysis::amps::get_amps;
+use processing::{ProcessParams, events_to_histogram, histogram::HistogramParams, Algorithm};
+use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() {
@@ -95,30 +90,12 @@ async fn main() {
                 let filepath = filepath.to_owned();
                 let calibration_data = Arc::clone(&calibration_data);
                 tokio::spawn(async move {
-                    let mut point_file = tokio::fs::File::open(filepath).await.unwrap();
-                    let message = dataforge::read_df_message::<NumassMeta>(&mut point_file)
-                        .await
-                        .unwrap();
-
-                    let mut histogram = PointHistogram::new(0.0..400.0, 400);
-
-                    let point =
-                        rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap();
-                    for channel in &point.channels {
-                        let amplitudes = channel
-                            .blocks
-                            .iter()
-                            .flat_map(|block| {
-                                block.frames.iter().flat_map(|frame| {
-                                    let waveform = process_waveform(frame);
-                                    waveform_to_events(&waveform, &algorithm).iter().map(|(_, amp)| {
-                                        *amp
-                                    }).collect::<Vec<_>>()
-                                })
-                            })
-                            .collect::<Vec<_>>();
-                        histogram.add_batch(channel.id as u8, amplitudes)
-                    }
+                    let histogram  = events_to_histogram(get_amps(
+                        &PathBuf::from(filepath), 
+                        &ProcessParams {
+                            algorithm,
+                            convert_to_kev: false,
+                    }).await.unwrap(), HistogramParams { range: 0.0..400.0, bins: 400 });
 
                     for (ch_id, y) in histogram.channels {
                         let (x, _) = y

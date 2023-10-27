@@ -54,7 +54,7 @@ async fn main() {
             let sample_hist = {
 
                 let amplitudes = get_amps(
-                    &sample, ProcessParams::default()).await.unwrap();
+                    &sample, &ProcessParams::default()).await.unwrap();
 
                 let processed = post_process(
                     amplitudes, &PostProcessParams::default());

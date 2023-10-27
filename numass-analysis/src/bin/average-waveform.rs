@@ -21,7 +21,7 @@ async fn main() {
 
     // let filepath = "/data/2022_12/Electrode_4/set_1/p4(200s)(HV1=10000)";
     // let filepath = "/data/2022_12/Electrode_4/set_1/p4(200s)(HV1=10000)";
-    let filepath = "/data/2022_12/Gun_16/set_1/p0(200s)(HV1=15990)";
+    let filepath = "/data/numass-server/2022_12/Gun_16/set_1/p0(200s)(HV1=15990)";
     // let filepath = "/data/2022_12/Tritium_5/set_8/p121(30s)(HV1=14000)";
     let channel = 6;
 
@@ -82,7 +82,7 @@ async fn main() {
                     group.len()
                 );
 
-                let filename = format!("imgs/{idx}.png");
+                let filename = format!("/home/chernov/Documents/produced/average-waveforms/{idx}.png");
 
                 let root = BitMapBackend::new(&filename, (1920, 1080)).into_drawing_area();
                 root.fill(&WHITE).unwrap();

@@ -1,36 +1,37 @@
-use std::{path::PathBuf, collections::{BTreeMap, hash_map::DefaultHasher}, hash::{Hash, Hasher}};
-use crate::workspace::{get_workspace, get_db_fast_root, get_db_slow_root};
+use std::{path::PathBuf, collections::hash_map::DefaultHasher, hash::{Hash, Hasher}};
+use crate::workspace::get_cache_root;
 
 use super::cache::CacacheBackend;
 use dataforge::read_df_message;
 use protobuf::Message;
 use cached::proc_macro::io_cached;
 use eyre::Result;
-use processing::{numass::{NumassMeta, protos::rsb_event}, extract_events, ProcessParams};
+use processing::{numass::{NumassMeta, protos::rsb_event}, NumassAmps, extract_events, ProcessParams};
 
 /// do extract_amplitudes for given point or get it from cache
 #[io_cached(
     map_error = r##"|e| e"##,
-    type = "CacacheBackend<u64, BTreeMap<u64, BTreeMap<usize, (u16, f32)>>>",
-    create = r#"{ CacacheBackend::new(get_workspace().join("cache/extract_events")) }"#, // TODO: make it configurable
+    type = "CacacheBackend<u64, NumassAmps>",
+    create = r#"{ CacacheBackend::new(get_cache_root().join("extract_events")) }"#, // TODO: make it configurable
     convert = r#"{ {
         let mut hasher = DefaultHasher::new();
+        filepath.hash(&mut hasher);
         params.hash(&mut hasher);
-        point.hash(&mut hasher);
         hasher.finish()
     } }"#
 )]
-pub async fn get_amps(point: &PathBuf, params: ProcessParams) -> Result<BTreeMap<u64, BTreeMap<usize, (u16, f32)>>> {
+pub async fn get_amps(filepath: &PathBuf, params: &ProcessParams) -> Result<NumassAmps> {
 
-    let filepath = {
-        // first try to find point in fast db
-        let filepath_fast = get_db_fast_root().join(point);
-        if tokio::fs::try_exists(&filepath_fast).await? {
-            filepath_fast
-        } else {
-            get_db_slow_root().join(point)
-        }
-    };
+    // TODO: implement relative files + fast/slow db selection
+    // let filepath = {
+    //     // first try to find point in fast db
+    //     let filepath_fast = get_db_fast_root().join(point);
+    //     if tokio::fs::try_exists(&filepath_fast).await? {
+    //         filepath_fast
+    //     } else {
+    //         get_db_slow_root().join(point)
+    //     }
+    // };
 
     let mut point_file = tokio::fs::File::open(filepath).await?;
     let message = read_df_message::<NumassMeta>(&mut point_file)
@@ -40,7 +41,7 @@ pub async fn get_amps(point: &PathBuf, params: ProcessParams) -> Result<BTreeMap
 
     let amps = extract_events(
         &point, 
-        &params
+        params
     );
 
     Ok(amps)

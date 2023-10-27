@@ -129,7 +129,7 @@ async fn main() {
 
                 let point_hist = events_to_histogram(
                     post_process(get_amps(
-                        &filepath, PROCESSING).await.unwrap(),
+                        &filepath, &PROCESSING).await.unwrap(),
                             &POST_PROCESSING), 
                         HistogramParams { 
                             range: get_hist_range(), 
