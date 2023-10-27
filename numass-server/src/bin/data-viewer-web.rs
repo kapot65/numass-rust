@@ -1,4 +1,4 @@
-use std::{path::PathBuf, collections::BTreeMap};
+use std::{path::PathBuf, time::Duration};
 
 use axum::{
     routing::{get, post},
@@ -12,7 +12,7 @@ use axum::{response::Html, body::Full};
 
 use backend::Opt;
 use dataforge::{DFMessage, read_df_message, read_df_header_and_meta};
-use processing::{Algorithm, ProcessParams, viewer::FSRepr, extract_events, numass::{self, protos::rsb_event}};
+use processing::{Algorithm, ProcessParams, viewer::FSRepr, extract_events, numass::{self, protos::rsb_event}, NumassAmps};
 use protobuf::Message;
 use tower_http::services::ServeDir;
 
@@ -60,24 +60,23 @@ async fn main() {
                             &point,
                             &processing,
                         ));
+                        let processed = rmp_serde::to_vec(&out).unwrap();
 
                         if is_default_params(&processing) {
                             if let Some(cache_directory) = cache_directory {
-                                let processed = rmp_serde::to_vec(&out).unwrap();
                                 cacache::write(cache_directory, key, &processed).await.unwrap();
                             }
                         }
-                        
-                        out
+                        processed
                     } else {
-                        None
+                        rmp_serde::to_vec::<Option<NumassAmps>>(&None).unwrap()
                     }
                 }
             };
 
             let amplitudes = if let Some(cache_directory) = args.cache_directory {
                 if let Ok(data) = cacache::read(cache_directory, &key).await {
-                    rmp_serde::from_slice::<Option<BTreeMap<u64, BTreeMap<usize, (u16, f32)>>>>(&data).unwrap()
+                    data
                 } else {
                     read_amplitudes().await
                 }
@@ -87,7 +86,7 @@ async fn main() {
             
             Response::builder()
                 .header("content-type", "application/messagepack")
-                .body(Body::from(rmp_serde::to_vec(&amplitudes).unwrap()))
+                .body(Body::from(amplitudes))
                 .unwrap()
         }))
         .route("/api/files", get(|State(args): State<Opt>| async move {
@@ -121,7 +120,9 @@ async fn main() {
             .unwrap()
     }));
 
+
     axum::Server::bind(&address)
+        .tcp_keepalive(Some(Duration::from_secs(600)))
         .serve(app.into_make_service())
         .await
         .unwrap();
