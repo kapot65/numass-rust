@@ -7,6 +7,9 @@ members = [
 ]
 
 [workspace.dependencies]
+
+log = "0.4.20"
+
 tokio = { version = "1.21.2", features = ["full"] }
 dataforge = { git = "https://bitbucket.org/Kapot/dataforge-parser-rust.git", tag = "0.1.2", features = ["tokio"]  }
 processing = { git = "https://bitbucket.org/Kapot/numass-processing.git", features = ["egui"], tag = "0.1.2" }

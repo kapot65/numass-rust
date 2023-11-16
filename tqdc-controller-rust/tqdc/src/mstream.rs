@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use arrayref::array_ref;
+use log::debug;
 use ux::u24;
 
 #[derive(Debug)] // TODO: merge with RawWaveform
@@ -126,7 +127,7 @@ impl TryFrom<&[&MStreamFragment]> for MStreamTriggerAndUserData {
             
             for fragment in fragments {
                 if fragment.header.fragment_offset != current_offset {
-                    fragments.iter().for_each(|fragment| println!("{:?}", fragment.header));
+                    fragments.iter().for_each(|fragment| debug!("{:?}", fragment.header));
                     Err("missing intermediate fragment")?;
                 }
                 if fragment.header.subtype_and_flags.last_fragment() {

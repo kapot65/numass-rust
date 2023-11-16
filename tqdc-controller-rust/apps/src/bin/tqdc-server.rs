@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use chrono::Local;
 use clap::Parser;
+use log::info;
 use protobuf::Message;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
@@ -39,6 +40,11 @@ struct Args {
 
     #[arg(long, default_value_t = 34)]
     zero_suppression_threshold: i16,
+
+    /// FIR coefficients for zero suppression
+    /// comma-separated (no spaces) list of floats (e.g. 1.0,2.0,3.0)
+    #[arg(long, value_delimiter = ',')]
+    zero_suppression_fir: Option<Vec<f32>>,
 
     /// path to AFI-TQDC2 configuration file
     #[arg(long)]
@@ -78,12 +84,13 @@ async fn acquire_point(
         Some(ZeroSuppressionParams {
             baseline: args.zero_suppression_baseline,
             threshold: args.zero_suppression_threshold,
+            fir: args.zero_suppression_fir,
         })
     } else {
         None
     };
 
-    let point = events_to_point(events, zero_suppression).await?;
+    let point = events_to_point(events, zero_suppression.clone()).await?;
 
     let meta = NumassMeta::Reply(numass::Reply::AcquirePoint {
         acquisition_time,
@@ -106,11 +113,15 @@ async fn acquire_point(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+
+    env_logger::init();
+
     let args = Args::parse();
 
     let listener =
         TcpListener::bind(SocketAddr::new([0,0,0,0].into(), args.host_dataforge_port)).await?;
-    println!("tqdc-server works on 0.0.0.0:{}", args.host_dataforge_port);
+
+    info!("tqdc-server works on 0.0.0.0:{}", args.host_dataforge_port);
 
     let current_connection: Mutex<Option<JoinHandle<_>>> = Mutex::new(None);
 
@@ -119,7 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let mut current_connection_lock = current_connection.lock().await;
         if let Some(runner) = &*current_connection_lock {
-            println!("new connection. aborting previous one.");
+            info!("new connection. aborting previous one.");
             runner.abort();
         }
 
@@ -132,7 +143,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .await
                     .expect("catch IO error on receiving DF message");
 
-                println!("{msg:?}");
+                info!("received message: {msg:?}");
 
                 match msg.meta {
                     NumassMeta::Command(command) => match command {

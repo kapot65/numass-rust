@@ -17,12 +17,24 @@ pub async fn events_to_point(
 
     for frame in events {
         for channel in frame.adc_blocks {
-            let append = match zero_suppression {
+            let append = match &zero_suppression {
                 Some(params) => {
-                    let baseline = channel.waveform.iter().take(params.baseline).sum::<i16>()
-                        / params.baseline as i16;
-                    let max = *channel.waveform.iter().max().unwrap() - baseline;
-                    max > params.threshold * 4
+
+                    // TODO: check this on real data
+                    let waveform = channel.waveform.iter().map(|&x| x as f32).collect::<Vec<_>>();
+                    let waveform = if let Some(fir) = &params.fir {
+                        waveform.windows(fir.len()).map(|window| {
+                            window.iter().zip(fir).map(|(&amp, &coeff)| amp * coeff).sum::<f32>()
+                        }).collect::<Vec<_>>()
+                    } else {
+                        waveform
+                    };
+
+                    let baseline = waveform.iter().take(params.baseline).sum::<f32>()
+                        / params.baseline as f32;
+                    // convert into i16 in order to be able to find max
+                    let max = waveform.into_iter().map(|val| val as i16).max().unwrap() as f32 - baseline;
+                    max > (params.threshold * 4) as f32
                 }
                 None => true,
             };
