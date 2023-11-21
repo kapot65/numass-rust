@@ -122,8 +122,8 @@ fn main() {
                                     let fragments = fragments.values().collect::<Vec<_>>();
                                     if let Ok(combined) = MStreamTriggerAndUserData::try_from(&fragments[..]) {
                                         *channels_bg.lock() = combined.extract_data_blocks().into_iter().map(|ADCDataBlock {ch_num, waveform }| {
-                                            let waveform = process_waveform(waveform);
-                                            waveform_to_events(&waveform, &Algorithm::Max).into_iter().for_each(|(_, amp)| {
+                                            let waveform: ProcessedWaveform = process_waveform(waveform);
+                                            waveform_to_events(&waveform, &Algorithm::Trapezoid { left: 6, center: 0, right: 6 }).into_iter().for_each(|(_, amp)| {
                                                 if amp > args.count_rate_threshold {
                                                     *counts.entry(ch_num).or_insert(0.0f64) += 1.0;
                                                 }
