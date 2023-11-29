@@ -1,0 +1,40 @@
+db_root: "/data-nvme"
+run: 2023_03
+e_min: 4.0
+e_max: 40.0
+e_peak: 19.0
+l_coeff: 0.85
+processing:
+  algorithm:
+    !FirstPeak
+    threshold: 15
+    left: 8
+  # uncomment to use trapezoid filter
+  # algorithm:
+  #   !Trapezoid
+  #   left: 6
+  #   center: 0
+  #   right: 6
+  convert_to_kev: true
+post_processing:
+  merge_close_events: true
+  use_dead_time: false
+  effective_dead_time: 0
+  merge_map: [
+    [false, true, false, false, false, false, false],
+    [false, false, false, true, false, false, false],
+    [false, false, false, false, true, false, false],
+    [false, false, false, false, false, false, true],
+    [true, false, false, false, false, false, false],
+    [true, true, true, true, true, false, true],
+    [false, false, true, false, false, false, false],
+  ]
+groups:
+  Tritium_3:
+    1:
+      exclude:
+        - "p0(30s)(HV1=14000)"
+    2:
+    3:
+
+
