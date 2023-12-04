@@ -61,10 +61,13 @@ impl Default for ViewerState {
         Self {
             process: ProcessParams {
                 algorithm: crate::Algorithm::Trapezoid { left: 6, center: 0, right: 6 },
-                convert_to_kev: false,
+                convert_to_kev: true,
             },
-            post_process: PostProcessParams::default(),
-            histogram: HistogramParams { range: 0.0..50.0, bins: 250 }
+            post_process: PostProcessParams {
+                merge_close_events: false,
+                ..Default::default()
+            },
+            histogram: HistogramParams { range: 0.0..40.0, bins: 400 }
         }
     }
 }
