@@ -302,8 +302,8 @@ impl From<ProcessedWaveform> for Vec<[f64; 2]> {
 // TODO: add static correction
 pub fn process_waveform(waveform: impl Into<RawWaveform>) -> ProcessedWaveform {
     let waveform = waveform.into();
-    let baseline = 0.0; // TODO: add optional baseline correction
-    // let baseline = waveform.0.iter().take(16).sum::<i16>() as f32 / 16.0;
+    // let baseline = 0.0; // TODO: add optional baseline correction
+    let baseline = waveform.0.iter().take(16).sum::<i16>() as f32 / 16.0;
     ProcessedWaveform(waveform.0.iter().map(|bin| *bin as f32 - baseline).collect::<Vec<_>>())
 }
 
