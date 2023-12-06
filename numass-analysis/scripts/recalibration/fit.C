@@ -46,9 +46,9 @@ map<int, Output*> fit(const char* folder, double l_range, double r_range) {
     out_file.open(TString::Format("./output/calibration_%s.csv", folder).Data());
     out_file << "voltage,0,1,2,3,4,5,6" << endl;
 
-    int voltages[] = {12000, 12500, 13000, 13500, 14000, 14500, 15000, 15500, 16000, 16500, 17000};
+    int voltages[] = {14000, 14500, 15000, 15500, 16000, 16500, 17000, 17500};
     
-    for (int i = 0; i < 11; i++) {
+    for (int i = 0; i < 8; i++) {
 
         out_file << voltages[i] << ",";
 

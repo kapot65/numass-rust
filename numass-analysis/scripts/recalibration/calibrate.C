@@ -16,13 +16,12 @@
 
 #include "ROOT/RCsvDS.hxx"
 
-#include "include/json.hpp"
-
 using namespace std;
 using namespace ROOT;
 using namespace ROOT::VecOps;
 
 using json = nlohmann::json;
+
 
 void calibrate() {
 
@@ -31,8 +30,13 @@ void calibrate() {
 
     auto ethalon = kev_df.Take<Double_t>(to_string(5)).GetValue();
 
-    auto coeffs = json::array();
+    // auto coeffs = json::array();
 
+    ofstream coeffsFile;
+    coeffsFile.open ("./output/coeffs.json");
+
+
+    coeffsFile << "[\n";
     for (int i = 0; i < 7; i++) {
         auto ch = raw_df.Take<Double_t>(to_string(i)).GetValue();
 
@@ -53,10 +57,12 @@ void calibrate() {
         l->AddEntry(fitFunc, TString::Format("y = %.4f * x + %.4f", p1, p0));
 
         {
-            auto coeff = json::array();
-            coeff.push_back(p1);
-            coeff.push_back(p0);
-            coeffs.push_back(coeff);
+            coeffsFile << "    [" << p1 << ", " << p0 << "]";
+            if (i == 6) {
+                coeffsFile << "\n";
+            } else {
+                coeffsFile << ",\n";
+            }
         }
         
         c1->cd(i + 1);
@@ -66,10 +72,6 @@ void calibrate() {
         c1->Draw();
     }
 
-    {
-        ofstream coeffsFile;
-        coeffsFile.open ("./output/coeffs.json");
-        coeffsFile << coeffs.dump(4);
-        coeffsFile.close();
-    }
+    coeffsFile << "]";
+    coeffsFile.close();
 }
