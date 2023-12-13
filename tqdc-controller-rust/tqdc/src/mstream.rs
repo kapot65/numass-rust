@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use arrayref::array_ref;
 use log::debug;
 use ux::u24;
@@ -110,15 +108,6 @@ impl TryFrom<&[&MStreamFragment]> for MStreamTriggerAndUserData {
     type Error = &'static str;
 
     fn try_from(fragments: &[&MStreamFragment]) -> Result<Self, Self::Error> {
-
-        let mut frames = BTreeMap::new();
-
-        fragments.iter().for_each(|fragment| {
-            let group = frames.entry(fragment.header.fragment_id)
-                .or_insert(BTreeMap::new());
-            group.insert(fragment.header.fragment_offset, fragment);
-        });
-
         // check if all fragments are present and in order
         let mut total_length = 0;
         {

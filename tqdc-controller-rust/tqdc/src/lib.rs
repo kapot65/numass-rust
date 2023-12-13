@@ -13,10 +13,11 @@ use tokio::net::UdpSocket;
 use tokio::time::{self, sleep, Duration};
 
 use mlink::{CtrlReg, MlinkMessage};
-use mstream::{MStreamTriggerAndUserData, MStreamADCBlocks};
+use mstream::{MStreamTriggerAndUserData, MStreamADCBlocks, MStreamFragment};
 use regs::{as_run_state, Register16, Register32, RunMode, RunState, RunLogicControl};
 
 pub const MTU_SIZE: usize = 1536;
+pub const MAX_FRAGMENTS_DISTANCE: usize = 1000;
 
 pub const TQDC_CONTROL_PORT: u16 = 33300;
 pub const TQDC_STREAM_PORT: u16 = 33301;
@@ -239,8 +240,7 @@ impl TQDC {
         Ok(frames)
     }
 
-    pub async fn acquire_point(&self, secs: u32) -> Result<Vec<MStreamADCBlocks>> {
-
+    pub async fn acquire_frames(&self, secs: u32) -> Result<Vec<[u8; MTU_SIZE]>> {
         let control = Arc::new(UdpSocket::bind("0.0.0.0:0").await?); // TODO: remove unwrap
         let stream = Arc::new(UdpSocket::bind("0.0.0.0:0").await?); 
 
@@ -260,21 +260,37 @@ impl TQDC {
         ).await?;
     
         let frames = (gather_loop.await.with_context(|| "gather_loop ")?)?;
-    
+
         self.stop_acquisition(&control).await?;
-    
+        Ok(frames)
+    }
+
+    pub async fn acquire_point(&self, secs: u32) -> Result<Vec<MStreamADCBlocks>> {
+        let frames = self.acquire_frames(secs).await?;
         let events = TQDC::frames_to_events(frames)?;
         Ok(events)
     }
 
+    pub fn frames_to_events(frames: Vec<[u8; MTU_SIZE]>) -> Result<Vec<MStreamADCBlocks>> {
 
-    fn frames_to_events(frames: Vec<[u8; MTU_SIZE]>) -> Result<Vec<MStreamADCBlocks>> {
-        let mut fragments = BTreeMap::new();
+        let mut blocks = vec![];
+
+        let mut fragments = BTreeMap::<u16, (usize, BTreeMap<u16, MStreamFragment>)>::new();
     
-        for frame in frames {
+        for (idx, frame) in frames.into_iter().enumerate() {
             if let MlinkMessage::StreamReq { fragment, .. } = MlinkMessage::from_datagram(&frame) {
-                fragments.entry(fragment.header.fragment_id).or_insert(BTreeMap::new()).insert(
-                    fragment.header.fragment_offset, fragment);
+
+                let id = fragment.header.fragment_id;
+                let offset = fragment.header.fragment_offset;
+
+                if let Some((first_entry_idx, _)) = fragments.get(&id) {
+                    if first_entry_idx.abs_diff(idx) > MAX_FRAGMENTS_DISTANCE {
+                        blocks.push(fragments.remove(&id).unwrap());
+                    }
+                }
+                fragments.entry(id).or_insert((idx, BTreeMap::new())).1.insert(
+                    offset, fragment);
+
             } else {
                 Err(Report::msg(
                     "(gather_frames) - incoming packet is not STREAM type",
@@ -282,10 +298,10 @@ impl TQDC {
             }
         };
     
-        Ok(fragments.values().map(|fragments| {
+        Ok(blocks.iter().chain(fragments.values()).map(|fragments| {
             
             let merged = MStreamTriggerAndUserData::try_from(
-                fragments.values().collect::<Vec<_>>().as_slice()
+                fragments.1.values().collect::<Vec<_>>().as_slice()
             ).unwrap(); // TODO: handle error
             let adc_blocks = merged.extract_data_blocks();
     

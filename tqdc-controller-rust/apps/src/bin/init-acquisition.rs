@@ -1,6 +1,7 @@
 use apps::defaults::BOARD_IP;
 use clap::Parser;
 
+/// Perfroms a single acquisition and dumps some info about it to stdout
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
