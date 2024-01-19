@@ -9,7 +9,9 @@ use eframe::egui::plot::{Legend, Plot};
 use egui::mutex::Mutex;
 
 use apps::defaults::BOARD_IP;
-use processing::{process_waveform, waveform_to_events, Algorithm, ProcessedWaveform, EguiLine, color_for_index};
+use processing::process::{process_waveform, waveform_to_events, Algorithm};
+use processing::types::ProcessedWaveform;
+use processing::utils::{color_for_index, EguiLine};
 use processing::histogram::PointHistogram;
 use tqdc::{MTU_SIZE, TQDC_STREAM_PORT};
 use tqdc::mlink::MlinkMessage;
@@ -99,7 +101,7 @@ fn main() {
                     ).unwrap();
                     seq +=1;
 
-                    fragments_buf.entry(fragment.header.fragment_id).or_insert(BTreeMap::new()).insert(
+                    fragments_buf.entry(fragment.header.fragment_id).or_default().insert(
                         fragment.header.fragment_offset, fragment
                     );
 
