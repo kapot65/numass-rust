@@ -147,7 +147,7 @@ pub fn waveform_to_events(waveform: &ProcessedWaveform, algorithm: &Algorithm) -
 
             let (pos, amplitude) = waveform.0.windows(left + center + right).map(|window| {
                 (window[left+center..].iter().sum::<f32>() - window[..*left].iter().sum::<f32>()) / (left + right) as f32
-            }).enumerate().max_by(|(_, a), (_, b)| a.total_cmp(b)).unwrap();
+            }).take(100).enumerate().max_by(|(_, a), (_, b)| a.total_cmp(b)).unwrap();
             
             vec![(pos as u16 * 8, amplitude)]
         }
