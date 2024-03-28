@@ -2,7 +2,7 @@
 //! High-level processing + storage functions
 //! Should work with both local and remote storage.
 //! If possible, use functions from this module instead of [process](crate::process) and [postprocess](crate::postprocess) directly.
-use std::path::{Path, PathBuf};
+use std::{fs::{self, metadata}, path::{Path, PathBuf}, time::SystemTime};
 
 use numass::NumassMeta;
 use protobuf::Message;
@@ -80,6 +80,18 @@ pub async fn load_meta(filepath: &Path) -> Option<NumassMeta> {
         let mut point_file = tokio::fs::File::open(&filepath).await.unwrap();
         dataforge::read_df_header_and_meta::<numass::NumassMeta>(&mut point_file).await.map_or(
             None, |(_, meta)| Some(meta))
+    }
+}
+
+pub async fn load_modified_time(filepath: PathBuf) -> Option<SystemTime> {
+    if let Ok(metadata) = fs::metadata(filepath) {
+        if let Ok(modified) = metadata.modified() {
+            Some(modified)
+        } else {
+            None
+        }
+    } else {
+        None
     }
 }
 

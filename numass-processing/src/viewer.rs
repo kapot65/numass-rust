@@ -2,7 +2,7 @@
 //! Temporary module for viewer state and mode.
 //! TODO: remove from numass-processing module
 //! 
-use std::{path::PathBuf, ops::Range};
+use std::{ops::Range, path::PathBuf, time::SystemTime};
 use chrono::NaiveDateTime;
 use serde::{Serialize, Deserialize};
 use crate::{process::ProcessParams, postprocess::PostProcessParams, histogram::{PointHistogram, HistogramParams}};
@@ -50,6 +50,7 @@ pub enum ViewerMode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PointState {
     pub opened: bool,
+    pub modified: Option<SystemTime>,
     pub histogram: Option<PointHistogram>,
     pub voltage: Option<f32>,
     pub start_time: Option<NaiveDateTime>,
