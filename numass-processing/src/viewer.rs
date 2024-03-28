@@ -12,6 +12,7 @@ pub struct ViewerState {
     pub process: ProcessParams,
     pub post_process: PostProcessParams,
     pub histogram: HistogramParams,
+    pub changed: bool
 }
 
 impl Default for ViewerState {
@@ -25,7 +26,8 @@ impl Default for ViewerState {
                 merge_close_events: false,
                 ..Default::default()
             },
-            histogram: HistogramParams { range: 0.0..40.0, bins: 400 }
+            histogram: HistogramParams { range: 0.0..40.0, bins: 400 },
+            changed: false
         }
     }
 }
