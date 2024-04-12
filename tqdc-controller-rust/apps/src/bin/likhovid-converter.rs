@@ -20,7 +20,11 @@ struct Opt {
 
     /// convert to ascii tsv format instead of binary
     #[clap(long)]
-    ascii: bool
+    ascii: bool,
+
+    /// limit output to N frames
+    #[clap(short, long)]
+    limit: Option<usize>
 }
 
 fn frame_to_waveform(data: &[u8]) -> Vec<i16> {
@@ -48,27 +52,36 @@ fn main() {
 
     let mut frames_sorted = BTreeMap::new();
 
+    let mut waveform_len = None;
+
     for channel in point.channels {
         for block in channel.blocks {
             for frame in block.frames {
                 let group = frames_sorted
                     .entry(frame.time).or_insert(BTreeMap::new());
+                waveform_len = Some(frame.data.len() / 2);
                 group.insert(channel.id as u8, frame.data);
             }
         }
     }
 
+
     let mut out_file = std::fs::File::create(output_filepath).unwrap();
     if args.ascii {
         out_file.write_all("time\tchannel\t".as_bytes()).unwrap();
-        for idx in 0..75 {
+        for idx in 0..waveform_len.unwrap() {
             out_file.write_all(format!("{idx}\t").as_bytes()).unwrap();
         }
         out_file.write_all("\n".as_bytes()).unwrap();
-     }
+    }
+
+    let frames_sorted = if let Some(limit) = args.limit {
+        frames_sorted.into_iter().take(limit).collect::<BTreeMap<_, _>>()
+    } else {
+        frames_sorted
+    };
 
     for (time, pixels) in frames_sorted {
-
         for (ch_id, data) in pixels {
             if args.ascii {
                 out_file.write_all(format!("{time}\t{ch_id}\t").as_bytes()).unwrap();
