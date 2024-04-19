@@ -19,7 +19,7 @@ impl Default for ViewerState {
     fn default() -> Self {
         Self {
             process: ProcessParams {
-                algorithm: crate::process::Algorithm::Trapezoid { left: 6, center: 0, right: 6 },
+                algorithm: crate::process::Algorithm::Trapezoid { left: 6, center: 15, right: 6 },
                 convert_to_kev: true,
             },
             post_process: PostProcessParams {
