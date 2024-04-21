@@ -1,6 +1,6 @@
 //! This module contains egui widgets for processing configurations
 
-use crate::{histogram::HistogramParams, postprocess::PostProcessParams, process::{Algorithm, ProcessParams}};
+use crate::{histogram::HistogramParams, postprocess::PostProcessParams, process::{Algorithm, HWResetParams, ProcessParams}, process::{FIRSTPEAK_DEFAULT, LIKHOVID_DEFAULT, TRAPEZOID_DEFAULT}};
 
 pub trait UserInput {
     // draw input form and read changes from it
@@ -42,7 +42,7 @@ impl UserInput for ProcessParams {
                 ))
                 .clicked()
             {
-                algorithm = Algorithm::Likhovid { left: 15, right: 36 }
+                algorithm = LIKHOVID_DEFAULT
             }
 
             if ui
@@ -52,7 +52,7 @@ impl UserInput for ProcessParams {
                 ))
                 .clicked()
             {
-                algorithm = Algorithm::FirstPeak { threshold: 10, left: 8 }
+                algorithm = FIRSTPEAK_DEFAULT
             }
         });
 
@@ -64,7 +64,7 @@ impl UserInput for ProcessParams {
                 ))
                 .clicked()
             {
-                algorithm = Algorithm::Trapezoid { left: 6, center: 15, right: 6 }
+                algorithm = TRAPEZOID_DEFAULT
             }
         });
 
@@ -90,7 +90,13 @@ impl UserInput for ProcessParams {
                 Algorithm::FirstPeak { threshold, left }
             }
 
-            Algorithm::Trapezoid { left, center, right } => {
+            Algorithm::Trapezoid { 
+                left, center, right, 
+                treshold, min_length,
+                reset_detection: HWResetParams { 
+                    window: r_window, treshold: r_treshold, size: r_size } } => {
+
+                ui.label("sliding window");
 
                 let mut left = left;
                 ui.add(egui::Slider::new(&mut left, 0..=32).text("left"));
@@ -101,7 +107,32 @@ impl UserInput for ProcessParams {
                 let mut right = right;
                 ui.add(egui::Slider::new(&mut right, 0..=32).text("right"));
 
-                Algorithm::Trapezoid { left, center, right}
+                ui.label("extraction");
+
+                let mut treshold = treshold;
+                ui.add(egui::Slider::new(&mut treshold, 0..=100).text("treshold"));
+
+                let mut min_length = min_length;
+                ui.add(egui::Slider::new(&mut min_length, 0..=100).text("min length"));
+                
+
+                ui.label("hw reset detection");
+
+                let mut r_window = r_window;
+                ui.add(egui::Slider::new(&mut r_window, 0..=100).text("diff window"));
+
+                let mut r_treshold = r_treshold;
+                ui.add(egui::Slider::new(&mut r_treshold, 0..=2000).text("diff treshold"));
+
+                let mut r_size = r_size;
+                ui.add(egui::Slider::new(&mut r_size, 0..=500).text("reset size"));
+                
+
+                Algorithm::Trapezoid { 
+                    left, center, right, 
+                    treshold, min_length,
+                    reset_detection: HWResetParams { 
+                        window: r_window, treshold: r_treshold, size: r_size }}
             }
         };
 

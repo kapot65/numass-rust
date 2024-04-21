@@ -18,14 +18,39 @@ use serde::{Deserialize, Serialize};
 use crate::{constants::{KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_MAX, KEV_COEFF_TRAPEZIOD}, types::{NumassEvent, NumassEvents, NumassWaveforms, ProcessedWaveform, RawWaveform}};
 
 
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
+pub struct HWResetParams {
+    pub window: usize,
+    pub treshold: i16,
+    pub size: usize,
+}
+
 /// Built-in algorithms params for processing the data.
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
 pub enum Algorithm {
     Max,
     Likhovid { left: usize, right: usize },
     FirstPeak { threshold: i16, left: usize },
-    Trapezoid { left: usize, center: usize, right: usize }
+    Trapezoid { 
+        left: usize, center: usize, right: usize,
+        treshold: i16,
+        min_length: usize,
+        reset_detection: HWResetParams,
+    }
 }
+
+pub const LIKHOVID_DEFAULT: Algorithm = Algorithm::Likhovid { left: 15, right: 36 };
+pub const FIRSTPEAK_DEFAULT: Algorithm = Algorithm::FirstPeak { threshold: 10, left: 8 };
+pub const TRAPEZOID_DEFAULT: Algorithm = Algorithm::Trapezoid { 
+    left: 6, center: 15, right: 6,
+    treshold: 25,
+    min_length: 10,
+    reset_detection: HWResetParams {
+        window: 10,
+        treshold: 800,
+        size: 110
+    }
+};
 
 impl Default for Algorithm {
     fn default() -> Self {
@@ -147,14 +172,13 @@ pub fn waveform_to_events(waveform: &ProcessedWaveform, _ch_id: u8, algorithm: &
         }
         Algorithm::Likhovid { left, right } => {
 
-            let (x, y) = waveform.0
+            let (x, _) = waveform.0
             .iter()
             .enumerate()
             .max_by(|first, second| {
                 first.1.partial_cmp(second.1).unwrap()
             })
             .unwrap();
-            vec![(x as u16 * 8, *y)];
 
             let amplitude = {
                 let left = if x >= *left { x - left } else { 0 };
@@ -180,14 +204,16 @@ pub fn waveform_to_events(waveform: &ProcessedWaveform, _ch_id: u8, algorithm: &
                 vec![]
             }
         }
-        Algorithm::Trapezoid { left, center, right } => {
+        Algorithm::Trapezoid { 
+            left, center, right, 
+            treshold,
+            min_length, 
+            reset_detection: HWResetParams { 
+                window: r_window, treshold: r_treshold, size: r_size } } => {
 
             let mut events = vec![];
 
             let offset = left + center + right;
-            const RESET_TRESHOLD: f32 = 800.0;
-            const TRESHOLD: f32 = 40.0;
-            const RESET_TIME: usize = 110;
 
             let filtered = waveform.0.windows(left + center + right).map(|window| {
                 (window[left+center..].iter().sum::<f32>() - window[..*left].iter().sum::<f32>()) / (left + right) as f32
@@ -200,25 +226,27 @@ pub fn waveform_to_events(waveform: &ProcessedWaveform, _ch_id: u8, algorithm: &
 
             let mut i = 0;
             while i < filtered.len() {
-                if i < filtered.len() - 10 && filtered[i] - filtered[i + 10] > RESET_TRESHOLD {
+                if i < filtered.len() - r_window && filtered[i] - filtered[i + r_window] > *r_treshold as f32 {
                     #[cfg(feature = "egui")]
                     resets.push(i);
-                    i += RESET_TIME;
+                    i += r_size;
                     continue;
                 }
 
-                if (i == 0 ||  filtered[i - 1] < TRESHOLD) && filtered[i] >= TRESHOLD {
+                if (i == 0 ||  filtered[i - 1] < *treshold as f32) && filtered[i] >= *treshold as f32 {
                     let mut energy = 0.0;
                     let mut event_end = i;
 
-                    while event_end < filtered.len() && filtered[event_end] >= TRESHOLD   {
+                    while event_end < filtered.len() && filtered[event_end] >= *treshold as f32   {
                         energy += filtered[event_end];
                         event_end += 1
                     }
 
-                    events.push(((i + offset) as u16 * 8, energy / offset as f32));
-                    #[cfg(feature = "egui")]
-                    event_ranges.push((i, event_end));
+                    if (event_end - i) >= *min_length {
+                        events.push(((i + offset) as u16 * 8, energy / offset as f32));
+                        #[cfg(feature = "egui")]
+                        event_ranges.push((i, event_end));
+                    }
 
                     i = event_end;
                     continue;
@@ -237,7 +265,7 @@ pub fn waveform_to_events(waveform: &ProcessedWaveform, _ch_id: u8, algorithm: &
                 ui.line(line);
 
                 ui.hline(
-                    HLine::new(TRESHOLD)
+                    HLine::new(*treshold as f64)
                     .color(Color32::WHITE)
                     .name(format!("TRIGGER"))
                 );
@@ -255,7 +283,7 @@ pub fn waveform_to_events(waveform: &ProcessedWaveform, _ch_id: u8, algorithm: &
 
                 for reset in resets {
                     ui.vline(VLine::new((reset + offset) as f64).color(Color32::WHITE).name(format!("RESET")));
-                    ui.vline(VLine::new((reset + RESET_TIME + offset) as f64).color(Color32::WHITE).name(format!("RESET")));
+                    ui.vline(VLine::new((reset + r_size + offset) as f64).color(Color32::WHITE).name(format!("RESET")));
                 }
             };
 

@@ -5,7 +5,7 @@
 use std::{ops::Range, path::PathBuf, time::SystemTime};
 use chrono::NaiveDateTime;
 use serde::{Serialize, Deserialize};
-use crate::{process::ProcessParams, postprocess::PostProcessParams, histogram::{PointHistogram, HistogramParams}};
+use crate::{histogram::{HistogramParams, PointHistogram}, postprocess::PostProcessParams, process::{ProcessParams, TRAPEZOID_DEFAULT}};
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct ViewerState {
@@ -19,7 +19,7 @@ impl Default for ViewerState {
     fn default() -> Self {
         Self {
             process: ProcessParams {
-                algorithm: crate::process::Algorithm::Trapezoid { left: 6, center: 15, right: 6 },
+                algorithm: TRAPEZOID_DEFAULT,
                 convert_to_kev: true,
             },
             post_process: PostProcessParams {
@@ -37,7 +37,6 @@ pub enum ViewerMode {
     FilteredEvents {
         filepath: PathBuf,
         range: Range<f32>,
-        neighborhood: usize,
         processing: ProcessParams,
     },
     Waveforms {
