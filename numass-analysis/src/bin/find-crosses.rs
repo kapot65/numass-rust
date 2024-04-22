@@ -269,7 +269,7 @@ impl eframe::App for CrossesViewer {
 
             egui_plot::Plot::new("waveforms")
                 .legend(Legend::default())
-                // .x_axis_formatter(|_, value, _| format!("{:.3} μs", (value * 8.0) / 1000.0)) // TODO: fix
+                .x_axis_formatter(|mark, _, _| format!("{:.3} μs", (mark.value * 8.0) / 1000.0)) // TODO: fix
                 .show(ui, |plot_ui| {
                     if !self.filtered.is_empty() {
                         let (_, waveform) = &self.filtered[self.current];
