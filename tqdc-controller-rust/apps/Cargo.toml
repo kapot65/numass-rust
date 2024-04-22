@@ -20,6 +20,7 @@ serde_json = { workspace = true }
 dataforge = { workspace = true }
 processing = { workspace = true }
 eframe = { workspace = true }
+egui_plot = "0.27.2"
 clap = { workspace = true }
 protobuf = { workspace = true }
 

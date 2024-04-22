@@ -5,11 +5,11 @@ use std::time::Instant;
 
 use clap::Parser;
 use eframe::egui;
-use eframe::egui::plot::{Legend, Plot};
+use egui_plot::{Legend, Plot};
 use egui::mutex::Mutex;
 
 use apps::defaults::BOARD_IP;
-use processing::process::{process_waveform, waveform_to_events, Algorithm};
+use processing::process::{TRAPEZOID_DEFAULT, process_waveform, waveform_to_events};
 use processing::types::ProcessedWaveform;
 use processing::utils::{color_for_index, EguiLine};
 use processing::histogram::PointHistogram;
@@ -125,7 +125,7 @@ fn main() {
                                     if let Ok(combined) = MStreamTriggerAndUserData::try_from(&fragments[..]) {
                                         *channels_bg.lock() = combined.extract_data_blocks().into_iter().map(|ADCDataBlock {ch_num, waveform }| {
                                             let waveform: ProcessedWaveform = process_waveform(waveform);
-                                            waveform_to_events(&waveform, ch_num,&Algorithm::Trapezoid { left: 6, center: 0, right: 6 }, None).into_iter().for_each(|(_, amp)| {
+                                            waveform_to_events(&waveform, ch_num,&TRAPEZOID_DEFAULT, None).into_iter().for_each(|(_, amp)| {
                                                 if amp > args.count_rate_threshold {
                                                     *counts.entry(ch_num).or_insert(0.0f64) += 1.0;
                                                 }
@@ -199,12 +199,7 @@ impl eframe::App for MyEguiApp {
             ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
                 ui.vertical(|ui| {
                     ui.set_width(500.0);
-                    Plot::new("waveforms")
-                        .legend(Legend {
-                            text_style: egui::TextStyle::Body,
-                            background_alpha: 1.0,
-                            position: egui::plot::Corner::RightTop,
-                        })
+                    Plot::new("waveforms").legend(Legend::default())
                         .show(ui, |plot_ui| {
                             channels.into_iter().for_each(|(ch_num, waveform)| {
                                 waveform.draw_egui(
@@ -218,12 +213,7 @@ impl eframe::App for MyEguiApp {
                         });
                 });
                 ui.vertical(|ui| {
-                    Plot::new("hists")
-                        .legend(Legend {
-                            text_style: egui::TextStyle::Body,
-                            background_alpha: 1.0,
-                            position: egui::plot::Corner::RightTop,
-                        })
+                    Plot::new("hists").legend(Legend::default())
                         .show(ui, |plot_ui| {
                             let hist = self.histogram.lock().clone();
                             hist.draw_egui_each_channel(plot_ui, None);
