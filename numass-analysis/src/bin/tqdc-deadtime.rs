@@ -24,7 +24,7 @@ async fn main() {
 
                 let point = load_point(&filepath).await;
 
-                let frames: BTreeMap<u64, BTreeMap<usize, processing::types::ProcessedWaveform>> = extract_waveforms(&point);
+                let frames = extract_waveforms(&point);
 
                 let times = frames.into_iter().flat_map(|(time, frames)| {
                     
@@ -35,7 +35,7 @@ async fn main() {
                         // }
 
                         let events = waveform_to_events(
-                            &waveform, channel as u8, 
+                            &waveform, channel, 
                             &TRAPEZOID_DEFAULT, &StaticProcessParams { baseline: None },
                              None
                         );

@@ -93,7 +93,7 @@ async fn main() {
 
             let mut hist = PointHistogram::new_step(-5.0..40.0, 0.5);
             
-            let waveforms: BTreeMap<u64, BTreeMap<usize, processing::types::ProcessedWaveform>> = extract_waveforms(&point);
+            let waveforms = extract_waveforms(&point);
 
             let left = 6;
             let center = 15;
@@ -106,7 +106,7 @@ async fn main() {
                         (window[left+center..].iter().sum::<f32>() - window[..left].iter().sum::<f32>()) / (left + right) as f32
                     }).collect::<Vec<_>>();
 
-                    hist.add_batch(channel as u8, filtered);
+                    hist.add_batch(channel, filtered);
                 }
             }
 
