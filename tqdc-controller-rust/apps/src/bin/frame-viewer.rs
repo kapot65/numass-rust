@@ -9,8 +9,8 @@ use egui_plot::{Legend, Plot};
 use egui::mutex::Mutex;
 
 use apps::defaults::BOARD_IP;
-use processing::process::{process_waveform, waveform_to_events, StaticProcessParams, TRAPEZOID_DEFAULT};
-use processing::types::ProcessedWaveform;
+use processing::process::{process_waveform, frame_to_events, StaticProcessParams, TRAPEZOID_DEFAULT};
+use processing::types::{FrameEvent, NumassFrame, ProcessedWaveform};
 use processing::utils::{color_for_index, EguiLine};
 use processing::histogram::PointHistogram;
 use tqdc::{MTU_SIZE, TQDC_STREAM_PORT};
@@ -119,32 +119,48 @@ fn main() {
                             std::thread::spawn(move || {
                                 let mut counts = counts.lock();
                                 let mut histogram = histogram_bg.lock();
+
+
+                                let mut channels = None;
     
                                 fragments_buf.iter().for_each(|(_, fragments)| {
                                     let fragments = fragments.values().collect::<Vec<_>>();
                                     if let Ok(combined) = MStreamTriggerAndUserData::try_from(&fragments[..]) {
-                                        *channels_bg.lock() = combined.extract_data_blocks().into_iter().map(|ADCDataBlock {ch_num, waveform }| {
-                                            let waveform: ProcessedWaveform = process_waveform(waveform);
-                                            waveform_to_events(
-                                                &waveform, 
-                                                ch_num,
-                                                &TRAPEZOID_DEFAULT,
-                                                &StaticProcessParams { baseline: None }, // TODO: check with this option
-                                                None 
-                                            ).into_iter().for_each(|(_, amp)| {
-                                                if amp > args.count_rate_threshold {
-                                                    *counts.entry(ch_num).or_insert(0.0f64) += 1.0;
+
+                                        // TODO: test on real data
+                                        let frame: NumassFrame = combined.extract_data_blocks().into_iter().map(|ADCDataBlock {ch_num, waveform }| {
+                                            (ch_num, process_waveform(waveform))
+                                        }).collect::<BTreeMap<_,_>>();
+
+                                        let events = frame_to_events(
+                                            &frame, 
+                                            &TRAPEZOID_DEFAULT, 
+                                            &StaticProcessParams { baseline: None }, 
+                                            None
+                                        );
+
+                                        events.into_iter().for_each(|(_, event)| {
+                                            if let FrameEvent::Event { channel, amplitude, .. } = event {
+                                                if amplitude > args.count_rate_threshold {
+                                                    *counts.entry(channel).or_insert(0.0f64) += 1.0;
                                                 }
-                                                histogram.add(ch_num, amp)
-                                            });
-                                            (ch_num, waveform)
-                                        }).collect::<BTreeMap<_, _>>();
+                                                histogram.add(channel, amplitude);
+                                            }
+                                        });
+
+                                        if channels.is_none() {
+                                            channels = Some(frame);
+                                        }
                                     } else {
                                         println!("failed to combine fragments");
                                         fragments.iter().for_each(|fr| println!("{:?}", fr.header));
                                         println!("=====");
                                     }
                                 });
+
+                                if let Some(channels) = channels {
+                                    *channels_bg.lock() = channels;
+                                }
 
                                 counts.iter_mut().for_each(|(_, count)| {
                                     *count /= (elapsed_ms) as f64 / 1000.0;
