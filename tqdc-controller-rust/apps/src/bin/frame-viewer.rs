@@ -9,7 +9,7 @@ use egui_plot::{Legend, Plot};
 use egui::mutex::Mutex;
 
 use apps::defaults::BOARD_IP;
-use processing::process::{TRAPEZOID_DEFAULT, process_waveform, waveform_to_events};
+use processing::process::{process_waveform, waveform_to_events, StaticProcessParams, TRAPEZOID_DEFAULT};
 use processing::types::ProcessedWaveform;
 use processing::utils::{color_for_index, EguiLine};
 use processing::histogram::PointHistogram;
@@ -125,7 +125,13 @@ fn main() {
                                     if let Ok(combined) = MStreamTriggerAndUserData::try_from(&fragments[..]) {
                                         *channels_bg.lock() = combined.extract_data_blocks().into_iter().map(|ADCDataBlock {ch_num, waveform }| {
                                             let waveform: ProcessedWaveform = process_waveform(waveform);
-                                            waveform_to_events(&waveform, ch_num,&TRAPEZOID_DEFAULT, None).into_iter().for_each(|(_, amp)| {
+                                            waveform_to_events(
+                                                &waveform, 
+                                                ch_num,
+                                                &TRAPEZOID_DEFAULT,
+                                                &StaticProcessParams { baseline: None }, // TODO: check with this option
+                                                None 
+                                            ).into_iter().for_each(|(_, amp)| {
                                                 if amp > args.count_rate_threshold {
                                                     *counts.entry(ch_num).or_insert(0.0f64) += 1.0;
                                                 }
