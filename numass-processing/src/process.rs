@@ -107,7 +107,7 @@ pub fn extract_waveforms(point: &rsb_event::Point) -> NumassWaveforms {
             for frame in &block.frames {
                 let entry = waveforms.entry(frame.time).or_insert(BTreeMap::new());
                 let waveform = process_waveform(frame);
-                entry.insert(channel.id as usize, waveform);
+                entry.insert(channel.id as u8, waveform);
             }
         }
     }
