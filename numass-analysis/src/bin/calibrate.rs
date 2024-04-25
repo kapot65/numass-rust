@@ -59,7 +59,7 @@ async fn main() {
                 tokio::spawn(async move {
 
                     let point = load_point(&PathBuf::from(filepath)).await;
-                    let events = extract_events(&point, &ProcessParams { algorithm, convert_to_kev: false });
+                    let events = extract_events(point, &ProcessParams { algorithm, convert_to_kev: false });
 
                     let histogram  = events_to_histogram(
                         events,

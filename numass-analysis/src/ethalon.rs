@@ -5,7 +5,7 @@ use super::cache::CacacheBackend;
 use tokio::sync::Mutex;
 use cached::proc_macro::io_cached;
 use eyre::Result;
-use processing::{histogram::PointHistogram, process::ProcessParams, postprocess::{PostProcessParams, post_process}};
+use processing::{histogram::PointHistogram, postprocess::{post_process, PostProcessParams}, process::ProcessParams, types::FrameEvent};
 
 
 /// Calculate ethalon histogram for given pattern or get it from cache
@@ -57,11 +57,11 @@ pub async fn get_ethalon(
                     );
 
                     {
-                        let mut hist = hist.lock().await;
+                        let mut histogram = hist.lock().await;
                         amps.into_iter().for_each(|(_, block)| {
-                            block.into_iter().for_each(|(ch_num, events)| {
-                                for (_, amp) in events {
-                                    hist.add(ch_num as u8, amp);
+                            block.into_iter().for_each(|(_, event)| {
+                                if let FrameEvent::Event { channel, amplitude, .. } = event {
+                                    histogram.add(channel, amplitude);
                                 }
                             });
                         });

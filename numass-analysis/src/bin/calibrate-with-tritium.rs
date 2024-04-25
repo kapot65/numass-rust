@@ -1,4 +1,5 @@
 use analysis::{get_points_by_pattern, workspace::{get_workspace, get_db_fast_root}};
+use processing::types::FrameEvent;
 
 use {
     processing::{
@@ -65,9 +66,9 @@ async fn main() {
                 {
                     let mut histogram = histogram.lock().await;
                     for (_, events) in events {
-                        for (ch_id, events) in events {
-                            for (_, amp) in events {
-                                histogram.add(ch_id as u8, amp);
+                        for (_, event) in events {
+                            if let FrameEvent::Event { channel, amplitude, .. } = event {
+                                histogram.add(channel, amplitude);
                             }
                         }
                     }

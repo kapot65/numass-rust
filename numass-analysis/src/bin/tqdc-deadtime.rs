@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 use plotly::{common::Title, layout::Axis, Layout, Plot};
 
 use processing::{
-    histogram::PointHistogram, process::{extract_waveforms, waveform_to_events, StaticProcessParams, TRAPEZOID_DEFAULT}, storage::load_point
+    histogram::PointHistogram, process::{extract_waveforms, frame_to_events, StaticProcessParams, TRAPEZOID_DEFAULT}, storage::load_point, types::FrameEvent
 };
 use tokio::sync::Mutex;
 
@@ -26,20 +26,19 @@ async fn main() {
 
                 let frames = extract_waveforms(&point);
 
-                let times = frames.into_iter().flat_map(|(time, frames)| {
+                let times = frames.into_iter().flat_map(|(time, frame)| {
                     
-                    let mut frame_times = frames.into_iter().flat_map(|(channel, waveform)| {
-
-                        // if channel == 1 {
-                        //     return vec![];
-                        // }
-
-                        let events = waveform_to_events(
-                            &waveform, channel, 
-                            &TRAPEZOID_DEFAULT, &StaticProcessParams { baseline: None },
-                             None
-                        );
-                        events.into_iter().map(|(ev_time, _)| time + ev_time as u64).collect::<Vec<_>>()
+                    let mut frame_times = frame_to_events(
+                        &frame, 
+                        &TRAPEZOID_DEFAULT, 
+                        &StaticProcessParams { baseline: None }, 
+                        None
+                    ).into_iter().filter_map(|(ev_time, event)| {
+                        if let FrameEvent::Event { .. } = event {
+                            Some(time + ev_time as u64)
+                        } else {
+                            None
+                        }
                     }).collect::<Vec<_>>();
 
                     frame_times.sort();

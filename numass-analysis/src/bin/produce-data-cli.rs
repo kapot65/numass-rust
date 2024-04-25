@@ -9,7 +9,7 @@ use analysis::CorrectionCoeffs;
 use processing::{
     postprocess::{post_process, PostProcessParams}, 
     process::ProcessParams, 
-    storage::{load_meta, process_point}
+    storage::{load_meta, process_point}, types::FrameEvent
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -166,22 +166,22 @@ async fn main() {
                     &post_processing);
                 
                 amps.iter().for_each(|(_, frames)| {
-                    frames.iter().for_each(|(ch_num, events)| {
-                        for (_, amp) in events {
+                    frames.iter().for_each(|(_, event)| {
+                        if let FrameEvent::Event { channel, amplitude, .. } = event {
                             // hist.add(*ch_num as u8, *amp);
-                            if (out_point.e_curr..e_peak).contains(amp) {
-                                if *ch_num == 5 {
+                            if (out_point.e_curr..e_peak).contains(amplitude) {
+                                if *channel == 5 {
                                     out_point.k += monitor_coeff;
-                                    if (out_point.l_curr..e_peak).contains(amp) {
+                                    if (out_point.l_curr..e_peak).contains(amplitude) {
                                         out_point.l += monitor_coeff;
                                     }
-                                } else if (out_point.l_curr..e_peak).contains(amp) {
+                                } else if (out_point.l_curr..e_peak).contains(amplitude) {
                                     out_point.m += monitor_coeff;
                                 }
-                            } else if (e_peak..e_max).contains(amp)  {
+                            } else if (e_peak..e_max).contains(amplitude)  {
                                 out_point.d_sum += monitor_coeff;
                             
-                                if *ch_num == 5 {
+                                if *channel == 5 {
                                     out_point.d += monitor_coeff;
                                 }
                             }
