@@ -16,7 +16,10 @@ use {
 use numass::protos::rsb_event;
 use serde::{Deserialize, Serialize};
 
-use crate::{constants::{baseline_2024_03, KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_MAX, KEV_COEFF_TRAPEZIOD}, types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame, NumassWaveforms, ProcessedWaveform, RawWaveform}};
+use crate::{
+    constants::{baseline_2024_03, KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_MAX, KEV_COEFF_TRAPEZIOD}, 
+    types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame, NumassWaveforms}
+};
 
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
@@ -100,6 +103,7 @@ impl Default for ProcessParams {
     }
 }
 
+/// remap waveforms from protobuf message to more convenient format (no copy).
 pub fn extract_waveforms(point: &rsb_event::Point) -> NumassWaveforms {
     let mut waveforms = BTreeMap::new();
 
@@ -107,8 +111,12 @@ pub fn extract_waveforms(point: &rsb_event::Point) -> NumassWaveforms {
         for block in &channel.blocks {
             for frame in &block.frames {
                 let entry = waveforms.entry(frame.time).or_insert(BTreeMap::new());
-                let waveform = process_waveform(frame);
-                entry.insert(channel.id as u8, waveform);
+
+                let i16_slice = unsafe {
+                    std::slice::from_raw_parts(frame.data.as_ptr() as *const i16, frame.data.len() / 2)
+                };
+                
+                entry.insert(channel.id as u8, i16_slice);
             }
         }
     }
@@ -124,6 +132,7 @@ pub fn extract_events(point: rsb_event::Point, params: &ProcessParams) -> Numass
     };
 
     point.into_iter().map(|(time, frame)| {
+
         let mut events = frame_to_events(&frame, &params.algorithm, &static_params, #[cfg(feature = "egui")] None);
         if params.convert_to_kev {
             events.iter_mut().for_each(|(_, event)| {
@@ -134,15 +143,6 @@ pub fn extract_events(point: rsb_event::Point, params: &ProcessParams) -> Numass
         }
         (time, events)
     }).collect::<BTreeMap<_, _>>()
-}
-
-/// Prepare raw waveform stored in protobuf message for processing.
-/// This function will calculate baseline and subtract it from the waveform.
-/// TODO: add static correction
-/// TODO: transform to impl From<RawWaveform> for ProcessedWaveform and move to types.rs
-pub fn process_waveform(waveform: impl Into<RawWaveform>) -> ProcessedWaveform {
-    let waveform = waveform.into();
-    ProcessedWaveform(waveform.0.iter().map(|bin| *bin as f32).collect::<Vec<_>>())
 }
 
 /// Built-in keV convertion (according to crate::constants).
@@ -182,7 +182,7 @@ pub fn frame_to_events(
     let mut events = match algorithm {
         Algorithm::Max => {
             frame.iter().map(|(ch_id, waveform)| {
-                let (x, y) = waveform.0
+                let (x, y) = waveform
                     .iter()
                     .enumerate()
                     .max_by(|first, second| {
@@ -190,12 +190,12 @@ pub fn frame_to_events(
                     })
                 .unwrap();
 
-                (x as u16 * 8, FrameEvent::Event { channel: *ch_id, amplitude: *y, size: 1 })
+                (x as u16 * 8, FrameEvent::Event { channel: *ch_id, amplitude: *y as f32, size: 1 })
             }).collect::<Vec<_>>()
         }
         Algorithm::Likhovid { left, right } => {
             frame.iter().map(|(ch_id, waveform)| {
-                let (x, _) = waveform.0
+                let (x, _) = waveform
                 .iter()
                 .enumerate()
                 .max_by(|first, second| {
@@ -205,9 +205,9 @@ pub fn frame_to_events(
 
                 let amplitude = {
                     let left = if x >= *left { x - left } else { 0 };
-                    let right = std::cmp::min(waveform.0.len(), x + right);
-                    let crop = &waveform.0[left..right];
-                    crop.iter().sum::<f32>() / crop.len() as f32
+                    let right = std::cmp::min(waveform.len(), x + right);
+                    let crop = &waveform[left..right];
+                    crop.iter().sum::<i16>() as f32 / crop.len() as f32
                 };
 
                 (x as u16 * 8, FrameEvent::Event { channel: *ch_id, amplitude, size: 1 })
@@ -215,15 +215,15 @@ pub fn frame_to_events(
         }
         Algorithm::FirstPeak { threshold, left } => {
             frame.iter().filter_map(|(ch_id, waveform)| {
-                find_first_peak(waveform, *threshold as f32).map(|pos| {
+                find_first_peak(waveform, *threshold).map(|pos| {
                     let left = if pos < *left {
                         0
                     } else {
                         pos - left
                     };
                     // let length = (waveform.0.len() - pos) as f32;
-                    let amplitude = waveform.0[left..waveform.0.len()].iter().sum::<f32>();
-                    (pos as u16 * 8, FrameEvent::Event { channel: *ch_id, amplitude: amplitude / 50.0, size: 1 } )
+                    let amplitude = waveform[left..waveform.len()].iter().sum::<i16>();
+                    (pos as u16 * 8, FrameEvent::Event { channel: *ch_id, amplitude: amplitude as f32 / 50.0, size: 1 } )
                 })
             }).collect::<Vec<_>>()
         }
@@ -236,8 +236,8 @@ pub fn frame_to_events(
 
             let mut reset: Option<(usize, usize)> = None;
             frame.iter().for_each(|(_, waveform)| {
-                for i in 0..(waveform.0.len() - r_window) {
-                    if waveform.0[i] - waveform.0[i + r_window] > *r_treshold as f32 {
+                for i in 0..(waveform.len() - r_window) {
+                    if waveform[i] - waveform[i + r_window] > *r_treshold {
                         if let Some(reset_last) = reset {
                             reset = Some((i.min(reset_last.0), (i + r_size).max(reset_last.1)));
                         } else {
@@ -263,8 +263,11 @@ pub fn frame_to_events(
     
                 let offset = left + center + right;
     
-                let filtered = waveform.0.windows(left + center + right).map(|window| {
-                    (window[left+center..].iter().sum::<f32>() - window[..*left].iter().sum::<f32>()) / (left + right) as f32 - baseline
+                let filtered = waveform.windows(left + center + right).map(|window| {
+                    (
+                        window[left+center..].iter().map(|v| *v as i32).sum::<i32>() - 
+                        window[..*left].iter().map(|v| *v as i32).sum::<i32>()
+                    ) as f32 / (left + right) as f32 - baseline
                 }).collect::<Vec<_>>();
 
                 #[cfg(feature = "egui")]
@@ -272,17 +275,12 @@ pub fn frame_to_events(
                     filtered_all.insert(*ch_id, filtered.clone());
                 }
     
-                // #[cfg(feature = "egui")]
-                // let mut resets = vec![];
-                // #[cfg(feature = "egui")]
-                // let mut event_ranges = vec![];
-    
                 let mut i = 0;
                 while i < filtered.len() {
                     
                     if let Some((reset_start, reset_end)) = reset {
-                        if i == reset_start {
-                            i = reset_end;
+                        if i == reset_start - offset {
+                            i = reset_end - offset;
                             continue;
                         }
                     }
@@ -317,7 +315,6 @@ pub fn frame_to_events(
                 events.push((reset_start as u16 * 8, FrameEvent::Reset { size: (reset_end - reset_start) as u16 }));
             }
 
-            // TODO: reimplemet
             #[cfg(feature = "egui")]
             if let Some(ui) = ui {
 
@@ -364,21 +361,6 @@ pub fn frame_to_events(
                 
                 })
 
-                // for (idx, event_range) in event_ranges.into_iter().enumerate() {
-                //     ui.vline(VLine::new((event_range.0 + offset) as f64)
-                //         .color(color_for_index(_ch_id as usize))
-                //         .name(format!("ev# {idx} ch# {}", _ch_id + 1))
-                //     );
-                //     ui.vline(VLine::new((event_range.1 + offset) as f64)
-                //         .color(color_for_index(_ch_id as usize))
-                //         .name(format!("ev# {idx} ch# {}", _ch_id + 1))
-                //     );
-                // }
-
-                // for reset in resets {
-                //     ui.vline(VLine::new((reset + offset) as f64).color(Color32::WHITE).name(format!("RESET")));
-                //     ui.vline(VLine::new((reset + r_size + offset) as f64).color(Color32::WHITE).name(format!("RESET")));
-                // }
             };
 
             events
@@ -390,15 +372,15 @@ pub fn frame_to_events(
     events
 }
 
-pub fn find_first_peak(waveform: &ProcessedWaveform, threshold: f32) -> Option<usize> {
-    waveform.0
+pub fn find_first_peak(waveform: &[i16], threshold: i16) -> Option<usize> {
+    waveform
         .iter()
         .enumerate()
         .find(|(idx, amp)| {
             let amp = **amp;
             amp > threshold
-                && (*idx == 0 || waveform.0[idx - 1] <= amp)
-                && (*idx == waveform.0.len() - 1 || waveform.0[idx + 1] <= amp)
+                && (*idx == 0 || waveform[idx - 1] <= amp)
+                && (*idx == waveform.len() - 1 || waveform[idx + 1] <= amp)
         })
         .map(|(idx, _)| idx)
 }

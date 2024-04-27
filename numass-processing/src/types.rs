@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessedWaveform(pub Vec<f32>);
 
-pub type NumassFrame = BTreeMap<u8, ProcessedWaveform>;
+pub type NumassFrame<'a> = BTreeMap<u8, &'a [i16]>;
 /// Numass point conveted to frames.
-pub type NumassWaveforms = BTreeMap<u64, NumassFrame>;
+pub type NumassWaveforms<'a> = BTreeMap<u64, NumassFrame<'a>>;
 /// Numass processed events type (both for processing + postprocessing and processing only).
 pub type NumassEvents = BTreeMap<u64, Vec<NumassEvent>>;
 /// Numass event (position in waveform, amplitude).
@@ -52,10 +52,15 @@ impl From<RawWaveform> for Vec<[f64; 2]> {
     }
 }
 
+impl From<&[i16]> for ProcessedWaveform {
+    fn from(data: &[i16]) -> Self {
+        Self(data.iter().map(|bin| *bin as f32).collect::<Vec<_>>())
+    }
+}
 
-impl From<Vec<i16>> for RawWaveform {
-    fn from(data: Vec<i16>) -> Self {
-        Self(data)
+impl From<&RawWaveform> for ProcessedWaveform {
+    fn from(data: &RawWaveform) -> Self {
+        Self(data.0.iter().map(|bin| *bin as f32).collect::<Vec<_>>())
     }
 }
 
