@@ -19,6 +19,10 @@ use tqdc::TQDC;
 
 use apps::defaults::BOARD_IP;
 
+use tikv_jemallocator::Jemalloc;
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 struct Args {

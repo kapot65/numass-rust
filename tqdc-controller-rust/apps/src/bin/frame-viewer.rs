@@ -9,13 +9,17 @@ use egui_plot::{Legend, Plot};
 use egui::mutex::Mutex;
 
 use apps::defaults::BOARD_IP;
-use processing::process::{process_waveform, frame_to_events, StaticProcessParams, TRAPEZOID_DEFAULT};
+use processing::process::{frame_to_events, StaticProcessParams, TRAPEZOID_DEFAULT};
 use processing::types::{FrameEvent, NumassFrame, ProcessedWaveform};
 use processing::utils::{color_for_index, EguiLine};
 use processing::histogram::PointHistogram;
 use tqdc::{MTU_SIZE, TQDC_STREAM_PORT};
 use tqdc::mlink::MlinkMessage;
 use tqdc::mstream::{MStreamTriggerAndUserData, ADCDataBlock};
+
+use tikv_jemallocator::Jemalloc;
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -128,8 +132,9 @@ fn main() {
                                     if let Ok(combined) = MStreamTriggerAndUserData::try_from(&fragments[..]) {
 
                                         // TODO: test on real data
-                                        let frame: NumassFrame = combined.extract_data_blocks().into_iter().map(|ADCDataBlock {ch_num, waveform }| {
-                                            (ch_num, process_waveform(waveform))
+                                        let data_blocks = combined.extract_data_blocks();
+                                        let frame: NumassFrame = data_blocks.iter().map(|ADCDataBlock {ch_num, waveform }| {
+                                            (*ch_num, waveform.as_slice())
                                         }).collect::<BTreeMap<_,_>>();
 
                                         let events = frame_to_events(
@@ -149,7 +154,9 @@ fn main() {
                                         });
 
                                         if channels.is_none() {
-                                            channels = Some(frame);
+                                            channels = Some(frame.iter().map(|(ch_num, waveform)| {
+                                                (*ch_num, ProcessedWaveform::from(*waveform))
+                                            }).collect::<BTreeMap<_,_>>());
                                         }
                                     } else {
                                         println!("failed to combine fragments");

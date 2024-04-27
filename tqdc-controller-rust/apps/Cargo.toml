@@ -10,7 +10,7 @@ tokio-timerfd = "0.2.0"
 
 [dependencies]
 
-env_logger = "0.10.0"
+env_logger = "0.11.3"
 log = { workspace = true }
 
 tqdc = {path = "../tqdc"}
@@ -23,6 +23,8 @@ eframe = { workspace = true }
 egui_plot = "0.27.2"
 clap = { workspace = true }
 protobuf = { workspace = true }
+
+tikv-jemallocator = "0.5.4"
 
 chrono = "0.4.23"
 home = "0.5.4"
