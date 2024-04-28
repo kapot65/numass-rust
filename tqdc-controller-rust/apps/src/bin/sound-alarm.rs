@@ -1,3 +1,8 @@
+#[cfg(not(target_family = "unix"))]
+fn main() {
+    panic!("this binary is meant to be run only on linux")
+}
+#[cfg(target_family = "unix")]
 fn main() {
     use chrono::{Local, NaiveDateTime};
     use clap::Parser;

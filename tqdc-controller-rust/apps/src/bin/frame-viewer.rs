@@ -17,7 +17,9 @@ use tqdc::{MTU_SIZE, TQDC_STREAM_PORT};
 use tqdc::mlink::MlinkMessage;
 use tqdc::mstream::{MStreamTriggerAndUserData, ADCDataBlock};
 
+#[cfg(target_family = "unix")]
 use tikv_jemallocator::Jemalloc;
+#[cfg(target_family = "unix")]
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 

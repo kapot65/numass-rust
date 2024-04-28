@@ -19,7 +19,9 @@ use tqdc::TQDC;
 
 use apps::defaults::BOARD_IP;
 
+#[cfg(target_family = "unix")]
 use tikv_jemallocator::Jemalloc;
+#[cfg(target_family = "unix")]
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
