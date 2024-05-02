@@ -133,7 +133,6 @@ fn main() {
                                     let fragments = fragments.values().collect::<Vec<_>>();
                                     if let Ok(combined) = MStreamTriggerAndUserData::try_from(&fragments[..]) {
 
-                                        // TODO: test on real data
                                         let data_blocks = combined.extract_data_blocks();
                                         let frame: NumassFrame = data_blocks.iter().map(|ADCDataBlock {ch_num, waveform }| {
                                             (*ch_num, waveform.as_slice())
@@ -226,31 +225,27 @@ impl eframe::App for MyEguiApp {
             }
         });
 
+        egui::SidePanel::left("waveforms").default_width(500.0).show(ctx, |ui| {
+            Plot::new("waveforms").legend(Legend::default())
+                .show(ui, |plot_ui| {
+                    channels.into_iter().for_each(|(ch_num, waveform)| {
+                        waveform.draw_egui(
+                            plot_ui, 
+                            Some(&format!("ch #{}", ch_num + 1)), 
+                            Some(color_for_index(ch_num as usize)), 
+                            None, 
+                            None
+                        );
+                    });
+                });
+        });
+
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
-                ui.vertical(|ui| {
-                    ui.set_width(500.0);
-                    Plot::new("waveforms").legend(Legend::default())
-                        .show(ui, |plot_ui| {
-                            channels.into_iter().for_each(|(ch_num, waveform)| {
-                                waveform.draw_egui(
-                                    plot_ui, 
-                                    Some(&format!("ch #{}", ch_num + 1)), 
-                                    Some(color_for_index(ch_num as usize)), 
-                                    None, 
-                                    None
-                                );
-                            });
-                        });
+            Plot::new("hists").legend(Legend::default())
+                .show(ui, |plot_ui| {
+                    let hist = self.histogram.lock().clone();
+                    hist.draw_egui_each_channel(plot_ui, None);
                 });
-                ui.vertical(|ui| {
-                    Plot::new("hists").legend(Legend::default())
-                        .show(ui, |plot_ui| {
-                            let hist = self.histogram.lock().clone();
-                            hist.draw_egui_each_channel(plot_ui, None);
-                        });
-                });
-            })
         });
     }
 }
