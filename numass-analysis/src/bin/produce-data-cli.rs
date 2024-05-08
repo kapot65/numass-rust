@@ -9,7 +9,7 @@ use analysis::CorrectionCoeffs;
 use processing::{
     postprocess::{post_process, PostProcessParams},
     process::ProcessParams,
-    storage::{load_meta, process_point},
+    storage::process_point,
     types::FrameEvent,
 };
 
@@ -22,14 +22,13 @@ static GLOBAL: Jemalloc = Jemalloc;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct ProducedPoint {
     u_sp: u16,
-    e_curr: f32,
     l_curr: f32,
     k: f64,
     l: f64,
     m: f64,
     d: f64,
     d_sum: f64,
-    origins: Vec<PathBuf>,
+    // origins: Vec<PathBuf>,
     time: u64,
 }
 
@@ -163,26 +162,73 @@ async fn main() {
 
                 let mut out_point = ProducedPoint {
                     u_sp: u_sp_v,
-                    e_curr: e_min.max(18.5 - u_sp_kev),
                     l_curr: u_sp_kev * l_coeff,
                     k: 0.0,
                     l: 0.0,
                     m: 0.0,
                     d: 0.0,
                     d_sum: 0.0,
-                    origins: vec![],
+                    // origins: vec![],
                     time: 0,
                 };
 
+                // let handles = points.into_iter().map(|filepath| {
+                //     let coeffs = Arc::clone(&coeffs);
+                //     let processing = processing.clone();
+                //     tokio::spawn(async move {
+                //         let monitor_coeff = if let Some(coeffs) = coeffs.as_ref() {
+                //             coeffs.get_by_index(&filepath) as f64
+                //         } else {
+                //             1.0
+                //         };
+                //         let amps = post_process(
+                //             process_point(&filepath, &processing)
+                //                 .await
+                //                 .unwrap()
+                //                 .1
+                //                 .unwrap(),
+                //             &post_processing,
+                //         );
+                //         (monitor_coeff, amps)
+                //     })
+                // }).collect::<Vec<_>>();
+                // for handle in handles {
+                //     let (monitor_coeff, amps) = handle.await.unwrap();
+                //     amps.iter().for_each(|(_, frames)| {
+                //         frames.iter().for_each(|(_, event)| {
+                //             if let FrameEvent::Event {
+                //                 channel, amplitude, ..
+                //             } = event
+                //             {
+                //                 // hist.add(*ch_num as u8, *amp);
+                //                 if (e_min..e_peak).contains(amplitude) {
+                //                     if *channel == 5 {
+                //                         out_point.k += monitor_coeff;
+                //                         if (out_point.l_curr..e_peak).contains(amplitude) {
+                //                             out_point.l += monitor_coeff;
+                //                         }
+                //                     } else if (out_point.l_curr..e_peak).contains(amplitude) {
+                //                         out_point.m += monitor_coeff;
+                //                     }
+                //                 } else if (e_peak..e_max).contains(amplitude) {
+                //                     out_point.d_sum += monitor_coeff;
+                //                     if *channel == 5 {
+                //                         out_point.d += monitor_coeff;
+                //                     }
+                //                 }
+                //             }
+                //         })
+                //     });
+                //     out_point.time += 30; // TODO: remove hardcode
+                // }
+
+
                 for filepath in points {
-                    let meta = load_meta(&filepath).await.unwrap();
                     let monitor_coeff = if let Some(coeffs) = coeffs.as_ref() {
-                        coeffs.get_from_meta_by_index(&filepath, &meta) as f64
+                        coeffs.get_by_index(&filepath) as f64
                     } else {
                         1.0
                     };
-
-                    // let monitor_coeff = 1.0;
 
                     let amps = post_process(
                         process_point(&filepath, &processing)
@@ -200,7 +246,7 @@ async fn main() {
                             } = event
                             {
                                 // hist.add(*ch_num as u8, *amp);
-                                if (out_point.e_curr..e_peak).contains(amplitude) {
+                                if (e_min..e_peak).contains(amplitude) {
                                     if *channel == 5 {
                                         out_point.k += monitor_coeff;
                                         if (out_point.l_curr..e_peak).contains(amplitude) {
@@ -221,7 +267,7 @@ async fn main() {
                     });
 
                     out_point.time += 30; // TODO: remove hardcode
-                    out_point.origins.push(filepath);
+                    // out_point.origins.push(filepath);
                 }
 
                 // TODO: move to PointHistogram trait
@@ -243,7 +289,7 @@ async fn main() {
         handle.await.unwrap();
     }
 
-    let mut table_data = "u_sp\te_curr\tl_curr\tk\tl\tm\td\td_sum\ttime\n".to_string();
+    let mut table_data = "u_sp\tl_curr\tk\tl\tm\td\td_sum\ttime\n".to_string();
     table
         .try_lock()
         .unwrap()
@@ -252,9 +298,7 @@ async fn main() {
         .for_each(|(u_sp, point)| {
             table_data.push_str(
                 &format!(
-                    "{u_sp}\t{e_curr}\t{l_curr}\t{k}\t{l}\t{m}\t{d}\t{d_sum}\t{time}\n",
-                    u_sp = u_sp,
-                    e_curr = point.e_curr,
+                    "{u_sp}\t{l_curr}\t{k}\t{l}\t{m}\t{d}\t{d_sum}\t{time}\n",
                     l_curr = point.l_curr,
                     k = point.k.round() as u64,
                     l = point.l.round() as u64,

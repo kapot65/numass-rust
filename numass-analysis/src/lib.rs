@@ -63,7 +63,7 @@ impl CorrectionCoeffs {
         self.coeffs.get(fill)?.get(set).map(|params| &params.corr_coef)
     }
 
-    pub fn get_from_meta_by_index(&self, filepath: &Path, meta: &NumassMeta) -> f32 {
+    pub fn get_by_index(&self, filepath: &Path) -> f32 {
 
         let (fill, set) = {
             let set_folder = filepath.parent().unwrap();

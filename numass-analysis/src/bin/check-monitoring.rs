@@ -73,7 +73,7 @@ async fn main() {
                 )
                 .unwrap();
 
-                let k = coeffs.get_from_meta_by_index(&filepath, &meta);
+                let k = coeffs.get_by_index(&filepath);
 
                 let amps = post_process(
                     get_amps(
