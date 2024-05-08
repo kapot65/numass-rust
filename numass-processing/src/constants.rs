@@ -266,16 +266,16 @@ pub const KEV_COEFF_TRAPEZIOD: [[f32; 2]; 7] = [
     ],
 ];
 
-pub const DETECTOR_BORDERS: [[u8; 2]; 8] = [
-        [1, 3],
-        [1, 4],
-        [1, 7],
-        [2, 3],
-        [2, 5],
-        [2, 7],
-        [3, 4],
-        [4, 5],
+pub const DETECTOR_BORDERS: [[u8; 2]; 6] = [
+    [0, 1],
+    [0, 4],
+    [1, 3],
+    [2, 4],
+    [2, 6],
+    [3, 6],
 ];
+
+
 
 // calcluate baseline for 2024_03 data set
 // from Electrode_3 to Tritium_12

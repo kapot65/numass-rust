@@ -1,8 +1,6 @@
 //! # Utils
 //! This module contains some utility functions not related to processing or postprocessing.
 
-use std::collections::BTreeMap;
-
 #[cfg(feature = "egui")] use {
     egui_plot::{Line, PlotUi},
     egui::{Color32, epaint::Hsva},
@@ -11,7 +9,7 @@ use std::collections::BTreeMap;
 #[cfg(feature = "plotly")]
 use plotly::color::Color;
 
-use crate::{constants::DETECTOR_BORDERS, histogram::{HistogramParams, PointHistogram}, types::{FrameEvent, NumassEvents}};
+use crate::{histogram::{HistogramParams, PointHistogram}, types::{FrameEvent, NumassEvents}};
 
 pub fn events_to_histogram(
     amplitudes: NumassEvents, 
@@ -39,36 +37,6 @@ pub fn correct_amp(y0: f32, y1: f32, y2: f32) -> (f32, f32) {
         (-(y0 * y0) / 8.0 + y0 * y1 + y0 * y2 / 4.0 - 2.0 * y1 * y1 + y1 * y2 - (y2 * y2) / 8.0)
             / (y0 - 2.0 * y1 + y2),
     )
-}
-
-
-/// checks if frame triggered pixels is neighbors 
-/// (frame with 3 or more triggers considered as neighbors due to its probability)
-pub fn check_neigbors_fast<T>(frames: &BTreeMap<usize, T>) -> bool {
-
-    let len = frames.len();
-    
-    match len {
-        0 => false,
-        1 => false,
-        2 => {
-            let [ch_1, ch_2] = {
-                let mut keys = frames.keys();
-                [*keys.next().unwrap() + 1, *keys.next().unwrap() + 1]
-            };
-            if ch_1 == 6 || ch_2 == 6 {
-                true
-            } else {
-                let border = if ch_1 < ch_2 {
-                    [ch_1 as u8, ch_2 as u8]
-                } else {
-                    [ch_2 as u8, ch_1 as u8]
-                };
-                !DETECTOR_BORDERS.contains(&border)
-            }
-        }
-        _ => true
-    }
 }
 
 #[cfg(feature = "egui")]
