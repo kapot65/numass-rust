@@ -22,10 +22,7 @@ impl Default for ViewerState {
                 algorithm: TRAPEZOID_DEFAULT,
                 convert_to_kev: true,
             },
-            post_process: PostProcessParams {
-                merge_close_events: false,
-                ..Default::default()
-            },
+            post_process: PostProcessParams::default(),
             histogram: HistogramParams { range: 0.0..40.0, bins: 400 },
             changed: false
         }
@@ -37,7 +34,8 @@ pub enum ViewerMode {
     FilteredEvents {
         filepath: PathBuf,
         range: Range<f32>,
-        processing: ProcessParams,
+        process: ProcessParams,
+        postprocess: PostProcessParams,
     },
     Waveforms {
         filepath: PathBuf,

@@ -147,11 +147,13 @@ impl UserInput for PostProcessParams {
     fn input(&self, ui: &mut egui::Ui, ctx: &egui::Context) -> Self {
 
         let mut merge_close_events = self.merge_close_events;
+        let mut ignore_borders = self.ignore_borders;
     
         ui.add_enabled_ui(true, |ui| { // TODO: fix this
             ui.label("Postprocessing params");
             
             ui.checkbox(&mut merge_close_events, "merge close events");
+            ui.checkbox(&mut ignore_borders, "ignore borders");
             
             ui.collapsing("merge mapping", |ui| {
                 let image = if ctx.style().visuals.dark_mode {
@@ -171,6 +173,7 @@ impl UserInput for PostProcessParams {
     
         PostProcessParams { 
             merge_close_events,
+            ignore_borders
         }
     }
 }

@@ -2,31 +2,41 @@
 //! This module contains built-in postrpocessing
 //! (additional processing for events already extracted from waveforms)
 //! see [params](crate::postprocess::PostProcessParams) for details.
-//! 
-// use std::collections::BTreeMap;
+//!
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{constants::DETECTOR_BORDERS, types::{FrameEvent, NumassEvents}};
+use crate::{
+    constants::DETECTOR_BORDERS,
+    types::{FrameEvent, NumassEvent, NumassEvents},
+};
+
+#[cfg(feature = "egui")]
+use {
+    crate::utils::color_for_index,
+    egui_plot::{Line, LineStyle, MarkerShape, PlotUi, Points},
+    std::collections::HashSet,
+};
 
 /// Postprocessing params.
 #[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub struct PostProcessParams {
     pub merge_close_events: bool,
+    pub ignore_borders: bool,
 }
 
 impl Default for PostProcessParams {
     fn default() -> Self {
         Self {
             merge_close_events: true,
+            ignore_borders: false,
         }
     }
 }
 
 fn is_neighbour(ch_1: u8, ch_2: u8) -> bool {
-
     if ch_1 == ch_2 {
         return true;
     }
@@ -46,35 +56,117 @@ fn is_neighbour(ch_1: u8, ch_2: u8) -> bool {
 
 /// Built-in postprocessing algorithm.
 pub fn post_process(amplitudes: NumassEvents, params: &PostProcessParams) -> NumassEvents {
-
     if !params.merge_close_events {
         return amplitudes;
     }
 
-    amplitudes.into_iter().map(|(time, frames)| {
+    amplitudes
+        .into_iter()
+        .map(|(time, events)| {
+            let events_postprocessed = post_process_frame(
+                events,
+                params,
+                #[cfg(feature = "egui")]
+                None,
+            );
+            (time, events_postprocessed)
+        })
+        .collect::<BTreeMap<_, _>>()
+}
 
-        let mut frames = frames;
+pub fn post_process_frame(
+    mut events: Vec<NumassEvent>,
+    params: &PostProcessParams,
+    #[cfg(feature = "egui")] ui: Option<&mut PlotUi>,
+) -> Vec<NumassEvent> {
+    if !params.merge_close_events {
+        return events;
+    }
 
-        let mut idx = 0;
-        while idx < frames.len() {
+    #[cfg(feature = "egui")]
+    let mut merges = vec![];
 
-            if let (offset, FrameEvent::Event { channel, mut amplitude, size }) = frames[idx] {
-                let mut idx_next = frames.len() - 1;
-                while idx_next > idx {
-                    if let FrameEvent::Event { channel: channel_next, amplitude: amplitude_next, .. } = frames[idx_next].1 {
-                        if is_neighbour(channel, channel_next) {
-                            amplitude += amplitude_next;
-                            frames.remove(idx_next);
-                        }
+    let mut idx = 0;
+    while idx < events.len() {
+        if let (
+            offset,
+            FrameEvent::Event {
+                channel,
+                mut amplitude,
+                size,
+            },
+        ) = events[idx]
+        {
+            let mut idx_next = events.len() - 1;
+            while idx_next > idx {
+                if let (
+                    _pos2,
+                    FrameEvent::Event {
+                        channel: channel_next,
+                        amplitude: amplitude_next,
+                        ..
+                    },
+                ) = events[idx_next]
+                {
+                    if params.ignore_borders || is_neighbour(channel, channel_next) {
+                        #[cfg(feature = "egui")]
+                        merges.push((idx, (channel_next, _pos2, amplitude_next)));
+
+                        amplitude += amplitude_next;
+                        events.remove(idx_next);
                     }
-                    idx_next -= 1;
                 }
-                frames[idx] = (offset, FrameEvent::Event { channel, amplitude, size });
+                idx_next -= 1;
             }
-            idx += 1;
+            events[idx] = (
+                offset,
+                FrameEvent::Event {
+                    channel,
+                    amplitude,
+                    size,
+                },
+            );
+        }
+        idx += 1;
+    }
+
+    #[cfg(feature = "egui")]
+    if let Some(ui) = ui {
+        // draw merged points first
+        let merged_idxs = merges.iter().map(|(idx, _)| *idx).collect::<HashSet<_>>();
+        for idx in merged_idxs {
+            if let (
+                pos,
+                FrameEvent::Event {
+                    channel, amplitude, ..
+                },
+            ) = events[idx]
+            {
+                let name = format!("ch# {channel} merged");
+                ui.points(
+                    Points::new(vec![[pos as f64 / 8.0, amplitude as f64]])
+                        .color(color_for_index(channel as usize))
+                        .shape(MarkerShape::Circle)
+                        .filled(false)
+                        .radius(10.0)
+                        .name(name),
+                );
+            }
         }
 
-        (time, frames)
-    }).collect::<BTreeMap<_,_>>()
-    
+        for (idx, (channel2, pos2, amplitude2)) in merges {
+            if let (pos1, FrameEvent::Event { amplitude, .. }) = events[idx] {
+                ui.line(
+                    Line::new(vec![
+                        [pos1 as f64 / 8.0, amplitude as f64],
+                        [pos2 as f64 / 8.0, amplitude2 as f64],
+                    ])
+                    .color(color_for_index(channel2 as usize))
+                    .style(LineStyle::dotted_loose()),
+                );
+            }
+        }
+    }
+
+    events
 }
