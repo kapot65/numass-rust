@@ -284,14 +284,20 @@ pub fn frame_to_events(
                             continue;
                         }
                     }
-    
+                    
                     if (i == 0 ||  filtered[i - 1] < *treshold as f32) && filtered[i] >= *treshold as f32 {
                         let mut energy = 0.0;
                         let mut event_end = i;
     
                         while event_end < filtered.len() && filtered[event_end] >= *treshold as f32   {
                             energy += filtered[event_end];
-                            event_end += 1
+                            event_end += 1;
+
+                            if let Some((reset_start, _)) = reset {
+                                if event_end == reset_start - offset {
+                                    break;
+                                }
+                            }
                         }
     
                         if (event_end - i) >= *min_length {

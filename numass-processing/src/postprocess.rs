@@ -23,6 +23,7 @@ use {
 /// Postprocessing params.
 #[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub struct PostProcessParams {
+    pub merge_splits_first: bool,
     pub merge_close_events: bool,
     pub ignore_borders: bool,
 }
@@ -30,6 +31,7 @@ pub struct PostProcessParams {
 impl Default for PostProcessParams {
     fn default() -> Self {
         Self {
+            merge_splits_first: false,
             merge_close_events: true,
             ignore_borders: false,
         }
@@ -74,13 +76,129 @@ pub fn post_process(amplitudes: NumassEvents, params: &PostProcessParams) -> Num
         .collect::<BTreeMap<_, _>>()
 }
 
+fn merge_splits(
+    mut events: Vec<NumassEvent>,
+    #[cfg(feature = "egui")] ui: &mut Option<&mut PlotUi>,
+) -> Vec<NumassEvent> {
+    #[cfg(feature = "egui")]
+    let mut merges = vec![];
+
+    let mut to_remove = vec![];
+
+    let mut idx = 0;
+    while idx < events.len() {
+        if to_remove.contains(&idx) {
+            idx += 1;
+            continue;
+        }
+
+        if let (
+            offset,
+            FrameEvent::Event {
+                channel,
+                mut amplitude,
+                size: _,
+            },
+        ) = events[idx]
+        {
+            if channel == 5 {
+                let mut idx_past = (idx - 1) as isize;
+                while idx_past >= 0 && events[idx_past as usize].0.abs_diff(offset) < 200 {
+                    if let (
+                        _offset_past,
+                        FrameEvent::Event {
+                            #[cfg(feature = "egui")]
+                                channel: channel_past,
+                            amplitude: amplitude_past,
+                            ..
+                        },
+                    ) = events[idx_past as usize]
+                    {
+                        amplitude += amplitude_past;
+                        to_remove.push(idx_past as usize);
+
+                        #[cfg(feature = "egui")]
+                        merges.push((idx, (channel_past, _offset_past, amplitude_past)));
+                    }
+                    idx_past -= 1;
+                }
+
+                if idx != events.len() - 1 {
+                    let mut idx_next = idx + 1;
+                    while idx_next < events.len() && events[idx_next].0.abs_diff(offset) < 200 {
+                        if let (
+                            _offset_next,
+                            FrameEvent::Event {
+                                #[cfg(feature = "egui")]
+                                    channel: channel_next,
+                                amplitude: amplitude_next,
+                                ..
+                            },
+                        ) = events[idx_next]
+                        {
+                            amplitude += amplitude_next;
+                            to_remove.push(idx_next);
+
+                            #[cfg(feature = "egui")]
+                            merges.push((idx, (channel_next, _offset_next, amplitude_next)));
+                        }
+                        idx_next += 1;
+                    }
+                }
+            }
+
+            events[idx] = (
+                offset,
+                FrameEvent::Event {
+                    channel,
+                    amplitude,
+                    size: 0,
+                },
+            );
+        }
+
+        idx += 1;
+    }
+
+    #[cfg(feature = "egui")]
+    if let Some(ui) = ui {
+        for (idx, (channel2, pos2, amplitude2)) in merges {
+            if let (pos1, FrameEvent::Event { amplitude, .. }) = events[idx] {
+                ui.line(
+                    Line::new(vec![
+                        [pos1 as f64 / 8.0, amplitude as f64],
+                        [pos2 as f64 / 8.0, amplitude2 as f64],
+                    ])
+                    .color(color_for_index(channel2 as usize))
+                    .style(LineStyle::dotted_loose()),
+                );
+            }
+        }
+    }
+
+    to_remove.sort();
+    to_remove.iter().rev().for_each(|&idx| {
+        events.remove(idx);
+    });
+
+    events
+}
+
 pub fn post_process_frame(
     mut events: Vec<NumassEvent>,
     params: &PostProcessParams,
-    #[cfg(feature = "egui")] ui: Option<&mut PlotUi>,
+    #[cfg(feature = "egui")] mut ui: Option<&mut PlotUi>,
 ) -> Vec<NumassEvent> {
     if !params.merge_close_events {
         return events;
+    }
+
+    if params.merge_splits_first {
+        events = merge_splits(
+            events,
+            #[cfg(feature = "egui")]
+            &mut ui,
+        );
     }
 
     #[cfg(feature = "egui")]
