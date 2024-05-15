@@ -142,7 +142,7 @@ fn main() {
                                             &frame, 
                                             &TRAPEZOID_DEFAULT, 
                                             &StaticProcessParams { baseline: None }, 
-                                            None
+                                            &mut None
                                         );
 
                                         events.into_iter().for_each(|(_, event)| {
