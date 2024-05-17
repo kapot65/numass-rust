@@ -101,6 +101,7 @@ impl UserInput for ProcessParams {
             Algorithm::Trapezoid { 
                 left, center, right, 
                 treshold, min_length,
+                skip,
                 reset_detection: HWResetParams { 
                     window: r_window, treshold: r_treshold, size: r_size } } => {
 
@@ -136,9 +137,18 @@ impl UserInput for ProcessParams {
                 ui.add(egui::Slider::new(&mut r_size, 0..=500).text("reset size"));
                 
 
+                let mut skip = skip;
+                ui.horizontal(|ui| {
+                    ui.label("skip:");
+                    ui.radio_value(&mut skip, crate::process::SkipOption::None, "none");
+                    ui.radio_value(&mut skip, crate::process::SkipOption::Bad, "bad");
+                    ui.radio_value(&mut skip, crate::process::SkipOption::Good, "good");
+                });
+
                 Algorithm::Trapezoid { 
                     left, center, right, 
                     treshold, min_length,
+                    skip,
                     reset_detection: HWResetParams { 
                         window: r_window, treshold: r_treshold, size: r_size }}
             }

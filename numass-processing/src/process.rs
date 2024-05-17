@@ -31,6 +31,13 @@ pub struct HWResetParams {
     pub size: usize,
 }
 
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
+pub enum SkipOption {
+    None,
+    Bad,
+    Good,
+}
+
 /// Built-in algorithms params for processing the data.
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
 pub enum Algorithm {
@@ -48,7 +55,8 @@ pub enum Algorithm {
         center: usize,
         right: usize,
         treshold: i16,
-        min_length: usize,
+        min_length: usize, 
+        skip: SkipOption,
         reset_detection: HWResetParams,
     },
     LongDiff {
@@ -95,6 +103,7 @@ pub const TRAPEZOID_DEFAULT: Algorithm = Algorithm::Trapezoid {
     right: 6,
     treshold: 27,
     min_length: 10,
+    skip: SkipOption::None,
     reset_detection: HWResetParams {
         window: 10,
         treshold: 800,
@@ -301,9 +310,11 @@ pub fn frame_to_events(
             right,
             treshold,
             min_length,
+            skip,
             reset_detection,
         } => {
             let reset = detect_reset(frame, reset_detection);
+            let mut bad_frame = reset.is_some();
 
             #[cfg(feature = "egui")]
             if let Some(ui) = ui {
@@ -327,6 +338,47 @@ pub fn frame_to_events(
                     };
 
                     let mut events = vec![];
+
+                    if ch_id == &1 {
+                        if let Some((idx, _)) = waveform.iter().enumerate().find(|(_, &val)| val == 8189) {
+                            let end = if let Some((reset_start, _)) = reset {
+                                reset_start
+                            } else {
+                                waveform.len()
+                            };
+
+                            bad_frame = true;
+
+                            events.push((
+                                idx as u16 * 8,
+                                FrameEvent::Overflow {
+                                    channel: *ch_id,
+                                    size: end.abs_diff(idx) as u16,
+                                },
+                            ));
+                        }
+                    }
+
+                    if ch_id == &5 {
+                        if let Some((idx, _)) = waveform.iter().enumerate().find(|(_, &val)| val == 8081) {
+                            let end = if let Some((reset_start, _)) = reset {
+                                reset_start
+                            } else {
+                                waveform.len()
+                            };
+
+                            bad_frame = true;
+
+                            events.push((
+                                idx as u16 * 8,
+                                FrameEvent::Overflow {
+                                    channel: *ch_id,
+                                    size: end.abs_diff(idx) as u16,
+                                },
+                            ));
+                        }
+                    }
+
 
                     let offset = left + center + right;
 
@@ -419,7 +471,25 @@ pub fn frame_to_events(
                 ));
             }
 
-            events
+            match skip {
+                SkipOption::None => { events }
+                SkipOption::Bad => {
+                    if bad_frame {
+                        vec![]
+                    } else {
+                        events
+                    }
+                }
+                SkipOption::Good => {
+                    if !bad_frame {
+                        vec![]
+                    } else {
+                        events
+                    }
+                }
+            }
+
+            // events
         }
         Algorithm::LongDiff { reset_detection } => {
             let reset = detect_reset(frame, reset_detection);
