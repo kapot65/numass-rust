@@ -31,12 +31,12 @@ static GLOBAL: Jemalloc = Jemalloc;
 
 unzip_n!(pub 4);
 
-#[tokio::main]
+#[tokio::main(worker_threads = 3)]
 
 async fn main() {
-    let db_root = "/data-nvme/";
+    let db_root = "/data-2/numass-server/";
 
-    let pattern = "/2024_03/Tritium_8/set_*/p*(30s)(HV1=14000)";
+    let pattern = "/2024_03/Tritium_3/set_[12345678]/p*(30s)(HV1=14000)";
     let exclude = [];
 
     let points = get_points_by_pattern(db_root, pattern, &exclude)
@@ -121,7 +121,8 @@ async fn main() {
                 pb.lock().await.inc(1);
             })
         })
-        .collect::<Vec<_>>();
+        .collect::<Vec<_>>()
+        ;
 
     for handle in handles {
         handle.await.unwrap();

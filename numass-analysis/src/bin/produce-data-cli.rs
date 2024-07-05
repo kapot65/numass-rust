@@ -23,12 +23,12 @@ static GLOBAL: Jemalloc = Jemalloc;
 struct ProducedPoint {
     u_sp: u16,
     l_curr: f32,
-    k: f64,
-    l: f64,
-    m: f64,
-    d: f64,
-    d_sum: f64,
-    // origins: Vec<PathBuf>,
+    k: f64,        // 5..19.5 keV
+    l: f64,        // 5..[(U_sp -11000)/1000 +2] keV
+    doubles: f64,  // 19.5..33.5 keV (двойные)
+    tripples: f64, // 33.5..50 keV (тройные)
+    triggers: usize,
+    bad: usize,
     time: u64,
 }
 
@@ -41,11 +41,7 @@ struct Set {
 struct Opts {
     db_root: PathBuf,
     run: String,
-    groups: BTreeMap<String, BTreeMap<usize, Set>>,
-    e_min: f32,
-    e_max: f32,
-    e_peak: f32,
-    l_coeff: f32,
+    groups: BTreeMap<String, BTreeMap<String, Set>>,
     processing: ProcessParams,
     post_processing: PostProcessParams,
     monitor: Option<PathBuf>,
@@ -60,7 +56,8 @@ pub struct Arg {
 
 // #[test]
 // fn dumpAlgo() {
-//     println!("{}", serde_yaml::to_string(&TRAPEZOID_DEFAULT).unwrap())
+//     println!("{}", serde_yaml::to_string(&processing::process::TRAPEZOID_DEFAULT).unwrap());
+//     println!("{}", serde_yaml::to_string(&processing::postprocess::PostProcessParams::default()).unwrap())
 // }
 
 #[tokio::main] // TODO adjust worker_threads ( #[tokio::main(worker_threads = ?)] )
@@ -123,8 +120,6 @@ async fn main() {
         })
     });
 
-    // let hist_params: HistogramParams = HistogramParams { range: opts.e_min..opts.e_max, bins: 360 };
-
     let coeffs = Arc::new(
         opts.monitor
             .map(|filepath| CorrectionCoeffs::load(filepath.to_str().unwrap())),
@@ -148,12 +143,6 @@ async fn main() {
             let pb: Arc<Mutex<indicatif::ProgressBar>> = Arc::clone(&pb);
             let coeffs = Arc::clone(&coeffs);
 
-            // let hist_params = hist_params.clone();
-            let e_min = opts.e_min;
-            let e_max = opts.e_max;
-            let e_peak = opts.e_peak;
-            let l_coeff = opts.l_coeff;
-
             let processing = opts.processing.clone();
             let post_processing = opts.post_processing;
 
@@ -162,66 +151,15 @@ async fn main() {
 
                 let mut out_point = ProducedPoint {
                     u_sp: u_sp_v,
-                    l_curr: u_sp_kev * l_coeff,
+                    l_curr: u_sp_kev - 11.0 + 6.0,
                     k: 0.0,
                     l: 0.0,
-                    m: 0.0,
-                    d: 0.0,
-                    d_sum: 0.0,
-                    // origins: vec![],
+                    doubles: 0.0,
+                    tripples: 0.0,
+                    triggers: 0,
+                    bad: 0,
                     time: 0,
                 };
-
-                // let handles = points.into_iter().map(|filepath| {
-                //     let coeffs = Arc::clone(&coeffs);
-                //     let processing = processing.clone();
-                //     tokio::spawn(async move {
-                //         let monitor_coeff = if let Some(coeffs) = coeffs.as_ref() {
-                //             coeffs.get_by_index(&filepath) as f64
-                //         } else {
-                //             1.0
-                //         };
-                //         let amps = post_process(
-                //             process_point(&filepath, &processing)
-                //                 .await
-                //                 .unwrap()
-                //                 .1
-                //                 .unwrap(),
-                //             &post_processing,
-                //         );
-                //         (monitor_coeff, amps)
-                //     })
-                // }).collect::<Vec<_>>();
-                // for handle in handles {
-                //     let (monitor_coeff, amps) = handle.await.unwrap();
-                //     amps.iter().for_each(|(_, frames)| {
-                //         frames.iter().for_each(|(_, event)| {
-                //             if let FrameEvent::Event {
-                //                 channel, amplitude, ..
-                //             } = event
-                //             {
-                //                 // hist.add(*ch_num as u8, *amp);
-                //                 if (e_min..e_peak).contains(amplitude) {
-                //                     if *channel == 5 {
-                //                         out_point.k += monitor_coeff;
-                //                         if (out_point.l_curr..e_peak).contains(amplitude) {
-                //                             out_point.l += monitor_coeff;
-                //                         }
-                //                     } else if (out_point.l_curr..e_peak).contains(amplitude) {
-                //                         out_point.m += monitor_coeff;
-                //                     }
-                //                 } else if (e_peak..e_max).contains(amplitude) {
-                //                     out_point.d_sum += monitor_coeff;
-                //                     if *channel == 5 {
-                //                         out_point.d += monitor_coeff;
-                //                     }
-                //                 }
-                //             }
-                //         })
-                //     });
-                //     out_point.time += 30; // TODO: remove hardcode
-                // }
-
 
                 for filepath in points {
                     let monitor_coeff = if let Some(coeffs) = coeffs.as_ref() {
@@ -230,54 +168,53 @@ async fn main() {
                         1.0
                     };
 
-                    let amps = post_process(
-                        process_point(&filepath, &processing)
-                            .await
-                            .unwrap()
-                            .1
-                            .unwrap(),
-                        &post_processing,
-                    );
+                    let frames = process_point(&filepath, &processing)
+                        .await
+                        .unwrap()
+                        .1
+                        .unwrap();
 
-                    amps.iter().for_each(|(_, frames)| {
-                        frames.iter().for_each(|(_, event)| {
-                            if let FrameEvent::Event {
-                                channel, amplitude, ..
-                            } = event
-                            {
-                                // hist.add(*ch_num as u8, *amp);
-                                if (e_min..e_peak).contains(amplitude) {
-                                    if *channel == 5 {
+                    out_point.triggers += frames.len();
+
+                    let frames = post_process(frames, &post_processing);
+
+                    frames.iter().for_each(|(_, events)| {                        
+                        let mut is_bad = false;
+
+                        if events.is_empty() {
+                            is_bad = true;
+                        } else {
+                            events.iter().for_each(|(_, event)| match event {
+                                FrameEvent::Event { amplitude, .. } => {
+                                    if (4.0..19.5).contains(amplitude) {
                                         out_point.k += monitor_coeff;
-                                        if (out_point.l_curr..e_peak).contains(amplitude) {
+                                        if (4.0..out_point.l_curr).contains(amplitude) {
                                             out_point.l += monitor_coeff;
                                         }
-                                    } else if (out_point.l_curr..e_peak).contains(amplitude) {
-                                        out_point.m += monitor_coeff;
-                                    }
-                                } else if (e_peak..e_max).contains(amplitude) {
-                                    out_point.d_sum += monitor_coeff;
-
-                                    if *channel == 5 {
-                                        out_point.d += monitor_coeff;
+                                    } else if (19.5..33.5).contains(amplitude) {
+                                        out_point.doubles += monitor_coeff;
+                                    } else if (33.5..50.0).contains(amplitude) {
+                                        out_point.tripples += monitor_coeff;
                                     }
                                 }
-                            }
-                        })
+                                FrameEvent::Reset { .. } => {
+                                    is_bad = true;
+                                }
+                                FrameEvent::Overflow { .. } => {
+                                    is_bad = true;
+                                }
+                                FrameEvent::Frame { .. } => {}
+                            })
+                        }
+
+                        if is_bad {
+                            out_point.bad += 1;
+                        }
                     });
 
                     out_point.time += 30; // TODO: remove hardcode
-                    // out_point.origins.push(filepath);
+                                          // out_point.origins.push(filepath);
                 }
-
-                // TODO: move to PointHistogram trait
-                // let mut ascii_hist = "u\tcounts\n".to_string();
-                // {
-                //     let(_, counts) = hist.channels.iter().find(|(ch_id, _)| **ch_id == 5).unwrap();
-                //     counts.iter().enumerate().for_each(|(i, val)| {
-                //         ascii_hist.push_str(&format!("{}\t{}\n", hist.x[i], val));
-                //     })
-                // }
 
                 table.lock().await.insert(u_sp_v, out_point);
                 pb.lock().await.inc(1)
@@ -289,26 +226,24 @@ async fn main() {
         handle.await.unwrap();
     }
 
-    let mut table_data = "u_sp\tl_curr\tk\tl\tm\td\td_sum\ttime\n".to_string();
+    let mut table_data = "u_sp\tl_curr\tk\tl\tdoubles\ttripples\tframes\tbad\ttime\n".to_string();
     table
         .try_lock()
         .unwrap()
         .clone()
         .iter()
         .for_each(|(u_sp, point)| {
-            table_data.push_str(
-                &format!(
-                    "{u_sp}\t{l_curr}\t{k}\t{l}\t{m}\t{d}\t{d_sum}\t{time}\n",
-                    l_curr = point.l_curr,
-                    k = point.k.round() as u64,
-                    l = point.l.round() as u64,
-                    m = point.m.round() as u64,
-                    d = point.d.round() as u64,
-                    d_sum = point.d_sum.round() as u64,
-                    time = point.time
-                )
-                .replace('.', ","),
-            );
+            table_data.push_str(&format!(
+                "{u_sp}\t{l_curr}\t{k}\t{l}\t{d}\t{t}\t{f}\t{r}\t{time}\n",
+                l_curr = point.l_curr,
+                k = point.k.round() as u64,
+                l = point.l.round() as u64,
+                d = point.doubles.round() as u64,
+                t = point.tripples.round() as u64,
+                f = point.triggers,
+                r = point.bad,
+                time = point.time
+            ));
         });
 
     std::fs::write(args.config_file.with_extension("tsv"), table_data).unwrap()
