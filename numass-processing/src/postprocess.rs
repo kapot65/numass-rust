@@ -178,7 +178,9 @@ fn merge_splits(
 
     to_remove.sort();
     to_remove.iter().rev().for_each(|&idx| {
-        events.remove(idx);
+        if idx < events.len() { // TODO: find solution
+            events.remove(idx);
+        }
     });
 
     events
