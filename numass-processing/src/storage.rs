@@ -8,6 +8,7 @@ use numass::NumassMeta;
 use protobuf::Message;
 use serde::{Deserialize, Serialize};
 
+
 use crate::{process::ProcessParams, types::NumassEvents, numass::protos::rsb_event};
 
 /// Process point from the storage.
@@ -127,47 +128,156 @@ pub async fn load_point(filepath: &Path) -> rsb_event::Point {
 
 /// Temporal numass file storage representation.
 /// TODO: switch to real numass storage service when it will be implemented.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum LoadState {
+    NotLoaded,
+    NeedLoad,
+    Loaded
+}
+
+impl Default for LoadState {
+    fn default() -> Self {
+        Self::NotLoaded
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FSRepr {
     File {
         path: PathBuf,
+        modified: SystemTime
     },
     Directory {
         path: PathBuf,
         children: Vec<FSRepr>,
+        modified: SystemTime,
+        #[serde(skip_serializing, default)]
+        load_state: LoadState
     },
 }
 
 impl FSRepr {
-    pub fn to_filename(&self) -> &str {
+    pub fn to_filename(&self) -> PathBuf {
         let path = match self {
-            FSRepr::File { path } => path,
-            FSRepr::Directory { path, children: _ } => path,
+            FSRepr::File { path, .. } => path,
+            FSRepr::Directory { path, .. } => path,
         };
-        path.file_name().unwrap().to_str().unwrap()
+        path.to_owned()
+    }
+
+    pub fn new(path: PathBuf) -> FSRepr {
+        FSRepr::Directory { 
+            path, 
+            children: vec![], 
+            load_state: LoadState::NotLoaded, 
+            modified: SystemTime::UNIX_EPOCH
+        }
+    }
+
+    pub async fn reload(self) {
+        unimplemented!()
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn expand_dir(path: PathBuf) -> Option<FSRepr> {
+    pub async fn ls(path: PathBuf) -> FSRepr {
+        let meta = tokio::fs::metadata(&path).await.unwrap();
 
-        let meta = std::fs::metadata(&path).unwrap();
         if meta.is_file() {
-            Some(FSRepr::File { path })
-        } else if meta.is_dir() {
-            let children = std::fs::read_dir(&path).unwrap();
+            return FSRepr::File { path, modified: meta.modified().unwrap() }
+        }
 
-            let mut children = children
-                .filter_map(|child| {
-                    let entry = child.unwrap();
-                    FSRepr::expand_dir(entry.path())
-                })
-                .collect::<Vec<_>>();
+        if meta.is_dir() {
+            let mut read_dir = tokio::fs::read_dir(&path).await.unwrap();
 
-            children.sort_by(|a, b| natord::compare(a.to_filename(), b.to_filename()));
-
-            Some(FSRepr::Directory { path, children })
+            let mut children = vec![];
+            while let Ok(Some(child)) = read_dir.next_entry().await {
+                let meta = child.metadata().await.unwrap();
+                let path = child.path();
+                if meta.is_file() {
+                    children.push(FSRepr::File { path, modified: meta.modified().unwrap() });
+                } else if meta.is_dir() {
+                    children.push(FSRepr::Directory { 
+                        path, children: vec![], 
+                        modified: meta.modified().unwrap(), 
+                        load_state: LoadState::NotLoaded 
+                    });
+                }
+            }
+            FSRepr::Directory { 
+                path, children, 
+                modified: meta.modified().unwrap(), 
+                load_state: LoadState::NotLoaded 
+            }
         } else {
-            panic!()
+            panic!("neither file, nor directory!")
         }
     }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn ls(path: PathBuf) -> FSRepr {
+        let payload = gloo::net::http::Request::get(&api_url("api/ls", &path))
+        .send()
+        .await
+        .unwrap()
+        .binary()
+        .await
+        .unwrap();
+        serde_json::from_slice(&payload).unwrap() // TODO: change to Request (to remove serde-json)?
+    }
+
+    pub async fn expand(path: PathBuf, children: &mut Vec<FSRepr>, modified: &mut SystemTime, load_state: &mut LoadState) {
+        *load_state = LoadState::Loaded;
+        let updated = FSRepr::ls(path.to_owned()).await;
+        if let FSRepr::Directory { 
+            children: children_upd, 
+            modified: modified_upd, 
+            ..
+        } = updated {
+            let mut to_merge = children_upd.into_iter().map(|child| (child.to_filename(), child)).collect::<std::collections::HashMap<_,_>>();
+            for child in children.iter() {
+                if let Some(place) = to_merge.get_mut(&child.to_filename()) {
+                    *place = child.clone()
+                }
+            }
+            *children = to_merge.into_values().collect::<Vec<_>>();
+            children.sort_by(|v1, v2| natord::compare(
+                v1.to_filename().as_os_str().to_str().unwrap(), 
+                v2.to_filename().as_os_str().to_str().unwrap()));
+
+            *modified = modified_upd;
+        };
+    }
+
+    pub async fn expand_reccurently(&mut self) {
+        let mut current = vec![self];
+        loop {
+            if current.is_empty() {
+                break;
+            }
+            let mut next = vec![];
+            for child in current {
+                if let FSRepr::Directory { path, children, modified, load_state } = child {
+
+                    match load_state {
+                        LoadState::NeedLoad => {
+                            FSRepr::expand(path.to_path_buf(), children, modified, load_state).await;
+                            for ele in children.iter_mut() {
+                                next.push(ele);
+                            }
+                        }
+                        LoadState::Loaded => {
+                            for ele in children.iter_mut() {
+                                next.push(ele);
+                            }
+                        }
+                        LoadState::NotLoaded => {}
+                    }
+                }
+            }
+            current = next;
+        }
+
+    }
+
+
 }
