@@ -236,7 +236,7 @@ impl FSRepr {
             let mut to_merge = children_upd.into_iter().map(|child| (child.to_filename(), child)).collect::<std::collections::HashMap<_,_>>();
             for child in children.iter() {
                 if let Some(place) = to_merge.get_mut(&child.to_filename()) {
-                    *place = child.clone()
+                    *place = child.clone() // TODO: update modified time in children
                 }
             }
             *children = to_merge.into_values().collect::<Vec<_>>();
@@ -276,7 +276,49 @@ impl FSRepr {
             }
             current = next;
         }
+    }
 
+    pub async fn update_reccurently(&mut self) {
+        let mut current = vec![self];
+        loop {
+            if current.is_empty() {
+                break;
+            }
+            let mut next = vec![];
+            for leaf in current {
+                if let FSRepr::Directory { path, children, modified, load_state } = leaf {
+                    match load_state {
+                        LoadState::Loaded => {
+                            if let FSRepr::Directory { 
+                                children: mut children_new, 
+                                modified: modified_new, 
+                                ..
+                            } = FSRepr::ls(path.to_owned()).await {
+                                children_new.iter_mut().for_each(|child_new| {
+                                    if let Some(child) = children.iter().find(|child| child.to_filename() == child_new.to_filename()) {
+                                        if let FSRepr::Directory { load_state: LoadState::Loaded, .. } = child {
+                                            if let FSRepr::Directory { load_state, .. } = child_new {
+                                                *load_state = LoadState::Loaded;
+                                            }
+                                        }
+                                    }
+                                });
+                                *children = children_new;
+                                *modified = modified_new;
+                            }
+
+                            for ele in children.iter_mut() {
+                                next.push(ele);
+                            }
+                        }
+                        LoadState::NeedLoad => {
+                        }
+                        LoadState::NotLoaded => {}
+                    }
+                }
+            }
+            current = next;
+        }
     }
 
 
