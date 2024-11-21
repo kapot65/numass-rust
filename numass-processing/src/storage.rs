@@ -2,6 +2,7 @@
 //! High-level processing + storage functions
 //! Should work with both local and remote storage.
 //! If possible, use functions from this module instead of [process](crate::process) and [postprocess](crate::postprocess) directly.
+use core::panic;
 use std::{fs, path::{Path, PathBuf}, time::SystemTime};
 
 use numass::NumassMeta;
@@ -118,11 +119,14 @@ pub async fn load_point(filepath: &Path) -> rsb_event::Point {
 
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let mut point_file = tokio::fs::File::open(&filepath).await.unwrap();
-        let message = dataforge::read_df_message::<numass::NumassMeta>(&mut point_file)
+        if let Ok(mut point_file) = tokio::fs::File::open(&filepath).await {
+            let message = dataforge::read_df_message::<numass::NumassMeta>(&mut point_file)
             .await
             .unwrap();
-        rsb_event::Point::parse_from_bytes(&message.data.unwrap_or(vec![])[..]).unwrap()
+            rsb_event::Point::parse_from_bytes(&message.data.unwrap_or(vec![])[..]).unwrap()
+        } else {
+            panic!("{filepath:?} open failed")
+        }
     }
 }
 
@@ -303,6 +307,9 @@ impl FSRepr {
                                         }
                                     }
                                 });
+                                children_new.sort_by(|v1, v2| natord::compare(
+                                    v1.to_filename().as_os_str().to_str().unwrap(), 
+                                    v2.to_filename().as_os_str().to_str().unwrap()));
                                 *children = children_new;
                                 *modified = modified_new;
                             }
