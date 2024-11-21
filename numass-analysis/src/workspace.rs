@@ -7,15 +7,15 @@
 use std::{path::PathBuf, ops::Range};
 
 pub fn get_workspace() -> PathBuf {
-    PathBuf::from("/home/chernov/Documents/produced/numass-analysis-workspace/")
+    PathBuf::from("/data-fast/numass-analysis-workspace/")
 }
 
 pub fn get_cache_root() -> PathBuf {
-    PathBuf::from("/data-nvme/workspace-cache")
+    PathBuf::from("/data-fast/workspace-cache")
 }
 
 pub fn get_db_fast_root() -> PathBuf {
-    PathBuf::from("/data-nvme")
+    PathBuf::from("/data-fast/numass-server")
 }
 
 pub fn get_db_slow_root() -> PathBuf {

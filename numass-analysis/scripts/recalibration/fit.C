@@ -44,9 +44,9 @@ map<int, Output*> fit(const char* folder, double l_range, double r_range) {
     
     ofstream out_file;
     out_file.open(TString::Format("./output/calibration_%s.csv", folder).Data());
-    out_file << "voltage,0,1,2,3,4,5,6" << endl;
+    out_file << "voltage,1,2,3,4,5,6" << endl;
 
-    int voltages[] = {14000, 14500, 15000, 15500, 16000, 16500, 17000, 17500};
+    int voltages[] = {12500, 13000, 13500, 14000, 14500, 15000, 15500, 16000, 16500};
     
     for (int i = 0; i < 8; i++) {
 
@@ -57,7 +57,7 @@ map<int, Output*> fit(const char* folder, double l_range, double r_range) {
         auto df = ROOT::RDF::FromCSV(TString::Format("./%s/%i.csv", folder, voltage).Data());
         const RVec<Double_t> bins = df.Take<Double_t>("bin").GetValue();
 
-        ushort ch_ids[] = {0, 1, 2, 3, 4, 5, 6};
+        ushort ch_ids[] = {1, 2, 3, 4, 5, 6};
         auto channels = map<ushort, Channel>();
 
         for (auto ch_id : ch_ids) {

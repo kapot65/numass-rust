@@ -11,7 +11,108 @@ use tokio::sync::Mutex;
 async fn main() {
 
     let mut points = BTreeMap::new();
-    points.insert(12000u16, vec![PathBuf::from("/data-nvme/2024_03/Tritium_2/set_1/p149(30s)(HV1=12100)")]);
+
+    points.insert(12000u16, vec![
+        PathBuf::from("/data-fast/numass-server/2024_11/Tritium_2/set_2/p164(30s)(HV1=11450)"),
+    ]);
+
+    // points.insert(12000u16, vec![
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_2/set_1/p173(30s)(HV1=11050)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_2/set_2/p173(30s)(HV1=11050)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_2/set_3/p173(30s)(HV1=11050)"),
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_2/set_4/p173(30s)(HV1=11050)"),
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_2/set_5/p173(30s)(HV1=11050)"),
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_2/set_7/p173(30s)(HV1=11050)"),
+
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_3/set_1/p173(30s)(HV1=11050)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_3/set_2/p173(30s)(HV1=11050)"),
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_3/set_3/p173(30s)(HV1=11050)"),
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_3/set_4/p173(30s)(HV1=11050)"),
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_3/set_5/p173(30s)(HV1=11050)"),
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_3/set_6/p173(30s)(HV1=11050)"),
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_3/set_7/p173(30s)(HV1=11050)"),
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_3/set_8/p173(30s)(HV1=11050)"),
+
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_4/set_1/p173(30s)(HV1=11050)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_4/set_2/p173(30s)(HV1=11050)"),
+
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_5/set_1/p173(30s)(HV1=11050)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_5/set_2/p173(30s)(HV1=11050)"),
+
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_6/set_1/p173(30s)(HV1=11050)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_6/set_2/p173(30s)(HV1=11050)"),
+
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_7/set_1/p173(30s)(HV1=11050)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_7/set_2/p173(30s)(HV1=11050)"),
+
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_8/set_1/p173(30s)(HV1=11050)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_8/set_2/p173(30s)(HV1=11050)"),
+
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_9/set_1/p173(30s)(HV1=11050)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_9/set_2/p173(30s)(HV1=11050)"),
+
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_10/set_1/p173(30s)(HV1=11050)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_10/set_2/p173(30s)(HV1=11050)"),
+
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_11/set_1/p173(30s)(HV1=11050)"),
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_11/set_2/p173(30s)(HV1=11050)"),
+
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_12/set_1/p173(30s)(HV1=11050)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_12/set_2/p173(30s)(HV1=11050)"),
+    // ]);
+
+    // let mut points = BTreeMap::new();
+    // points.insert(12000u16, vec![
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_2/set_1/p174(30s)(HV1=11000)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_2/set_2/p174(30s)(HV1=11000)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_2/set_3/p174(30s)(HV1=11000)"),
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_2/set_4/p174(30s)(HV1=11000)"),
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_2/set_5/p174(30s)(HV1=11000)"),
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_2/set_7/p174(30s)(HV1=11000)"),
+
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_3/set_1/p174(30s)(HV1=11000)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_3/set_2/p174(30s)(HV1=11000)"),
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_3/set_3/p174(30s)(HV1=11000)"),
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_3/set_4/p174(30s)(HV1=11000)"),
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_3/set_5/p174(30s)(HV1=11000)"),
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_3/set_6/p174(30s)(HV1=11000)"),
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_3/set_7/p174(30s)(HV1=11000)"),
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_3/set_8/p174(30s)(HV1=11000)"),
+
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_4/set_1/p174(30s)(HV1=11000)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_4/set_2/p174(30s)(HV1=11000)"),
+
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_5/set_1/p174(30s)(HV1=11000)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_5/set_2/p174(30s)(HV1=11000)"),
+
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_6/set_1/p174(30s)(HV1=11000)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_6/set_2/p174(30s)(HV1=11000)"),
+
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_7/set_1/p174(30s)(HV1=11000)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_7/set_2/p174(30s)(HV1=11000)"),
+
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_8/set_1/p174(30s)(HV1=11000)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_8/set_2/p174(30s)(HV1=11000)"),
+
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_9/set_1/p174(30s)(HV1=11000)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_9/set_2/p174(30s)(HV1=11000)"),
+
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_10/set_1/p174(30s)(HV1=11000)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_10/set_2/p174(30s)(HV1=11000)"),
+
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_11/set_1/p174(30s)(HV1=11000)"),
+    //     // PathBuf::from("/data/numass-server/2024_03/Tritium_11/set_2/p174(30s)(HV1=11000)"),
+
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_12/set_1/p174(30s)(HV1=11000)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_12/set_2/p174(30s)(HV1=11000)"),
+    // ]);
+
+
+    // let mut points = BTreeMap::new();
+    // points.insert(12000u16, vec![
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_4/set_3/p174(30s)(HV1=11000)"),
+    //     PathBuf::from("/data/numass-server/2024_03/Tritium_4/set_4/p174(30s)(HV1=11000)"),
+    // ]);
 
     let hist = Arc::new(
         Mutex::new(PointHistogram::new_step(0.0..3e5, 24.0 * 4.0)));
@@ -24,6 +125,8 @@ async fn main() {
 
                 let point = load_point(&filepath).await;
 
+                let static_params = StaticProcessParams::from_point(&point);
+
                 let frames = extract_waveforms(&point);
 
                 let times = frames.into_iter().flat_map(|(time, frame)| {
@@ -31,7 +134,7 @@ async fn main() {
                     let mut frame_times = frame_to_events(
                         &frame, 
                         &TRAPEZOID_DEFAULT, 
-                        &StaticProcessParams { baseline: None }, 
+                        &static_params, 
                         &mut None
                     ).into_iter().filter_map(|(ev_time, event)| {
                         if let FrameEvent::Event { .. } = event {
@@ -82,7 +185,7 @@ async fn main() {
         let mut plot = Plot::new();
 
         let layout = Layout::new()
-            .title(Title::new("Time Deltas for /data-2/numass-server/2024_03/Tritium_7/set_1/p45(30s)(HV1=14000)"))
+            .title(Title::new("Time Deltas for Tritium_2/set_[123]/p174(30s)(HV1=11000)"))
             .x_axis(Axis::new().title(Title::new("time delta, ns")))
             .y_axis(Axis::new().type_(plotly::layout::AxisType::Log))
             .height(1000);

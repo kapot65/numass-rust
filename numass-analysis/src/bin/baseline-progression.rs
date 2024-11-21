@@ -20,57 +20,57 @@ async fn main() {
     let points = [
         // "/data-nvme/2024_03/Electrode_2/set_1/p5(400s)(HV1=12000)",
 
-        "/data-nvme/2024_03/Electrode_3/set_1/p5(20s)(HV1=12000)",
+        "/data-fast/numass-server/2024_11/Electrode_1/set_2/p0(400s)(HV1=4000)",
 
-        "/data-nvme/2024_03/Tritium_1/set_1/p153(30s)(HV1=11950)",
+        "/data-fast/numass-server/2024_11/Electrode_1/set_5/p0(400s)(HV1=4000)",
         
         
-        "/data-nvme/2024_03/Tritium_2/set_1/p150(30s)(HV1=12050)",
+        // "/data-nvme/2024_03/Tritium_2/set_1/p150(30s)(HV1=12050)",
 
 
-        "/data-nvme/2024_03/Tritium_2/set_3/p152(30s)(HV1=12000)",
+        // "/data-nvme/2024_03/Tritium_2/set_3/p152(30s)(HV1=12000)",
 
 
-        "/data-nvme/2024_03/Tritium_2/set_5/p152(30s)(HV1=12000)",
+        // "/data-nvme/2024_03/Tritium_2/set_5/p152(30s)(HV1=12000)",
 
 
-        "/data-2/numass-server/2024_03/Tritium_3/set_3/p152(30s)(HV1=12000)",
-        // "/data-2/numass-server/2024_03/Tritium_3/set_8/p152(30s)(HV1=12000)",
+        // "/data-2/numass-server/2024_03/Tritium_3/set_3/p152(30s)(HV1=12000)",
+        // // "/data-2/numass-server/2024_03/Tritium_3/set_8/p152(30s)(HV1=12000)",
 
-        "/data-2/numass-server/2024_03/Tritium_4/set_1/p152(30s)(HV1=12000)",
-        // "/data-2/numass-server/2024_03/Tritium_4/set_6/p152(30s)(HV1=12000)",
+        // "/data-2/numass-server/2024_03/Tritium_4/set_1/p152(30s)(HV1=12000)",
+        // // "/data-2/numass-server/2024_03/Tritium_4/set_6/p152(30s)(HV1=12000)",
 
-        "/data-2/numass-server/2024_03/Tritium_5/set_1/p152(30s)(HV1=12000)",
-        // "/data-2/numass-server/2024_03/Tritium_5/set_6/p152(30s)(HV1=12000)",
+        // "/data-2/numass-server/2024_03/Tritium_5/set_1/p152(30s)(HV1=12000)",
+        // // "/data-2/numass-server/2024_03/Tritium_5/set_6/p152(30s)(HV1=12000)",
 
-        "/data-2/numass-server/2024_03/Tritium_5/set_1/p152(30s)(HV1=12000)",
-        // "/data-2/numass-server/2024_03/Tritium_5/set_6/p152(30s)(HV1=12000)",
+        // "/data-2/numass-server/2024_03/Tritium_5/set_1/p152(30s)(HV1=12000)",
+        // // "/data-2/numass-server/2024_03/Tritium_5/set_6/p152(30s)(HV1=12000)",
 
-        "/data-2/numass-server/2024_03/Tritium_6/set_1/p152(30s)(HV1=12000)",
-        // "/data-2/numass-server/2024_03/Tritium_6/set_6/p152(30s)(HV1=12000)",
-        "/data-2/numass-server/2024_03/Tritium_6/set_12/p152(30s)(HV1=12000)",
+        // "/data-2/numass-server/2024_03/Tritium_6/set_1/p152(30s)(HV1=12000)",
+        // // "/data-2/numass-server/2024_03/Tritium_6/set_6/p152(30s)(HV1=12000)",
+        // "/data-2/numass-server/2024_03/Tritium_6/set_12/p152(30s)(HV1=12000)",
 
-        // "/data-2/numass-server/2024_03/Tritium_7/set_1/p152(30s)(HV1=12000)",
-        "/data-2/numass-server/2024_03/Tritium_7/set_6/p152(30s)(HV1=12000)",
-        // "/data-2/numass-server/2024_03/Tritium_7/set_12/p152(30s)(HV1=12000)",
-        "/data-2/numass-server/2024_03/Tritium_7/set_18/p152(30s)(HV1=12000)",
-
-
-        // "/data-2/numass-server/2024_03/Tritium_8/set_1/p152(30s)(HV1=12000)",
-        "/data-3/numass-server/2024_03/Tritium_8/set_6/p152(30s)(HV1=12000)",
-
-        // "/data-3/numass-server/2024_03/Tritium_9/set_1/p152(30s)(HV1=12000)",
-        "/data-3/numass-server/2024_03/Tritium_9/set_6/p152(30s)(HV1=12000)",
+        // // "/data-2/numass-server/2024_03/Tritium_7/set_1/p152(30s)(HV1=12000)",
+        // "/data-2/numass-server/2024_03/Tritium_7/set_6/p152(30s)(HV1=12000)",
+        // // "/data-2/numass-server/2024_03/Tritium_7/set_12/p152(30s)(HV1=12000)",
+        // "/data-2/numass-server/2024_03/Tritium_7/set_18/p152(30s)(HV1=12000)",
 
 
-        // "/data-3/numass-server/2024_03/Tritium_10/set_1/p152(30s)(HV1=12000)",
-        "/data-3/numass-server/2024_03/Tritium_10/set_6/p152(30s)(HV1=12000)",
+        // // "/data-2/numass-server/2024_03/Tritium_8/set_1/p152(30s)(HV1=12000)",
+        // "/data-3/numass-server/2024_03/Tritium_8/set_6/p152(30s)(HV1=12000)",
 
-        // "/data-3/numass-server/2024_03/Tritium_11/set_1/p152(30s)(HV1=12000)",
-        "/data-3/numass-server/2024_03/Tritium_11/set_6/p152(30s)(HV1=12000)",
+        // // "/data-3/numass-server/2024_03/Tritium_9/set_1/p152(30s)(HV1=12000)",
+        // "/data-3/numass-server/2024_03/Tritium_9/set_6/p152(30s)(HV1=12000)",
 
-        // "/data-3/numass-server/2024_03/Tritium_12/set_1/p152(30s)(HV1=12000)",
-        "/data-3/numass-server/2024_03/Tritium_12/set_6/p152(30s)(HV1=12000)",
+
+        // // "/data-3/numass-server/2024_03/Tritium_10/set_1/p152(30s)(HV1=12000)",
+        // "/data-3/numass-server/2024_03/Tritium_10/set_6/p152(30s)(HV1=12000)",
+
+        // // "/data-3/numass-server/2024_03/Tritium_11/set_1/p152(30s)(HV1=12000)",
+        // "/data-3/numass-server/2024_03/Tritium_11/set_6/p152(30s)(HV1=12000)",
+
+        // // "/data-3/numass-server/2024_03/Tritium_12/set_1/p152(30s)(HV1=12000)",
+        // "/data-3/numass-server/2024_03/Tritium_12/set_6/p152(30s)(HV1=12000)",
     ];
 
     let channel_baseline = Arc::new(Mutex::new(BTreeMap::new()));
@@ -91,7 +91,7 @@ async fn main() {
 
             let time = point.channels[0].blocks[0].time;
 
-            let mut hist = PointHistogram::new_step(-5.0..40.0, 0.5);
+            let mut hist = PointHistogram::new_step(-5.0..120.0, 0.5);
             
             let waveforms = extract_waveforms(&point);
 

@@ -11,39 +11,39 @@ async fn main() {
     let points = [
         (
             4.0,
-            "/data-nvme/2024_03/Electrode_3/set_1/p1(20s)(HV1=4000)",
+            "/data-fast/numass-server/2024_11/Electrode_1/set_4/p0(400s)(HV1=4000)",
         ),
         (
             6.0,
-            "/data-nvme/2024_03/Electrode_3/set_1/p2(20s)(HV1=6000)",
+            "/data-fast/numass-server/2024_11/Electrode_1/set_4/p1(400s)(HV1=6000)",
         ),
         (
             8.0,
-            "/data-nvme/2024_03/Electrode_3/set_1/p3(20s)(HV1=8000)",
+            "/data-fast/numass-server/2024_11/Electrode_1/set_4/p2(400s)(HV1=8000)",
         ),
         (
             10.0,
-            "/data-nvme/2024_03/Electrode_3/set_1/p4(20s)(HV1=10000)",
+            "/data-fast/numass-server/2024_11/Electrode_1/set_4/p3(400s)(HV1=10000)",
         ),
         (
             12.0,
-            "/data-nvme/2024_03/Electrode_3/set_1/p5(20s)(HV1=12000)",
+            "/data-fast/numass-server/2024_11/Electrode_1/set_4/p4(400s)(HV1=12000)",
         ),
         (
             14.0,
-            "/data-nvme/2024_03/Electrode_3/set_1/p6(20s)(HV1=14000)",
+            "/data-fast/numass-server/2024_11/Electrode_1/set_4/p5(400s)(HV1=14000)",
         ),
         (
             16.0,
-            "/data-nvme/2024_03/Electrode_3/set_1/p7(20s)(HV1=16000)",
+            "/data-fast/numass-server/2024_11/Electrode_1/set_4/p6(400s)(HV1=16000)",
         ),
         (
             18.0,
-            "/data-nvme/2024_03/Electrode_3/set_1/p8(20s)(HV1=18000)",
+            "/data-fast/numass-server/2024_11/Electrode_1/set_4/p7(400s)(HV1=18000)",
         ),
         (
             20.0,
-            "/data-nvme/2024_03/Electrode_3/set_1/p9(20s)(HV1=20000)",
+            "/data-fast/numass-server/2024_11/Electrode_1/set_4/p8(400s)(HV1=20000)",
         ),
     ];
 

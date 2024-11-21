@@ -1,5 +1,5 @@
 use analysis::{get_points_by_pattern, workspace::{get_workspace, get_db_fast_root}};
-use processing::types::FrameEvent;
+use processing::{process::{Algorithm, TRAPEZOID_DEFAULT}, types::FrameEvent};
 
 use {
     processing::{
@@ -15,36 +15,28 @@ use {
 async fn main() {
 
     let pattern = format!("{run}/Tritium_*/set_[1234]/p*",
-        run = "2023_03"
+        run = "2024_11"
     );
     let exclude = vec![
-        "Tritium_1/set_10".to_owned(),
-        "Tritium_2/set_5/p18".to_owned(),
-        "Tritium_2/set_5/p19".to_owned(),
-        "Tritium_2/set_14/p20".to_owned(),
-        "Tritium_2/set_14/p22".to_owned(),
-        "Tritium_3/set_25_short".to_owned(),
-        "Tritium_2/set_29/p37".to_owned(),
-        "Tritium_4/set_10_short".to_owned(),
-        "Tritium_4/set_25/p7".to_owned(),
-        "Tritium_4/set_25_18000V_bad".to_owned(),
-        "Tritium_5/set_10".to_owned()
     ];
 
-    // let u_sp = [12000, 12500, 13000, 13500, 14000, 14500, 15000, 15500, 16000, 16500, 17000];
+    // let u_sp = [12500, 13000, 13500, 14000, 14500, 15000, 15500, 16000, 16500, 17000];
  
     // let processing_params = ProcessParams {
-    //     algorithm: Algorithm::default(),
+    //     algorithm: TRAPEZOID_DEFAULT,
     //     convert_to_kev: false,
     // };
 
-    // let hist = PointHistogram::new(0.0..120.0, 480);
+    // let hist = PointHistogram::new(60.0..150.0, 360);
 
-    let u_sp = [12000, 12500, 13000, 13500, 14000, 14500, 15000, 15500, 16000, 16500, 17000];
+    let u_sp = [12500, 13000, 13500, 14000, 14500, 15000, 15500, 16000, 16500, 17000];
 
-    let processing_params = ProcessParams::default();
+    let processing_params = ProcessParams {
+        algorithm: TRAPEZOID_DEFAULT,
+        convert_to_kev: true,
+    };
 
-    let hist = PointHistogram::new(0.0..20.0, 400);
+    let hist = PointHistogram::new(8.0..20.0, 240);
     
     for u_sp in u_sp {
         let points = get_points_by_pattern(get_db_fast_root().to_str().unwrap(), &pattern, &exclude);

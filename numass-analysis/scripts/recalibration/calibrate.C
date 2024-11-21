@@ -37,7 +37,7 @@ void calibrate() {
 
 
     coeffsFile << "[\n";
-    for (int i = 0; i < 7; i++) {
+    for (int i = 1; i < 7; i++) {
         auto ch = raw_df.Take<Double_t>(to_string(i)).GetValue();
 
         TCanvas *c1 = new TCanvas(TString::Format("Channel %d", i));

@@ -193,7 +193,7 @@ async fn main() {
                 corr_frames.iter().for_each(|(_, events)| {
                     events.iter().for_each(|(_, event)| {
                         if let FrameEvent::Event {
-                            amplitude, channel, ..
+                            amplitude, ..
                         } = event
                         {
                             // if channel != &1 && channel != &5 {
@@ -214,7 +214,7 @@ async fn main() {
                 monitor_frames.iter().for_each(|(_, events)| {
                     events.iter().for_each(|(_, event)| {
                         if let FrameEvent::Event {
-                            amplitude, channel, ..
+                            amplitude, ..
                         } = event
                         {
                             // if channel != &1 && channel != &5 {
