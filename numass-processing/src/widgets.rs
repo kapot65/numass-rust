@@ -11,9 +11,9 @@ impl UserInput for HistogramParams {
     fn input(&self, ui: &mut egui::Ui, _: &egui::Context) -> Self {
         ui.label("Histogram params");
         let mut min = self.range.start;
-        ui.add(egui::Slider::new(&mut min, -10.0..=400.0).text("left"));
+        ui.add(egui::Slider::new(&mut min, -10.0..=800.0).text("left"));
         let mut max = self.range.end;
-        ui.add(egui::Slider::new(&mut max, -10.0..=400.0).text("right"));
+        ui.add(egui::Slider::new(&mut max, -10.0..=800.0).text("right"));
         let mut bins = self.bins;
         ui.add(egui::Slider::new(&mut bins, 10..=2000).text("bins"));
 
