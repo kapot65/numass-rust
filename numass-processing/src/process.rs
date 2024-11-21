@@ -76,14 +76,15 @@ impl StaticProcessParams {
     pub fn from_point(point: &rsb_event::Point) -> Self {
         let time = point.channels[0].blocks[0].time;
         Self {
+            // TODO: switch from constants
             baseline: Some(vec![
-                0.0,                       // ch1
-                baseline_2024_03(time, 1), // ch2
-                baseline_2024_03(time, 2), // ch3
-                0.0,                       // ch4
-                baseline_2024_03(time, 4), // ch5
-                baseline_2024_03(time, 5), // ch6
-                baseline_2024_03(time, 6), // ch7
+                00.00, // ch1
+                77.00, // ch2
+                13.25, // ch3
+                63.25, // ch4
+                14.75, // ch5
+                93.75, // ch6
+                11.75, // ch7
             ]),
         }
     }
