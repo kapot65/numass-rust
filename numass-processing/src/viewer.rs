@@ -53,5 +53,6 @@ pub struct PointState {
     pub histogram: Option<PointHistogram>,
     pub voltage: Option<f32>,
     pub start_time: Option<NaiveDateTime>,
+    pub acquisition_time: Option<f32>,
     pub counts: Option<usize>,
 }
