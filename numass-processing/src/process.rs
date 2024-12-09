@@ -20,8 +20,7 @@ use crate::{
     constants::{
         baseline_2024_03, KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_LONGDIFF,
         KEV_COEFF_MAX, KEV_COEFF_TRAPEZIOD,
-    },
-    types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame, NumassWaveforms},
+    }, histogram::PointHistogram, types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame, NumassWaveforms}
 };
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
@@ -72,20 +71,54 @@ pub struct StaticProcessParams {
     pub baseline: Option<Vec<f32>>, // TODO: make more versatile
 }
 
+/// extact baseline for channels from point
+/// each channel is converted to amplitude histogramm
+/// and then baseline is calculated as histogramm peak
+fn baseline_from_point(point: &rsb_event::Point, algo: &Algorithm) -> Vec<f32> {
+    
+    let mut baselines = vec![0.0; 7];
+
+    let (left, center, right) = match algo {
+        Algorithm::Trapezoid { left, center, right, .. } => (*left, *center, *right),
+        _ => panic!("not implemented")
+    };
+
+    let waveforms = extract_waveforms(&point);
+
+    let mut amps = PointHistogram::new_step(-5.0..120.0, 0.5);
+
+    for (_, frames) in waveforms {
+        for (channel, waveform) in frames {
+            // TODO: search for another implementations in code and merge them
+            let filtered = waveform.windows(left + center + right).map(|window| {
+                (window[left+center..].iter().sum::<i16>() - window[..left].iter().sum::<i16>()) as f32 / (left + right) as f32
+            }).collect::<Vec<_>>();
+
+            amps.add_batch(channel, filtered);
+        }
+    }
+
+    for (ch, hist) in amps.channels {
+
+        let mut max_idx = 0;
+        for (idx, amp) in hist.iter().enumerate() {
+            if *amp > hist[max_idx] {
+                max_idx = idx;
+            }
+        }
+
+        baselines[ch as usize] = amps.x[max_idx];
+    }
+
+    baselines
+}
+
+
 impl StaticProcessParams {
-    pub fn from_point(point: &rsb_event::Point) -> Self {
-        let time = point.channels[0].blocks[0].time;
+    pub fn from_point(point: &rsb_event::Point, algo: &Algorithm) -> Self {
+        // let time = point.channels[0].blocks[0].time;
         Self {
-            // TODO: switch from constants
-            baseline: Some(vec![
-                00.00, // ch1
-                77.00, // ch2
-                13.25, // ch3
-                63.25, // ch4
-                14.75, // ch5
-                93.75, // ch6
-                11.75, // ch7
-            ]),
+            baseline: Some(baseline_from_point(point, algo))
         }
     }
 }
@@ -173,7 +206,7 @@ pub fn extract_waveforms(point: &rsb_event::Point) -> NumassWaveforms {
 pub fn extract_events(point: rsb_event::Point, params: &ProcessParams) -> NumassEvents {
     let (static_params, point) = {
         (
-            StaticProcessParams::from_point(&point),
+            StaticProcessParams::from_point(&point, &params.algorithm),
             extract_waveforms(&point),
         )
     };
