@@ -10,6 +10,12 @@ use axum::{
 #[cfg(not(debug_assertions))]
 use axum::{response::Html, body::Full};
 
+#[cfg(target_family = "unix")]
+use tikv_jemallocator::Jemalloc;
+#[cfg(target_family = "unix")]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 use backend::Opt;
 use dataforge::{DFMessage, read_df_message, read_df_header_and_meta};
 use processing::{numass::{self, protos::rsb_event}, process::{extract_events, Algorithm, ProcessParams}, storage::FSRepr, types::NumassEvents};

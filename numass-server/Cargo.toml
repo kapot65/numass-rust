@@ -23,6 +23,9 @@ cacache = { version = "11.6.0", default-features = false,  features = ["tokio-ru
 clap = { version = "4.1.4", features = ["derive"]}
 tower-http = { version = "0.4.1", features = ["fs"] }
 
+[target.'cfg(target_family = "unix")'.dependencies]
+tikv-jemallocator = "0.5.4"
+
 [patch."https://bitbucket.org/Kapot/dataforge-parser-rust.git"]
 dataforge = { path = "../dataforge-parser-rust" }
 
