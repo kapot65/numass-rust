@@ -125,7 +125,7 @@ async fn main() {
 
                 let point = load_point(&filepath).await;
 
-                let static_params = StaticProcessParams::from_point(&point);
+                let static_params = StaticProcessParams::from_point(&point, &TRAPEZOID_DEFAULT);
 
                 let frames = extract_waveforms(&point);
 
