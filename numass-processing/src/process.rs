@@ -71,19 +71,18 @@ pub struct StaticProcessParams {
     pub baseline: Option<Vec<f32>>, // TODO: make more versatile
 }
 
-/// extact baseline for channels from point
-/// each channel is converted to amplitude histogramm
-/// and then baseline is calculated as histogramm peak
-fn baseline_from_point(point: &rsb_event::Point, algo: &Algorithm) -> Vec<f32> {
-    
-    let mut baselines = vec![0.0; 7];
+
+/// convert point to amplitudes histogram
+/// used in [baseline_from_point]
+/// extracted into single function for easier testing
+pub fn point_to_amp_hist(point: &rsb_event::Point, algo: &Algorithm) -> PointHistogram {
 
     let (left, center, right) = match algo {
         Algorithm::Trapezoid { left, center, right, .. } => (*left, *center, *right),
         _ => panic!("not implemented")
     };
 
-    let waveforms = extract_waveforms(&point);
+    let waveforms = extract_waveforms(point);
 
     let mut amps = PointHistogram::new_step(-5.0..120.0, 0.5);
 
@@ -97,6 +96,18 @@ fn baseline_from_point(point: &rsb_event::Point, algo: &Algorithm) -> Vec<f32> {
             amps.add_batch(channel, filtered);
         }
     }
+
+    amps
+}
+
+/// extact baseline for channels from point
+/// each channel is converted to amplitude histogramm
+/// and then baseline is calculated as histogramm peak
+fn baseline_from_point(point: &rsb_event::Point, algo: &Algorithm) -> Vec<f32> {
+    
+    let mut baselines = vec![0.0; 7];
+
+    let amps = point_to_amp_hist(point, algo);
 
     for (ch, hist) in amps.channels {
 
