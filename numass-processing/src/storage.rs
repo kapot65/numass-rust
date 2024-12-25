@@ -2,7 +2,6 @@
 //! High-level processing + storage functions
 //! Should work with both local and remote storage.
 //! If possible, use functions from this module instead of [process](crate::process) and [postprocess](crate::postprocess) directly.
-use core::panic;
 use std::{fs, path::{Path, PathBuf}, time::SystemTime};
 
 use numass::NumassMeta;
@@ -300,10 +299,11 @@ impl FSRepr {
                             } = FSRepr::ls(path.to_owned()).await {
                                 children_new.iter_mut().for_each(|child_new| {
                                     if let Some(child) = children.iter().find(|child| child.to_filename() == child_new.to_filename()) {
-                                        if let FSRepr::Directory { load_state: LoadState::Loaded, .. } = child {
-                                            if let FSRepr::Directory { load_state, .. } = child_new {
+                                        if let (
+                                            FSRepr::Directory { load_state: LoadState::Loaded, .. }, 
+                                            FSRepr::Directory { load_state, .. }
+                                        ) = (child, child_new) {
                                                 *load_state = LoadState::Loaded;
-                                            }
                                         }
                                     }
                                 });

@@ -388,7 +388,7 @@ pub const DETECTOR_BORDERS: [[u8; 2]; 6] = [
 // calcluate baseline for 2024_03 data set
 // from Electrode_3 to Tritium_12
 // constant extrapolation
-pub fn baseline_2024_03(time: u64, ch_id: u8) -> f32 {
+pub fn _baseline_2024_03(time: u64, ch_id: u8) -> f32 {
 
     const TIMES: [u64; 18] = [
         1711317108386830736,

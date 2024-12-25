@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     constants::{
-        baseline_2024_03, KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_LONGDIFF,
+        KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_LONGDIFF,
         KEV_COEFF_MAX, KEV_COEFF_TRAPEZIOD,
     }, histogram::PointHistogram, types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame, NumassWaveforms}
 };
