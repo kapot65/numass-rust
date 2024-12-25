@@ -49,7 +49,7 @@ impl PointHistogram {
     }
 
     pub fn new_step(range: Range<f32>, step: f32) -> Self {
-        let bins = ((range.end - range.start).abs() / step) as usize;
+        let bins = ((range.end - range.start).abs() / step + 1.0) as usize;
         PointHistogram {
             x: (0..bins)
                 .map(|idx| range.start + step * (idx as f32) + step / 2.0)
