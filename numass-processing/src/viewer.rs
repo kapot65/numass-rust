@@ -43,6 +43,9 @@ pub enum ViewerMode {
     Bundles {
         filepath: PathBuf,
     },
+    Triggers {
+        filepath: PathBuf,
+    }
 }
 
 // TODO: remove
