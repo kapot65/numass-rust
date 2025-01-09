@@ -42,6 +42,8 @@ pub enum ViewerMode {
     },
     Bundles {
         filepath: PathBuf,
+        process: ProcessParams,
+        postprocess: PostProcessParams,
     },
     Triggers {
         filepath: PathBuf,
