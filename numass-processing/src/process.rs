@@ -18,9 +18,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     constants::{
-        KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_LONGDIFF,
-        KEV_COEFF_MAX, KEV_COEFF_TRAPEZIOD,
-    }, histogram::PointHistogram, types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame, NumassWaveforms}
+        KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_LONGDIFF, KEV_COEFF_MAX,
+        KEV_COEFF_TRAPEZIOD,
+    },
+    histogram::PointHistogram,
+    types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame, NumassWaveforms},
 };
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
@@ -54,7 +56,7 @@ pub enum Algorithm {
         center: usize,
         right: usize,
         treshold: i16,
-        min_length: usize, 
+        min_length: usize,
         skip: SkipOption,
         reset_detection: HWResetParams,
     },
@@ -71,15 +73,18 @@ pub struct StaticProcessParams {
     pub baseline: Option<Vec<f32>>, // TODO: make more versatile
 }
 
-
 /// convert point to amplitudes histogram
 /// used in [baseline_from_point]
 /// extracted into single function for easier testing
 pub fn point_to_amp_hist(point: &rsb_event::Point, algo: &Algorithm) -> PointHistogram {
-
     let (left, center, right) = match algo {
-        Algorithm::Trapezoid { left, center, right, .. } => (*left, *center, *right),
-        _ => panic!("not implemented")
+        Algorithm::Trapezoid {
+            left,
+            center,
+            right,
+            ..
+        } => (*left, *center, *right),
+        _ => panic!("not implemented"),
     };
 
     let waveforms = extract_waveforms(point);
@@ -89,9 +94,14 @@ pub fn point_to_amp_hist(point: &rsb_event::Point, algo: &Algorithm) -> PointHis
     for (_, frames) in waveforms {
         for (channel, waveform) in frames {
             // TODO: search for another implementations in code and merge them
-            let filtered = waveform.windows(left + center + right).map(|window| {
-                (window[left+center..].iter().sum::<i16>() - window[..left].iter().sum::<i16>()) as f32 / (left + right) as f32
-            }).collect::<Vec<_>>();
+            let filtered = waveform
+                .windows(left + center + right)
+                .map(|window| {
+                    (window[left + center..].iter().sum::<i16>()
+                        - window[..left].iter().sum::<i16>()) as f32
+                        / (left + right) as f32
+                })
+                .collect::<Vec<_>>();
 
             amps.add_batch(channel, filtered);
         }
@@ -104,13 +114,11 @@ pub fn point_to_amp_hist(point: &rsb_event::Point, algo: &Algorithm) -> PointHis
 /// each channel is converted to amplitude histogramm
 /// and then baseline is calculated as histogramm peak
 fn baseline_from_point(point: &rsb_event::Point, algo: &Algorithm) -> Vec<f32> {
-    
     let mut baselines = vec![0.0; 7];
 
     let amps = point_to_amp_hist(point, algo);
 
     for (ch, hist) in amps.channels {
-
         let mut max_idx = 0;
         for (idx, amp) in hist.iter().enumerate() {
             if *amp > hist[max_idx] {
@@ -124,12 +132,11 @@ fn baseline_from_point(point: &rsb_event::Point, algo: &Algorithm) -> Vec<f32> {
     baselines
 }
 
-
 impl StaticProcessParams {
     pub fn from_point(point: &rsb_event::Point, algo: &Algorithm) -> Self {
         // let time = point.channels[0].blocks[0].time;
         Self {
-            baseline: Some(baseline_from_point(point, algo))
+            baseline: Some(baseline_from_point(point, algo)),
         }
     }
 }
@@ -385,7 +392,9 @@ pub fn frame_to_events(
                     let mut events = vec![];
 
                     if ch_id == &1 {
-                        if let Some((idx, _)) = waveform.iter().enumerate().find(|(_, &val)| val == 8189) {
+                        if let Some((idx, _)) =
+                            waveform.iter().enumerate().find(|(_, &val)| val == 8189)
+                        {
                             let end = if let Some((reset_start, _)) = reset {
                                 reset_start
                             } else {
@@ -405,7 +414,9 @@ pub fn frame_to_events(
                     }
 
                     if ch_id == &5 {
-                        if let Some((idx, _)) = waveform.iter().enumerate().find(|(_, &val)| val == 8081) {
+                        if let Some((idx, _)) =
+                            waveform.iter().enumerate().find(|(_, &val)| val == 8081)
+                        {
                             let end = if let Some((reset_start, _)) = reset {
                                 reset_start
                             } else {
@@ -423,7 +434,6 @@ pub fn frame_to_events(
                             ));
                         }
                     }
-
 
                     let offset = left + center + right;
 
@@ -517,7 +527,7 @@ pub fn frame_to_events(
             }
 
             match skip {
-                SkipOption::None => { events }
+                SkipOption::None => events,
                 SkipOption::Bad => {
                     if bad_frame {
                         vec![]
