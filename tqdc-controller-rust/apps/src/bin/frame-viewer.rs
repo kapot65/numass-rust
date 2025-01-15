@@ -141,7 +141,7 @@ fn main() {
                                         let events = frame_to_events(
                                             &frame, 
                                             &TRAPEZOID_DEFAULT, 
-                                            &StaticProcessParams { baseline: None }, 
+                                            &StaticProcessParams { baseline: None, live_time: 1.0 }, 
                                             &mut None
                                         );
 
