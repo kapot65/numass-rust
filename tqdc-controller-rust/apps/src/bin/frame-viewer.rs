@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
@@ -9,7 +9,6 @@ use egui_plot::{Legend, Plot};
 use egui::mutex::Mutex;
 
 use apps::defaults::BOARD_IP;
-use processing::preprocess::PreprocessParams;
 use processing::process::{frame_to_events, TRAPEZOID_DEFAULT};
 use processing::types::{FrameEvent, NumassFrame, ProcessedWaveform};
 use processing::utils::{color_for_index, EguiLine};
@@ -142,7 +141,7 @@ fn main() {
                                         let events = frame_to_events(
                                             &frame, 
                                             &TRAPEZOID_DEFAULT, 
-                                            &PreprocessParams { baseline: None, bad_blocks: BTreeSet::new() }, 
+                                            None, 
                                             &mut None
                                         );
 
