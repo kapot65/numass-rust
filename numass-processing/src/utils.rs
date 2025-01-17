@@ -1,26 +1,29 @@
 //! # Utils
 //! This module contains some utility functions not related to processing or postprocessing.
 
-#[cfg(feature = "egui")] use {
-    egui_plot::{Line, PlotUi},
-    egui::{Color32, epaint::Hsva},
-    crate::types::{ProcessedWaveform, RawWaveform}
-};
 #[cfg(feature = "plotly")]
 use plotly::color::Color;
+#[cfg(feature = "egui")]
+use {
+    crate::types::{ProcessedWaveform, RawWaveform},
+    egui::{epaint::Hsva, Color32},
+    egui_plot::{Line, PlotUi},
+};
 
-use crate::{histogram::{HistogramParams, PointHistogram}, types::{FrameEvent, NumassEvents}};
+use crate::{
+    histogram::{HistogramParams, PointHistogram},
+    types::{FrameEvent, NumassEvents},
+};
 
-pub fn events_to_histogram(
-    amplitudes: NumassEvents, 
-    histogram: HistogramParams
-) -> PointHistogram {
-
+pub fn events_to_histogram(amplitudes: NumassEvents, histogram: HistogramParams) -> PointHistogram {
     let mut histogram = PointHistogram::from(histogram);
 
     for (_, channels) in amplitudes {
         for (_, event) in channels {
-            if let FrameEvent::Event { channel, amplitude, .. } = event {
+            if let FrameEvent::Event {
+                channel, amplitude, ..
+            } = event
+            {
                 histogram.add(channel, amplitude)
             }
         }
@@ -30,7 +33,7 @@ pub fn events_to_histogram(
 }
 
 /// Корретировка времени прихода триггера
-/// 
+///
 /// Для некоторых точек начиная с определенного триггера ко времени примешивается какое-то огромное число
 /// Это происходит как минимум с сеанса 2024_03
 /// Судя по всему это константная величина
@@ -69,13 +72,20 @@ pub fn color_for_index_str(idx: usize) -> impl Color {
     let golden_ratio = (5.0_f32.sqrt() - 1.0) / 2.0; // 0.61803398875
     let h = idx as f32 * golden_ratio;
 
-    let (r,g,b) = rgb_hsv::hsv_to_rgb((h, 0.85, 0.66));
+    let (r, g, b) = rgb_hsv::hsv_to_rgb((h, 0.85, 0.66));
     format!("rgb({r}, {g}, {b})")
 }
 
 #[cfg(feature = "egui")]
 pub trait EguiLine: Into<Vec<[f64; 2]>> {
-    fn draw_egui(self, plot_ui: &mut PlotUi, name: Option<&str>, color: Option<Color32>, thickness: Option<f32>, offset: Option<i64>) {
+    fn draw_egui(
+        self,
+        plot_ui: &mut PlotUi,
+        name: Option<&str>,
+        color: Option<Color32>,
+        thickness: Option<f32>,
+        offset: Option<i64>,
+    ) {
         let mut points: Vec<[f64; 2]> = self.into();
         if let Some(offset) = offset {
             points.iter_mut().for_each(|[x, _]| *x += offset as f64)

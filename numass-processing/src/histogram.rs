@@ -4,18 +4,21 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "egui")]
 use {
-    egui_plot::{Line, PlotUi},
+    crate::utils::color_for_index,
     egui::Color32,
-    crate::utils::color_for_index
+    egui_plot::{Line, PlotUi},
 };
 
 #[cfg(feature = "plotly")]
-use plotly::{common::{Line as PlotlyLine, Mode, LineShape}, Scatter, Plot};
+use plotly::{
+    common::{Line as PlotlyLine, LineShape, Mode},
+    Plot, Scatter,
+};
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct HistogramParams {
     pub range: Range<f32>,
-    pub bins: usize
+    pub bins: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,7 +65,6 @@ impl PointHistogram {
     }
 
     pub fn add(&mut self, ch_num: u8, amplitude: f32) {
-
         let min = self.range.start;
         let max = self.range.end;
 
@@ -92,22 +94,24 @@ impl PointHistogram {
     }
 
     pub fn events(&self, window: Option<Range<f32>>) -> BTreeMap<u8, usize> {
-
         let (left_border, right_border) = if let Some(window) = window {
             (window.start, window.end)
         } else {
             (self.range.start, self.range.end)
         };
 
-        self.channels.iter().map(|(ch_num, channel)| {
-            let mut events_in_window = 0;
-            channel.iter().enumerate().for_each(|(idx, y)| {
-                if self.x[idx] > left_border && self.x[idx] < right_border {
-                    events_in_window += *y as usize;
-                }
-            });
-            (*ch_num, events_in_window)
-        }).collect::<BTreeMap<_, _>>()
+        self.channels
+            .iter()
+            .map(|(ch_num, channel)| {
+                let mut events_in_window = 0;
+                channel.iter().enumerate().for_each(|(idx, y)| {
+                    if self.x[idx] > left_border && self.x[idx] < right_border {
+                        events_in_window += *y as usize;
+                    }
+                });
+                (*ch_num, events_in_window)
+            })
+            .collect::<BTreeMap<_, _>>()
     }
 
     pub fn events_all(&self, window: Option<Range<f32>>) -> usize {
@@ -142,13 +146,16 @@ impl PointHistogram {
     }
 
     #[cfg(feature = "egui")]
-    fn build_egui_hist(&self, y: &[f32])  -> Vec<[f64; 2]> {
-        y.iter().enumerate().flat_map(|(idx, y)| {
-            [
-                [(self.x[idx] - self.step / 2.0)  as f64, *y as f64],
-                [(self.x[idx] + self.step / 2.0)  as f64, *y as f64]
-            ]
-        }).collect::<Vec<_>>()
+    fn build_egui_hist(&self, y: &[f32]) -> Vec<[f64; 2]> {
+        y.iter()
+            .enumerate()
+            .flat_map(|(idx, y)| {
+                [
+                    [(self.x[idx] - self.step / 2.0) as f64, *y as f64],
+                    [(self.x[idx] + self.step / 2.0) as f64, *y as f64],
+                ]
+            })
+            .collect::<Vec<_>>()
     }
 
     pub fn merge_channels(&self) -> Vec<f32> {
@@ -162,7 +169,13 @@ impl PointHistogram {
     }
 
     #[cfg(feature = "egui")]
-    pub fn draw_egui(&self, plot_ui: &mut PlotUi, name: Option<&str>, thickness: Option<f32>, color: Option<Color32>) {
+    pub fn draw_egui(
+        &self,
+        plot_ui: &mut PlotUi,
+        name: Option<&str>,
+        thickness: Option<f32>,
+        color: Option<Color32>,
+    ) {
         let bounds = plot_ui.plot_bounds();
         let left_border = bounds.min()[0] as f32;
         let right_border = bounds.max()[0] as f32;
@@ -183,14 +196,12 @@ impl PointHistogram {
 
     #[cfg(feature = "egui")]
     pub fn draw_egui_each_channel(&self, plot_ui: &mut PlotUi, thickness: Option<f32>) {
-
         let bounds = plot_ui.plot_bounds();
         let left_border = bounds.min()[0] as f32;
         let right_border = bounds.max()[0] as f32;
 
         let events_in_window = self.events(Some(left_border..right_border));
         self.channels.iter().for_each(|(ch_num, channel)| {
-
             let events_in_window = events_in_window.get(&ch_num).unwrap_or(&0);
 
             let mut line = Line::new(self.build_egui_hist(channel))
@@ -207,7 +218,8 @@ impl PointHistogram {
     #[cfg(feature = "plotly")]
     pub fn draw_plotly(&self, plot: &mut Plot, name: Option<&str>) {
         let mut line = Scatter::new(self.x.clone(), self.merge_channels())
-            .mode(Mode::Lines).line(PlotlyLine::new().shape(LineShape::Hvh));
+            .mode(Mode::Lines)
+            .line(PlotlyLine::new().shape(LineShape::Hvh));
 
         if let Some(name) = name {
             line = line.name(name);
@@ -222,11 +234,13 @@ impl PointHistogram {
 
         self.channels.iter().for_each(|(ch_num, channel)| {
             let mut line = Scatter::new(self.x.clone(), channel.clone())
-                .mode(Mode::Lines).line(
+                .mode(Mode::Lines)
+                .line(
                     PlotlyLine::new()
-                    .color(color_for_index_str(*ch_num as usize))
-                    .shape(LineShape::Hvh));
-                
+                        .color(color_for_index_str(*ch_num as usize))
+                        .shape(LineShape::Hvh),
+                );
+
             line = line.name(format!("ch #{}", ch_num + 1));
 
             plot.add_trace(line);

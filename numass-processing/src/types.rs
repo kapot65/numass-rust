@@ -18,10 +18,21 @@ pub type NumassEvent = (u16, FrameEvent);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FrameEvent {
-    Event { channel: u8, amplitude: f32, size: u16 },
-    Overflow { channel: u8, size: u16 },
-    Reset { size: u16 },
-    Frame { size: u16 },
+    Event {
+        channel: u8,
+        amplitude: f32,
+        size: u16,
+    },
+    Overflow {
+        channel: u8,
+        size: u16,
+    },
+    Reset {
+        size: u16,
+    },
+    Frame {
+        size: u16,
+    },
 }
 
 impl std::hash::Hash for FrameEvent {
@@ -36,7 +47,8 @@ pub struct RawWaveform(pub Vec<i16>);
 
 impl RawWaveform {
     pub fn to_egui_line(&self, offset: i64) -> Vec<[f64; 2]> {
-        self.0.iter()
+        self.0
+            .iter()
             .enumerate()
             .map(|(x, y)| [(x as i64 + offset) as f64, (*y as f64)])
             .collect::<Vec<_>>()
@@ -45,7 +57,9 @@ impl RawWaveform {
 
 impl From<RawWaveform> for Vec<[f64; 2]> {
     fn from(waveform: RawWaveform) -> Self {
-        waveform.0.iter()
+        waveform
+            .0
+            .iter()
             .enumerate()
             .map(|(x, y)| [x as f64, *y as f64])
             .collect::<Vec<_>>()
@@ -67,24 +81,30 @@ impl From<&RawWaveform> for ProcessedWaveform {
 impl From<rsb_event::point::channel::block::Frame> for RawWaveform {
     fn from(frame: rsb_event::point::channel::block::Frame) -> Self {
         let waveform_len = frame.data.len() / 2;
-        RawWaveform((0..waveform_len)
-        .map(|idx| i16::from_le_bytes(frame.data[idx * 2..idx * 2 + 2].try_into().unwrap()))
-        .collect::<Vec<_>>())
+        RawWaveform(
+            (0..waveform_len)
+                .map(|idx| i16::from_le_bytes(frame.data[idx * 2..idx * 2 + 2].try_into().unwrap()))
+                .collect::<Vec<_>>(),
+        )
     }
 }
 
 impl From<&rsb_event::point::channel::block::Frame> for RawWaveform {
     fn from(frame: &rsb_event::point::channel::block::Frame) -> Self {
         let waveform_len = frame.data.len() / 2;
-        RawWaveform((0..waveform_len)
-        .map(|idx| i16::from_le_bytes(frame.data[idx * 2..idx * 2 + 2].try_into().unwrap()))
-        .collect::<Vec<_>>())
+        RawWaveform(
+            (0..waveform_len)
+                .map(|idx| i16::from_le_bytes(frame.data[idx * 2..idx * 2 + 2].try_into().unwrap()))
+                .collect::<Vec<_>>(),
+        )
     }
 }
 
 impl From<ProcessedWaveform> for Vec<[f64; 2]> {
     fn from(waveform: ProcessedWaveform) -> Self {
-        waveform.0.iter()
+        waveform
+            .0
+            .iter()
             .enumerate()
             .map(|(x, y)| [x as f64, *y as f64])
             .collect::<Vec<_>>()

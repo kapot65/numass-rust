@@ -48,7 +48,6 @@ pub fn post_process(
     process_result: (NumassEvents, Preprocess),
     params: &PostProcessParams,
 ) -> (NumassEvents, Preprocess) {
-    
     let (amplitudes, preprocess_params) = process_result;
 
     if !params.merge_close_events {
@@ -56,7 +55,7 @@ pub fn post_process(
     }
 
     // TODO: think about code deduplication
-    let amplitudes =if params.cut_bad_blocks {
+    let amplitudes = if params.cut_bad_blocks {
         amplitudes
             .into_iter()
             .filter(|(timestamp, _)| {

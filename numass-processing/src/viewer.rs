@@ -1,17 +1,22 @@
 //! # Viewer
 //! Temporary module for viewer state and mode.
 //! TODO: remove from numass-processing module
-//! 
+//!
+use crate::{
+    histogram::{HistogramParams, PointHistogram},
+    postprocess::PostProcessParams,
+    preprocess::Preprocess,
+    process::{ProcessParams, TRAPEZOID_DEFAULT},
+};
+use serde::{Deserialize, Serialize};
 use std::{ops::Range, path::PathBuf, time::SystemTime};
-use serde::{Serialize, Deserialize};
-use crate::{histogram::{HistogramParams, PointHistogram}, postprocess::PostProcessParams, preprocess::Preprocess, process::{ProcessParams, TRAPEZOID_DEFAULT}};
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct ViewerState {
     pub process: ProcessParams,
     pub post_process: PostProcessParams,
     pub histogram: HistogramParams,
-    pub changed: bool
+    pub changed: bool,
 }
 
 impl Default for ViewerState {
@@ -22,8 +27,11 @@ impl Default for ViewerState {
                 convert_to_kev: true,
             },
             post_process: PostProcessParams::default(),
-            histogram: HistogramParams { range: 0.0..40.0, bins: 400 },
-            changed: false
+            histogram: HistogramParams {
+                range: 0.0..40.0,
+                bins: 400,
+            },
+            changed: false,
         }
     }
 }
@@ -46,10 +54,9 @@ pub enum ViewerMode {
     },
     Triggers {
         filepath: PathBuf,
-    }
+    },
 }
 
-// TODO: remove
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PointState {
     pub opened: bool,

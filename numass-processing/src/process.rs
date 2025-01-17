@@ -13,14 +13,17 @@ use {
     egui_plot::{HLine, Line, PlotUi},
 };
 
-use numass::{protos::rsb_event, NumassMeta,};
+use numass::{protos::rsb_event, NumassMeta};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     constants::{
         KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_LONGDIFF, KEV_COEFF_MAX,
         KEV_COEFF_TRAPEZIOD,
-    }, preprocess::Preprocess, types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame, NumassWaveforms}, utils::correct_frame_time
+    },
+    preprocess::Preprocess,
+    types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame, NumassWaveforms},
+    utils::correct_frame_time,
 };
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
@@ -124,7 +127,9 @@ pub fn extract_waveforms(point: &rsb_event::Point) -> NumassWaveforms {
     for channel in &point.channels {
         for block in &channel.blocks {
             for frame in &block.frames {
-                let entry = waveforms.entry(correct_frame_time(frame.time)).or_insert(BTreeMap::new());
+                let entry = waveforms
+                    .entry(correct_frame_time(frame.time))
+                    .or_insert(BTreeMap::new());
 
                 let i16_slice = unsafe {
                     std::slice::from_raw_parts(
@@ -143,7 +148,11 @@ pub fn extract_waveforms(point: &rsb_event::Point) -> NumassWaveforms {
 /// Built-in processing algorithm.
 /// Function will extract events point wafevorms and keeps its hierarchy.
 /// Do not use this function directly without reason, use [process_point](crate::storage::process_point) instead.
-pub fn extract_events(meta: Option<NumassMeta>, point: rsb_event::Point, params: &ProcessParams) -> (NumassEvents, Preprocess) {
+pub fn extract_events(
+    meta: Option<NumassMeta>,
+    point: rsb_event::Point,
+    params: &ProcessParams,
+) -> (NumassEvents, Preprocess) {
     let (preprocess, point) = {
         (
             Preprocess::from_point(meta, &point, &params.algorithm),
@@ -151,29 +160,32 @@ pub fn extract_events(meta: Option<NumassMeta>, point: rsb_event::Point, params:
         )
     };
 
-    (point
-        .into_iter()
-        .map(|(time, frame)| {
-            let mut events = frame_to_events(
-                &frame,
-                &params.algorithm,
-                Some(&preprocess),
-                #[cfg(feature = "egui")]
-                &mut None,
-            );
-            if params.convert_to_kev {
-                events.iter_mut().for_each(|(_, event)| {
-                    if let FrameEvent::Event {
-                        amplitude, channel, ..
-                    } = event
-                    {
-                        *amplitude = convert_to_kev(amplitude, *channel, &params.algorithm);
-                    }
-                });
-            }
-            (time, events)
-        })
-        .collect::<BTreeMap<_, _>>(), preprocess)
+    (
+        point
+            .into_iter()
+            .map(|(time, frame)| {
+                let mut events = frame_to_events(
+                    &frame,
+                    &params.algorithm,
+                    Some(&preprocess),
+                    #[cfg(feature = "egui")]
+                    &mut None,
+                );
+                if params.convert_to_kev {
+                    events.iter_mut().for_each(|(_, event)| {
+                        if let FrameEvent::Event {
+                            amplitude, channel, ..
+                        } = event
+                        {
+                            *amplitude = convert_to_kev(amplitude, *channel, &params.algorithm);
+                        }
+                    });
+                }
+                (time, events)
+            })
+            .collect::<BTreeMap<_, _>>(),
+        preprocess,
+    )
 }
 
 /// Built-in keV convertion (according to crate::constants).
@@ -212,7 +224,6 @@ pub fn frame_to_events(
     preprocess: Option<&Preprocess>,
     #[cfg(feature = "egui")] ui: &mut Option<&mut PlotUi>,
 ) -> Vec<NumassEvent> {
-
     let baseline = preprocess.and_then(|preprocess| preprocess.baseline.to_owned());
 
     let mut events = match algorithm {
@@ -305,8 +316,6 @@ pub fn frame_to_events(
             let mut events = frame
                 .iter()
                 .flat_map(|(ch_id, waveform)| {
-                    
-
                     let mut events = vec![];
 
                     if ch_id == &1 {
@@ -470,7 +479,6 @@ pub fn frame_to_events(
             let mut events: Vec<(u16, FrameEvent)> = frame
                 .iter()
                 .filter_map(|(ch_id, waveform)| {
-
                     if reset.is_some() {
                         return None;
                     }
@@ -488,11 +496,15 @@ pub fn frame_to_events(
                         .map(|v| *v as f32)
                         .sum::<f32>()
                         / 12.0;
-                    let b_pred = a + (baseline.as_ref().map_or(0.0, |b| b[*ch_id as usize]) / 10.916_667) * (last_idx as f32);
+                    let b_pred = a
+                        + (baseline.as_ref().map_or(0.0, |b| b[*ch_id as usize]) / 10.916_667)
+                            * (last_idx as f32);
 
                     #[cfg(feature = "egui")]
                     if let Some(ui) = ui {
-                        let a_pred = b - (baseline.as_ref().map_or(0.0, |b| b[*ch_id as usize]) / 10.916_667) * (last_idx as f32);
+                        let a_pred = b
+                            - (baseline.as_ref().map_or(0.0, |b| b[*ch_id as usize]) / 10.916_667)
+                                * (last_idx as f32);
 
                         ui.line(
                             Line::new(
