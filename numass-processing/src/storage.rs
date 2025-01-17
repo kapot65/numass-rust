@@ -9,11 +9,11 @@ use protobuf::Message;
 use serde::{Deserialize, Serialize};
 
 
-use crate::{numass::protos::rsb_event, preprocess::PreprocessParams, process::ProcessParams, types::NumassEvents};
+use crate::{numass::protos::rsb_event, preprocess::Preprocess, process::ProcessParams, types::NumassEvents};
 
 /// Process point from the storage.
 /// This function will load point from storage (both local and remote) and executes [extract_events](crate::process::extract_events).
-pub async fn process_point(filepath: &Path, process: &ProcessParams) -> Option<(NumassMeta, Option<(NumassEvents, PreprocessParams)>)> {
+pub async fn process_point(filepath: &Path, process: &ProcessParams) -> Option<(NumassMeta, Option<(NumassEvents, Preprocess)>)> {
 
     let meta = load_meta(filepath).await;
 
@@ -46,7 +46,7 @@ pub async fn process_point(filepath: &Path, process: &ProcessParams) -> Option<(
                     .unwrap();
             Some((
                 meta.unwrap(),
-                rmp_serde::from_slice::<Option<(NumassEvents, PreprocessParams)>>(&amplitudes_raw).unwrap()
+                rmp_serde::from_slice::<Option<(NumassEvents, Preprocess)>>(&amplitudes_raw).unwrap()
             ))
         }
     } else {

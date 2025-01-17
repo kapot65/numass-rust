@@ -20,7 +20,7 @@ use crate::{
     constants::{
         KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_LONGDIFF, KEV_COEFF_MAX,
         KEV_COEFF_TRAPEZIOD,
-    }, preprocess::PreprocessParams, types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame, NumassWaveforms}, utils::correct_frame_time
+    }, preprocess::Preprocess, types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame, NumassWaveforms}, utils::correct_frame_time
 };
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
@@ -143,10 +143,10 @@ pub fn extract_waveforms(point: &rsb_event::Point) -> NumassWaveforms {
 /// Built-in processing algorithm.
 /// Function will extract events point wafevorms and keeps its hierarchy.
 /// Do not use this function directly without reason, use [process_point](crate::storage::process_point) instead.
-pub fn extract_events(meta: Option<NumassMeta>, point: rsb_event::Point, params: &ProcessParams) -> (NumassEvents, PreprocessParams) {
-    let (static_params, point) = {
+pub fn extract_events(meta: Option<NumassMeta>, point: rsb_event::Point, params: &ProcessParams) -> (NumassEvents, Preprocess) {
+    let (preprocess, point) = {
         (
-            PreprocessParams::from_point(meta, &point, &params.algorithm),
+            Preprocess::from_point(meta, &point, &params.algorithm),
             extract_waveforms(&point),
         )
     };
@@ -157,7 +157,7 @@ pub fn extract_events(meta: Option<NumassMeta>, point: rsb_event::Point, params:
             let mut events = frame_to_events(
                 &frame,
                 &params.algorithm,
-                &static_params,
+                Some(&preprocess),
                 #[cfg(feature = "egui")]
                 &mut None,
             );
@@ -173,7 +173,7 @@ pub fn extract_events(meta: Option<NumassMeta>, point: rsb_event::Point, params:
             }
             (time, events)
         })
-        .collect::<BTreeMap<_, _>>(), static_params)
+        .collect::<BTreeMap<_, _>>(), preprocess)
 }
 
 /// Built-in keV convertion (according to crate::constants).
@@ -209,9 +209,12 @@ pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 
 pub fn frame_to_events(
     frame: &NumassFrame,
     algorithm: &Algorithm,
-    static_params: &PreprocessParams,
+    preprocess: Option<&Preprocess>,
     #[cfg(feature = "egui")] ui: &mut Option<&mut PlotUi>,
 ) -> Vec<NumassEvent> {
+
+    let baseline = preprocess.and_then(|preprocess| preprocess.baseline.to_owned());
+
     let mut events = match algorithm {
         Algorithm::Max => frame
             .iter()
@@ -302,15 +305,7 @@ pub fn frame_to_events(
             let mut events = frame
                 .iter()
                 .flat_map(|(ch_id, waveform)| {
-                    let baseline = if let PreprocessParams {
-                        baseline: Some(baseline),
-                        ..
-                    } = static_params
-                    {
-                        baseline[*ch_id as usize]
-                    } else {
-                        0.0
-                    };
+                    
 
                     let mut events = vec![];
 
@@ -370,7 +365,7 @@ pub fn frame_to_events(
                                 - window[..*left].iter().map(|v| *v as i32).sum::<i32>())
                                 as f32
                                 / (left + right) as f32
-                                - baseline
+                                - baseline.as_ref().map_or(0.0, |b| b[*ch_id as usize])
                         })
                         .collect::<Vec<_>>();
 
@@ -475,15 +470,6 @@ pub fn frame_to_events(
             let mut events: Vec<(u16, FrameEvent)> = frame
                 .iter()
                 .filter_map(|(ch_id, waveform)| {
-                    let baseline = if let PreprocessParams {
-                        baseline: Some(baseline),
-                        ..
-                    } = static_params
-                    {
-                        baseline[*ch_id as usize]
-                    } else {
-                        0.0
-                    };
 
                     if reset.is_some() {
                         return None;
@@ -502,11 +488,11 @@ pub fn frame_to_events(
                         .map(|v| *v as f32)
                         .sum::<f32>()
                         / 12.0;
-                    let b_pred = a + (baseline / 10.916_667) * (last_idx as f32);
+                    let b_pred = a + (baseline.as_ref().map_or(0.0, |b| b[*ch_id as usize]) / 10.916_667) * (last_idx as f32);
 
                     #[cfg(feature = "egui")]
                     if let Some(ui) = ui {
-                        let a_pred = b - (baseline / 10.916_667) * (last_idx as f32);
+                        let a_pred = b - (baseline.as_ref().map_or(0.0, |b| b[*ch_id as usize]) / 10.916_667) * (last_idx as f32);
 
                         ui.line(
                             Line::new(

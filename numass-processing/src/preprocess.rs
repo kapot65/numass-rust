@@ -4,6 +4,7 @@
 
 use std::collections::BTreeSet;
 
+use chrono::NaiveDateTime;
 use numass::{protos::rsb_event, ExternalMeta, NumassMeta, Reply};
 use serde::{Deserialize, Serialize};
 
@@ -21,28 +22,37 @@ const CHECK_HV_THRESHOLD: f32 = 16e3;
 
 /// Неизменяемые параметры, необходимые для обработки кадра
 /// могут либо задаваться статично, либо на каждую точку
-/// TODO: add default derive
-#[derive(Clone, Serialize, Deserialize)]
-pub struct PreprocessParams {
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct Preprocess {
     pub baseline: Option<Vec<f32>>, // TODO: make more versatile
+
+    /// предполагаемая HV точки
+    pub hv: f32,
+
+    /// Время начала набора точки
+    pub start_time: NaiveDateTime,
+
+    /// время набора точки в наносекундах
+    pub acquisition_time: u64, 
     
     /// номера блоков, которые нужно исключить из анализа
     /// размер блока равен [CUTOFF_BIN_SIZE](crate::preprocess::CUTOFF_BIN_SIZE)
     pub bad_blocks: BTreeSet<usize>
 }
 
-impl PreprocessParams {
+impl Preprocess {
     pub fn from_point(meta: Option<NumassMeta>, point: &rsb_event::Point, algo: &Algorithm) -> Self {
         
-        let (acquisition_time, hv) =  if let Some(NumassMeta::Reply(Reply::AcquirePoint {
+        let (acquisition_time, hv, start_time) =  if let Some(NumassMeta::Reply(Reply::AcquirePoint {
             acquisition_time,
+            start_time,
             external_meta: Some(ExternalMeta {
                 hv1_value: Some(hv),
                 ..
             }),
             ..
         })) = meta {
-            (acquisition_time, hv)
+            ((acquisition_time * 1e9) as u64, hv, start_time)
         } else {
             panic!("acquisition_time and/or hv1_value not found in metadata")
         };
@@ -51,7 +61,7 @@ impl PreprocessParams {
             BTreeSet::new()
         } else {
 
-            let mut trigger_density_local = PointHistogram::new_step(0.0..(acquisition_time * 1e9), CHECK_BIN_SIZE as f32);
+            let mut trigger_density_local = PointHistogram::new_step(0.0..(acquisition_time as f32), CHECK_BIN_SIZE as f32);
 
             for channel in &point.channels {
                 for block in &channel.blocks {
@@ -64,7 +74,7 @@ impl PreprocessParams {
             let mut bad_blocks = BTreeSet::new();
 
             trigger_density_local.channels[&0].iter().enumerate().for_each(|(idx, count)| {
-                if *count == 0.0 {
+                if ((idx + 1) as u64 * CHECK_BIN_SIZE) <= acquisition_time && *count == 0.0  {
                     let block_idx = (idx as u64 * CHECK_BIN_SIZE) / CUTOFF_BIN_SIZE; 
                     bad_blocks.insert(block_idx as usize);
                 }
@@ -75,8 +85,20 @@ impl PreprocessParams {
         
         Self {
             baseline: Some(baseline_from_point(point, algo)),
+            acquisition_time,
+            start_time,
+            hv,
             bad_blocks
         }
+    }
+}
+
+impl Preprocess {
+    /// calculate effective time of acquisition after removing bad blocks (in nanoseconds)
+    /// `acquisition_time - bad_blocks_count as u64 * CUTOFF_BIN_SIZE`
+    pub fn effective_time(&self) -> u64 {
+        let bad_blocks_count =  self.bad_blocks.len();
+        self.acquisition_time - bad_blocks_count as u64 * CUTOFF_BIN_SIZE
     }
 }
 

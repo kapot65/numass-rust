@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     constants::DETECTOR_BORDERS,
-    preprocess::{PreprocessParams, CUTOFF_BIN_SIZE},
+    preprocess::{Preprocess, CUTOFF_BIN_SIZE},
     types::{FrameEvent, NumassEvent, NumassEvents},
 };
 
@@ -44,21 +44,19 @@ impl Default for PostProcessParams {
 }
 
 /// Built-in postprocessing algorithm.
-/// TODO?: return StaticProcessParams also?
 pub fn post_process(
-    process_result: (NumassEvents, PreprocessParams),
+    process_result: (NumassEvents, Preprocess),
     params: &PostProcessParams,
-) -> NumassEvents {
+) -> (NumassEvents, Preprocess) {
     
-
     let (amplitudes, preprocess_params) = process_result;
 
     if !params.merge_close_events {
-        return amplitudes;
+        return (amplitudes, preprocess_params);
     }
 
     // TODO: think about code deduplication
-    if params.cut_bad_blocks {
+    let amplitudes =if params.cut_bad_blocks {
         amplitudes
             .into_iter()
             .filter(|(timestamp, _)| {
@@ -88,7 +86,9 @@ pub fn post_process(
                 (time, events_postprocessed)
             })
             .collect::<BTreeMap<_, _>>()
-    }
+    };
+
+    (amplitudes, preprocess_params)
 }
 
 fn is_neighbour(ch_1: u8, ch_2: u8) -> bool {

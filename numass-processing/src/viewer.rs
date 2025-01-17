@@ -2,10 +2,9 @@
 //! Temporary module for viewer state and mode.
 //! TODO: remove from numass-processing module
 //! 
-use std::{collections::BTreeSet, ops::Range, path::PathBuf, time::SystemTime};
-use chrono::NaiveDateTime;
+use std::{ops::Range, path::PathBuf, time::SystemTime};
 use serde::{Serialize, Deserialize};
-use crate::{histogram::{HistogramParams, PointHistogram}, postprocess::PostProcessParams, process::{ProcessParams, TRAPEZOID_DEFAULT}};
+use crate::{histogram::{HistogramParams, PointHistogram}, postprocess::PostProcessParams, preprocess::Preprocess, process::{ProcessParams, TRAPEZOID_DEFAULT}};
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct ViewerState {
@@ -56,20 +55,14 @@ pub struct PointState {
     pub opened: bool,
     pub modified: Option<SystemTime>,
     pub histogram: Option<PointHistogram>,
-    pub voltage: Option<f32>,
-    pub start_time: Option<NaiveDateTime>,
-    pub acquisition_time: Option<f32>,
-    pub bad_blocks: Option<BTreeSet<usize>>,
+    pub preprocess: Option<Preprocess>,
     pub counts: Option<usize>,
 }
 
 pub const EMPTY_POINT: PointState = PointState {
     opened: false,
     histogram: None,
-    voltage: None,
-    start_time: None,
-    acquisition_time: None,
-    bad_blocks: None,
+    preprocess: None,
     counts: None,
     modified: None,
 };
