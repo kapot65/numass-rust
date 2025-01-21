@@ -38,6 +38,7 @@ impl From<HistogramParams> for PointHistogram {
 
 // TODO: change to generic constant channel histogram
 impl PointHistogram {
+    /// Constructor based on range + bins number
     pub fn new(range: Range<f32>, bins: usize) -> Self {
         let step = (range.end - range.start) / bins as f32;
         PointHistogram {
@@ -51,6 +52,7 @@ impl PointHistogram {
         }
     }
 
+    /// Constructor based on range + step size
     pub fn new_step(range: Range<f32>, step: f32) -> Self {
         let bins = ((range.end - range.start).abs() / step + 1.0) as usize;
         PointHistogram {
@@ -62,6 +64,37 @@ impl PointHistogram {
             bins,
             channels: BTreeMap::new(),
         }
+    }
+
+
+    /// Combine histograms into big one
+    /// 
+    /// All histograms must have same binning and channels map
+    /// Method will panic if fail at any step
+    /// 
+    pub fn new_merged(hists: &[&Self]) -> Self{
+
+        let mut first = hists.first().cloned().expect("histograms list is empty").clone();
+
+        hists.iter().skip(1).for_each(|hist| {
+
+            if hist.range != first.range || hist.bins != first.bins || hist.step != first.step {
+                panic!("histograms have different binning");
+            }
+
+            hist.channels.iter().for_each(|(id, data)| {
+                if first.channels.contains_key(id) {
+                    first.channels.get_mut(id).unwrap().iter_mut().enumerate().for_each(|(idx, val)| {
+                        *val += data[idx]
+                    });
+                } else {
+                    first.channels.insert(*id, data.clone());
+                }
+            });
+
+        });
+        
+        first
     }
 
     pub fn add(&mut self, ch_num: u8, amplitude: f32) {
@@ -93,6 +126,9 @@ impl PointHistogram {
         }
     }
 
+    /// Total events count (per channel)
+    /// # Arguments
+    /// * `window` - Optional range to count events within. If None, counts all events in the histogram.
     pub fn events(&self, window: Option<Range<f32>>) -> BTreeMap<u8, usize> {
         let (left_border, right_border) = if let Some(window) = window {
             (window.start, window.end)
@@ -114,6 +150,9 @@ impl PointHistogram {
             .collect::<BTreeMap<_, _>>()
     }
 
+    /// Total events count (from all channels combined)
+    /// # Arguments
+    /// * `window` - Optional range to count events within. If None, counts all events in the histogram.
     pub fn events_all(&self, window: Option<Range<f32>>) -> usize {
         self.events(window).values().sum()
     }
