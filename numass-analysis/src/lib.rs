@@ -3,8 +3,6 @@ use std::{collections::BTreeMap, path::{PathBuf, Path}};
 use processing::numass::{NumassMeta, Reply};
 use serde::Deserialize;
 
-pub mod workspace;
-
 pub fn get_points_by_pattern(db_root: &str, pattern: &str, exclude: &[String]) -> BTreeMap<u16, Vec<PathBuf>> {
     let mut points = BTreeMap::new();
 

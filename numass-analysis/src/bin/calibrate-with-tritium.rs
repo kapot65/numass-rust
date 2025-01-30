@@ -1,7 +1,6 @@
-use analysis::{
-    get_points_by_pattern,
-    workspace::{get_db_fast_root, get_workspace},
-};
+use std::path::PathBuf;
+
+use analysis::get_points_by_pattern;
 use processing::{process::TRAPEZOID_DEFAULT, types::FrameEvent};
 
 use {
@@ -46,7 +45,7 @@ async fn main() {
 
     for u_sp in u_sp {
         let points =
-            get_points_by_pattern(get_db_fast_root().to_str().unwrap(), &pattern, &exclude);
+            get_points_by_pattern("/data-fast/numass-server/", &pattern, &exclude);
         let points = points[&u_sp].clone();
         let pb = Arc::new(Mutex::new(indicatif::ProgressBar::new(points.len() as u64)));
         let histogram = Arc::new(Mutex::new(hist.clone()));
@@ -88,9 +87,9 @@ async fn main() {
 
         {
             let histogram = histogram.lock().await;
-            std::fs::create_dir_all(get_workspace().join("calibrations")).unwrap();
+            std::fs::create_dir_all(PathBuf::from("calibrations/")).unwrap();
             tokio::fs::write(
-                get_workspace().join(format!("calibrations/{u_sp}.csv")),
+                PathBuf::from(format!("calibrations/{u_sp}.csv")),
                 histogram.to_csv(','),
             )
             .await
