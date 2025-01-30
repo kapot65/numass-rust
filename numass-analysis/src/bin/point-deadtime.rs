@@ -1,3 +1,8 @@
+//! # Point Deadtime Calculation
+//! Ручное вычисление мертвого времени точки
+//! > [!NOTE]  
+//! > Устаревший скрипт, но мб пригодится.
+//! TODO: обновить или удалить
 use std::path::PathBuf;
 
 use processing::{process::ProcessParams, storage::process_point};
@@ -8,7 +13,7 @@ async fn main() {
     let filepath = PathBuf::from("/data-nvme/2023_03/Tritium_2/set_1/p118(30s)(HV1=12000)");
     // let filepath = "/data-nvme/2023_03/Tritium_2/set_1/p52(30s)(HV1=15000)";
                                           
-    let events = process_point(&filepath, &ProcessParams::default()).await.unwrap().1.unwrap();
+    let (events, _) = process_point(&filepath, &ProcessParams::default()).await.unwrap().1.unwrap();
 
     let events =  events.into_keys().collect::<Vec<_>>();
 

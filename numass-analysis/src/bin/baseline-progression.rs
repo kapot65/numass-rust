@@ -11,66 +11,62 @@ use unzip_n::unzip_n;
 unzip_n!(2);
 
 use processing::{
-    histogram::PointHistogram, process::extract_waveforms, storage::load_point
+    histogram::PointHistogram, preprocess::extract_waveforms, storage::load_point
 };
 
 #[tokio::main]
 async fn main() {
 
     let points = [
-        // "/data-nvme/2024_03/Electrode_2/set_1/p5(400s)(HV1=12000)",
+        // set 1
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_1/p0(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_1/p18(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_1/p45(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_1/p72(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_1/p99(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_1/p124(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_1/p151(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_1/p178(30s)(HV1=14000)",
 
-        "/data-fast/numass-server/2024_11/Electrode_1/set_2/p0(400s)(HV1=4000)",
+        // set 3
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_3/p0(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_3/p18(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_3/p45(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_3/p72(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_3/p99(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_3/p124(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_3/p151(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_3/p178(30s)(HV1=14000)",
 
-        "/data-fast/numass-server/2024_11/Electrode_1/set_5/p0(400s)(HV1=4000)",
-        
-        
-        // "/data-nvme/2024_03/Tritium_2/set_1/p150(30s)(HV1=12050)",
+        // set 5
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_5/p0(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_5/p18(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_5/p45(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_5/p72(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_5/p99(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_5/p124(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_5/p151(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_5/p178(30s)(HV1=14000)",
 
+        // set 7
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_7/p0(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_7/p18(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_7/p45(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_7/p72(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_7/p99(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_7/p124(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_7/p151(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_7/p178(30s)(HV1=14000)",
 
-        // "/data-nvme/2024_03/Tritium_2/set_3/p152(30s)(HV1=12000)",
-
-
-        // "/data-nvme/2024_03/Tritium_2/set_5/p152(30s)(HV1=12000)",
-
-
-        // "/data-2/numass-server/2024_03/Tritium_3/set_3/p152(30s)(HV1=12000)",
-        // // "/data-2/numass-server/2024_03/Tritium_3/set_8/p152(30s)(HV1=12000)",
-
-        // "/data-2/numass-server/2024_03/Tritium_4/set_1/p152(30s)(HV1=12000)",
-        // // "/data-2/numass-server/2024_03/Tritium_4/set_6/p152(30s)(HV1=12000)",
-
-        // "/data-2/numass-server/2024_03/Tritium_5/set_1/p152(30s)(HV1=12000)",
-        // // "/data-2/numass-server/2024_03/Tritium_5/set_6/p152(30s)(HV1=12000)",
-
-        // "/data-2/numass-server/2024_03/Tritium_5/set_1/p152(30s)(HV1=12000)",
-        // // "/data-2/numass-server/2024_03/Tritium_5/set_6/p152(30s)(HV1=12000)",
-
-        // "/data-2/numass-server/2024_03/Tritium_6/set_1/p152(30s)(HV1=12000)",
-        // // "/data-2/numass-server/2024_03/Tritium_6/set_6/p152(30s)(HV1=12000)",
-        // "/data-2/numass-server/2024_03/Tritium_6/set_12/p152(30s)(HV1=12000)",
-
-        // // "/data-2/numass-server/2024_03/Tritium_7/set_1/p152(30s)(HV1=12000)",
-        // "/data-2/numass-server/2024_03/Tritium_7/set_6/p152(30s)(HV1=12000)",
-        // // "/data-2/numass-server/2024_03/Tritium_7/set_12/p152(30s)(HV1=12000)",
-        // "/data-2/numass-server/2024_03/Tritium_7/set_18/p152(30s)(HV1=12000)",
-
-
-        // // "/data-2/numass-server/2024_03/Tritium_8/set_1/p152(30s)(HV1=12000)",
-        // "/data-3/numass-server/2024_03/Tritium_8/set_6/p152(30s)(HV1=12000)",
-
-        // // "/data-3/numass-server/2024_03/Tritium_9/set_1/p152(30s)(HV1=12000)",
-        // "/data-3/numass-server/2024_03/Tritium_9/set_6/p152(30s)(HV1=12000)",
-
-
-        // // "/data-3/numass-server/2024_03/Tritium_10/set_1/p152(30s)(HV1=12000)",
-        // "/data-3/numass-server/2024_03/Tritium_10/set_6/p152(30s)(HV1=12000)",
-
-        // // "/data-3/numass-server/2024_03/Tritium_11/set_1/p152(30s)(HV1=12000)",
-        // "/data-3/numass-server/2024_03/Tritium_11/set_6/p152(30s)(HV1=12000)",
-
-        // // "/data-3/numass-server/2024_03/Tritium_12/set_1/p152(30s)(HV1=12000)",
-        // "/data-3/numass-server/2024_03/Tritium_12/set_6/p152(30s)(HV1=12000)",
+        // set 9
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_9/p0(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_9/p18(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_9/p45(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_9/p72(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_9/p99(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_9/p124(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_9/p151(30s)(HV1=14000)",
+        "/data-fast/numass-server/2024_11/Tritium_2_1/set_9/p178(30s)(HV1=14000)"
     ];
 
     let channel_baseline = Arc::new(Mutex::new(BTreeMap::new()));

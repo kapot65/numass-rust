@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use analysis::{amps::get_amps, get_points_by_pattern, CorrectionCoeffs};
+use analysis::{get_points_by_pattern, CorrectionCoeffs};
 
 use chrono::NaiveDateTime;
 
@@ -13,10 +13,7 @@ use plotly::{
 };
 
 use processing::{
-    numass::{NumassMeta, Reply},
-    postprocess::{post_process, PostProcessParams},
-    process::{ProcessParams, TRAPEZOID_DEFAULT},
-    types::FrameEvent,
+    numass::{NumassMeta, Reply}, postprocess::{post_process, PostProcessParams}, process::{extract_events, ProcessParams, TRAPEZOID_DEFAULT}, storage::{load_meta, load_point}, types::FrameEvent
 };
 
 use tokio::sync::Mutex;
@@ -75,16 +72,17 @@ async fn main() {
 
                 let k = coeffs.get_by_index(&filepath);
 
-                let amps = post_process(
-                    get_amps(
-                        &filepath,
+                let point = load_point(&filepath).await;
+
+                let (amps, _) = post_process(
+                    extract_events(
+                        Some(meta.clone()),
+                        point,
                         &ProcessParams {
                             algorithm: TRAPEZOID_DEFAULT,
                             convert_to_kev: true,
                         },
-                    )
-                    .await
-                    .unwrap(),
+                    ),
                     &PostProcessParams::default(),
                 );
 

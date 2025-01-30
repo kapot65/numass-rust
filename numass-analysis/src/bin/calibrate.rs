@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc, path::PathBuf};
 
-use processing::{histogram::HistogramParams, process::{extract_events, ProcessParams, TRAPEZOID_DEFAULT}, storage::load_point, utils::events_to_histogram};
+use processing::{histogram::HistogramParams, process::{extract_events, ProcessParams, TRAPEZOID_DEFAULT}, storage::{load_meta, load_point}, utils::events_to_histogram};
 use tokio::sync::Mutex;
 
 #[tokio::main]
@@ -58,8 +58,11 @@ async fn main() {
                 let algorithm = algorithm.clone();
                 tokio::spawn(async move {
 
-                    let point = load_point(&PathBuf::from(filepath)).await;
-                    let events = extract_events(point, &ProcessParams { algorithm, convert_to_kev: false });
+                    let filepath = PathBuf::from(filepath);
+
+                    let meta = load_meta(&filepath).await;
+                    let point = load_point(&filepath).await;
+                    let (events, _) = extract_events(meta, point, &ProcessParams { algorithm, convert_to_kev: false });
 
                     let histogram  = events_to_histogram(
                         events,

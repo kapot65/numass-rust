@@ -1,3 +1,12 @@
+//! Основная обработка данных сеанса
+//! 
+//! Скрипт:
+//! - объединяет точки в группы по HV (с учетом мониторинга)
+//! - каждую группу переводит в формат [ProducedPoint]
+//! - сохраняет все получившиеся [ProducedPoint] в tsv таблицу
+//! 
+//! На вход принимается yaml файл со структурой [Opts]
+//! 
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc, vec};
 
 use clap::Parser;
@@ -53,12 +62,6 @@ pub struct Arg {
     /// Path to the config file in yaml format
     pub config_file: PathBuf,
 }
-
-// #[test]
-// fn dumpAlgo() {
-//     println!("{}", serde_yaml::to_string(&processing::process::TRAPEZOID_DEFAULT).unwrap());
-//     println!("{}", serde_yaml::to_string(&processing::postprocess::PostProcessParams::default()).unwrap())
-// }
 
 #[tokio::main] // TODO adjust worker_threads ( #[tokio::main(worker_threads = ?)] )
 async fn main() {
@@ -168,7 +171,7 @@ async fn main() {
                         1.0
                     };
 
-                    let frames = process_point(&filepath, &processing)
+                    let (frames, preprocess) = process_point(&filepath, &processing)
                         .await
                         .unwrap()
                         .1
@@ -176,7 +179,7 @@ async fn main() {
 
                     out_point.triggers += frames.len();
 
-                    let frames = post_process(frames, &post_processing);
+                    let (frames, _) = post_process((frames, preprocess), &post_processing);
 
                     frames.iter().for_each(|(_, events)| {                        
                         let mut is_bad = false;

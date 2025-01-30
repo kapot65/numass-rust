@@ -10,9 +10,18 @@ use {
     tokio::sync::Mutex,
 };
 
+#[cfg(target_family = "unix")]
+use tikv_jemallocator::Jemalloc;
+#[cfg(target_family = "unix")]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 #[tokio::main]
 async fn main() {
-    let pattern = format!("{run}/Tritium_*/set_[1234]/p*", run = "2024_11");
+
+    let run = "2024_11";
+
+    let pattern = format!("{run}/Tritium_[34]/set_[1234567]/p*");
     let exclude = vec![];
 
     // let u_sp = [12500, 13000, 13500, 14000, 14500, 15000, 15500, 16000, 16500, 17000];
@@ -54,7 +63,7 @@ async fn main() {
                     // load point manually because it must not be used from cache
                     // TODO: add cache expiration based on calibration parameters change
                     let (_, events) = process_point(&filepath, &processing_params).await.unwrap();
-                    let events = events.unwrap();
+                    let events = events.unwrap().0;
                     {
                         let mut histogram = histogram.lock().await;
                         for (_, events) in events {
@@ -79,7 +88,7 @@ async fn main() {
 
         {
             let histogram = histogram.lock().await;
-            std::fs::create_dir_all(&get_workspace().join("calibrations")).unwrap();
+            std::fs::create_dir_all(get_workspace().join("calibrations")).unwrap();
             tokio::fs::write(
                 get_workspace().join(format!("calibrations/{u_sp}.csv")),
                 histogram.to_csv(','),

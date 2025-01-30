@@ -1,3 +1,4 @@
+//! Построение распределений сбросов [processing::types::FrameEvent::Reset] в кадре
 use std::path::PathBuf;
 
 use plotly::{common::Title, layout::Axis, Layout, Plot};
@@ -5,7 +6,7 @@ use plotly::{common::Title, layout::Axis, Layout, Plot};
 use processing::{
     histogram::PointHistogram,
     process::{ProcessParams, TRAPEZOID_DEFAULT},
-    storage::load_point,
+    storage::{load_meta, load_point},
     types::FrameEvent,
 };
 
@@ -17,10 +18,16 @@ static GLOBAL: Jemalloc = Jemalloc;
 
 #[tokio::main]
 async fn main() {
-    let filepath = "/data-nvme/2024_03/Tritium_2/set_2/p174(30s)(HV1=11000)";
-    let point = load_point(&PathBuf::from(filepath)).await;
+    let filepath = "/data-fast/numass-server/2024_11/Tritium_2_1/set_1/p196(20s)(HV1=10000)";
 
-    let frames = processing::process::extract_events(
+    let filepath = PathBuf::from(filepath);
+    
+    let meta = load_meta(&filepath).await;
+    let point = load_point(&filepath).await;
+    
+
+    let (frames, _) = processing::process::extract_events(
+        meta,
         point,
         &ProcessParams {
             algorithm: TRAPEZOID_DEFAULT,
@@ -40,7 +47,7 @@ async fn main() {
     let mut plot = Plot::new();
 
     let layout = Layout::new()
-        .title(Title::new(format!("resets distribution {filepath}").as_str()))
+        .title(Title::new(format!("resets distribution {filepath:?}").as_str()))
         .x_axis(Axis::new().title(Title::new("position, bins")))
         .height(1000);
 

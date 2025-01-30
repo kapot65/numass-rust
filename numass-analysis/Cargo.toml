@@ -11,7 +11,7 @@ egui_plot = "0.27.2"
 serde = { version = "1.0.163", features = ["derive"] }
 serde_json = "1.0.91"
 tokio = { version = "1.21.2", features = ["full"] }
-protobuf = "3.2.0"
+protobuf = "3.7.1"
 dataforge = { git = "https://bitbucket.org/Kapot/dataforge-parser-rust.git", tag = "0.1.2", features = ["tokio"]  }
 processing = { git = "https://bitbucket.org/Kapot/numass-processing.git", features = ["egui", "plotly"], tag = "0.1.2" }
 
