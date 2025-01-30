@@ -13,7 +13,7 @@ use {
     egui_plot::{HLine, Line, PlotUi},
 };
 
-use numass::{protos::rsb_event, NumassMeta};
+use numass::{protos::rsb_event::{self, point::channel::block::Frame}, NumassMeta};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -21,7 +21,7 @@ use crate::{
         KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_LONGDIFF, KEV_COEFF_MAX,
         KEV_COEFF_TRAPEZIOD,
     },
-    preprocess::Preprocess,
+    preprocess::{emulate_fir, extract_waveforms, Preprocess},
     types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame, NumassWaveforms},
     utils::correct_frame_time,
 };
@@ -78,7 +78,7 @@ pub const TRAPEZOID_DEFAULT: Algorithm = Algorithm::Trapezoid {
     left: 6,
     center: 15,
     right: 6,
-    treshold: 10,
+    treshold: 16,
     min_length: 10,
     skip: SkipOption::None,
     reset_detection: HWResetParams {
@@ -97,10 +97,7 @@ pub const LONGDIFF_DEFAULT: Algorithm = Algorithm::LongDiff {
 
 impl Default for Algorithm {
     fn default() -> Self {
-        Self::FirstPeak {
-            threshold: 10,
-            left: 8,
-        }
+        TRAPEZOID_DEFAULT
     }
 }
 
@@ -118,31 +115,6 @@ impl Default for ProcessParams {
             convert_to_kev: true,
         }
     }
-}
-
-/// remap waveforms from protobuf message to more convenient format (no copy).
-pub fn extract_waveforms(point: &rsb_event::Point) -> NumassWaveforms {
-    let mut waveforms = BTreeMap::new();
-
-    for channel in &point.channels {
-        for block in &channel.blocks {
-            for frame in &block.frames {
-                let entry = waveforms
-                    .entry(correct_frame_time(frame.time))
-                    .or_insert(BTreeMap::new());
-
-                let i16_slice = unsafe {
-                    std::slice::from_raw_parts(
-                        frame.data.as_ptr() as *const i16,
-                        frame.data.len() / 2,
-                    )
-                };
-
-                entry.insert(channel.id as u8, i16_slice);
-            }
-        }
-    }
-    waveforms
 }
 
 /// Built-in processing algorithm.
@@ -163,7 +135,7 @@ pub fn extract_events(
     (
         point
             .into_iter()
-            .map(|(time, frame)| {
+            .filter_map(|(time, frame)| {
                 let mut events = frame_to_events(
                     &frame,
                     &params.algorithm,
@@ -181,7 +153,11 @@ pub fn extract_events(
                         }
                     });
                 }
-                (time, events)
+                if events.is_empty() {
+                    None
+                } else {
+                    Some((time, events))
+                }
             })
             .collect::<BTreeMap<_, _>>(),
         preprocess,
@@ -364,19 +340,7 @@ pub fn frame_to_events(
 
                     let offset = left + center + right;
 
-                    let filtered = waveform
-                        .windows(left + center + right)
-                        .map(|window| {
-                            (window[left + center..]
-                                .iter()
-                                .map(|v| *v as i32)
-                                .sum::<i32>()
-                                - window[..*left].iter().map(|v| *v as i32).sum::<i32>())
-                                as f32
-                                / (left + right) as f32
-                                - baseline.as_ref().map_or(0.0, |b| b[*ch_id as usize])
-                        })
-                        .collect::<Vec<_>>();
+                    let filtered = emulate_fir(waveform, *right, *center, *left);
 
                     #[cfg(feature = "egui")]
                     if let Some(ui) = ui {
