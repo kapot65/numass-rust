@@ -1,4 +1,4 @@
-//! Построение распределений сбросов [processing::types::FrameEvent::Reset] в кадре
+//! Построение распределений сбросов ([processing::types::FrameEvent::Reset]) в кадре
 use std::path::PathBuf;
 
 use plotly::{common::Title, layout::Axis, Layout, Plot};
@@ -21,7 +21,7 @@ async fn main() {
     let filepath = "/data-fast/numass-server/2024_11/Tritium_2_1/set_1/p196(20s)(HV1=10000)";
 
     let filepath = PathBuf::from(filepath);
-    
+
     let meta = load_meta(&filepath).await;
     let point = load_point(&filepath).await;
     

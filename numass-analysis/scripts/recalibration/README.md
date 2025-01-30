@@ -28,7 +28,7 @@
             [0.2477852, -0.0318],
         ];
         ```
-    - выставить в выставить в [calibrate-with-tritium.rs](https://bitbucket.org/Kapot/tqdc-controller-rust/src/new-tqdc/analysis/src/bin/calibrate-with-tritium.rs)
+    - (вернуть исходную калибровку) выставить в выставить в [calibrate-with-tritium.rs](https://bitbucket.org/Kapot/tqdc-controller-rust/src/new-tqdc/analysis/src/bin/calibrate-with-tritium.rs)
         ```RUST
         let u_sp = [12000, 12500, 13000, 13500, 14000, 14500, 15000, 15500, 16000, 16500, 17000];
 
@@ -42,13 +42,13 @@
     - запустить `cargo run --release --bin calibrate-with-tritium`
     - скопировать полученные файлы в папку `kev`
 3. рассчитать фиты для сырых данных
-    - запустить `root 'fit.C("raw", 1.0, 2.0)'`
+    - запустить `root 'fit.C("raw", 1.0, 2.0)' --web=off`
     - проверить (визуально) что фиты сошлись
 4. рассчитать фиты для калиброванных данных
-    - запустить `root 'fit.C("kev", 0.3, 0.8)'`
+    - запустить `root 'fit.C("kev", 0.3, 0.8)' --web=off`
     - проверить (визуально) что фиты сошлись
 5. рассчитать калибровку
-    - запустить `root 'calibrate.C'`
+    - запустить `root 'calibrate.C' --web=off`
     - проверить (визуально) что калибровка сошлась
 6. запихнуть полученную калибровку из [coeffs.json](./output/coeffs.json) в [numass-processing/src/lib.rs](https://bitbucket.org/Kapot/numass-processing/src/master/src/lib.rs)
 7. оценить визуально качество калибровки с помощью data-viewer
