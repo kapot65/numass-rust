@@ -28,7 +28,7 @@ void calibrate() {
     auto raw_df = ROOT::RDF::FromCSV("./output/calibration_raw.csv");
     auto kev_df = ROOT::RDF::FromCSV("./output/calibration_kev.csv");
 
-    auto ethalon = kev_df.Take<Double_t>(to_string(5)).GetValue();
+    auto ethalon = kev_df.Take<Double_t>(to_string(4)).GetValue();
 
     // auto coeffs = json::array();
 
@@ -37,7 +37,30 @@ void calibrate() {
 
 
     coeffsFile << "[\n";
-    for (int i = 1; i < 7; i++) {
+
+    ushort ch_ids[] = {1, 2, 3, 4, 6}; // TODO: move into header
+
+    for (int i = 0; i < 7; i++) {
+
+        bool contains = false;
+        for(auto ch_id: ch_ids) {
+            if (ch_id == i) {
+                contains = true;
+                break;
+            }
+        }
+        
+        if (!contains) {
+            coeffsFile << "    [1.0, 0.0]";
+            if (i == 6) {
+                coeffsFile << "\n";
+            } else {
+                coeffsFile << ",\n";
+            }
+            continue;
+        }
+
+
         auto ch = raw_df.Take<Double_t>(to_string(i)).GetValue();
 
         TCanvas *c1 = new TCanvas(TString::Format("Channel %d", i));
