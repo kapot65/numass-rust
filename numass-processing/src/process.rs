@@ -13,7 +13,7 @@ use {
     egui_plot::{HLine, Line, PlotUi},
 };
 
-use numass::{protos::rsb_event::{self, point::channel::block::Frame}, NumassMeta};
+use numass::{protos::rsb_event, NumassMeta};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -22,8 +22,7 @@ use crate::{
         KEV_COEFF_TRAPEZIOD,
     },
     preprocess::{emulate_fir, extract_waveforms, Preprocess},
-    types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame, NumassWaveforms},
-    utils::correct_frame_time,
+    types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame}
 };
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
