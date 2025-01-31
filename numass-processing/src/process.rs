@@ -22,7 +22,7 @@ use crate::{
         KEV_COEFF_TRAPEZIOD,
     },
     preprocess::{emulate_fir, extract_waveforms, Preprocess},
-    types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame}
+    types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame},
 };
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
@@ -339,7 +339,12 @@ pub fn frame_to_events(
 
                     let offset = left + center + right;
 
-                    let filtered = emulate_fir(waveform, *right, *center, *left);
+                    let filtered = {
+                        let baseline = baseline.as_ref().map_or(0.0, |b| b[*ch_id as usize]) as f32;
+                        let mut filtered = emulate_fir(waveform, *right, *center, *left);
+                        filtered.iter_mut().for_each(|val| *val -= baseline); // QUESTION: what is perf decrease/increase of this (compared to 1 complex map)?
+                        filtered
+                    };
 
                     #[cfg(feature = "egui")]
                     if let Some(ui) = ui {
