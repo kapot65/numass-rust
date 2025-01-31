@@ -13,7 +13,11 @@ use plotly::{
 };
 
 use processing::{
-    numass::{NumassMeta, Reply}, postprocess::{post_process, PostProcessParams}, process::{extract_events, ProcessParams, TRAPEZOID_DEFAULT}, storage::{load_meta, load_point}, types::FrameEvent
+    numass::{NumassMeta, Reply},
+    postprocess::{post_process, PostProcessParams},
+    process::{extract_events, ProcessParams, TRAPEZOID_DEFAULT},
+    storage::load_point,
+    types::FrameEvent,
 };
 
 use tokio::sync::Mutex;
@@ -119,8 +123,7 @@ async fn main() {
                 pb.lock().await.inc(1);
             })
         })
-        .collect::<Vec<_>>()
-        ;
+        .collect::<Vec<_>>();
 
     for handle in handles {
         handle.await.unwrap();
