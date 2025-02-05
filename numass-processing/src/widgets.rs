@@ -1,12 +1,10 @@
 //! This module contains egui widgets for processing configurations
 
 use crate::{
-    histogram::HistogramParams,
-    postprocess::PostProcessParams,
-    process::{
+    histogram::HistogramParams, postprocess::PostProcessParams, preprocess::{CHECK_BIN_SIZE, CHECK_HV_THRESHOLD, CUTOFF_BIN_SIZE}, process::{
         Algorithm, HWResetParams, ProcessParams, FIRSTPEAK_DEFAULT, LIKHOVID_DEFAULT,
         LONGDIFF_DEFAULT, TRAPEZOID_DEFAULT,
-    },
+    }
 };
 
 pub trait UserInput {
@@ -216,16 +214,48 @@ impl UserInput for PostProcessParams {
         let mut merge_splits_first = self.merge_splits_first;
         let mut merge_close_events = self.merge_close_events;
         let mut ignore_borders = self.ignore_borders;
+        let mut ignore_channels = self.ignore_channels.to_owned();
 
         ui.add_enabled_ui(true, |ui| {
             // TODO: fix this
             ui.label("Postprocessing params");
 
-            ui.checkbox(&mut cut_bad_blocks, "cut_bad_blocks");
+            ui.checkbox(&mut cut_bad_blocks, "cut_bad_blocks").on_hover_text(
+                format!("
+                point is splitted into {} s length blocks 
+                each block is also be splitted into {} s subblock
+                the block is considered bad if any of its subblocks contains 0 events
+                the cutting applies only on points with HV < {} keV
+                ", 
+                    CUTOFF_BIN_SIZE  as f32 * 1e-9,
+                    CHECK_BIN_SIZE as f32 * 1e-9,
+                    CHECK_HV_THRESHOLD * 1e-3
+                )
+            );
 
-            ui.checkbox(&mut merge_splits_first, "merge splits first");
-            ui.checkbox(&mut merge_close_events, "merge close events");
-            ui.checkbox(&mut ignore_borders, "ignore borders");
+            ui.checkbox(&mut merge_splits_first, "merge splits first")
+                .on_hover_text(
+                    "
+                    spit - neighboring events with time delta < 200 ns
+                    spits will be merged into one event in random order
+                    (based on which one is first)
+                    this will be processed before main merging
+                    "
+                );
+            ui.checkbox(&mut merge_close_events, "merge close events")
+                .on_hover_text(
+                    "
+                    Merging scheme:
+                    idx_1 - An event into which other events merge (goes from first to end)
+                    idx_2 - The event that will be merged into idx_1 (goes from end to idx_1)
+                    each idx_2.ch_id checks for neigborhooding with idx_1.ch_id
+                    if idx_1 and idx_2 are neigbors => idx_1.amp += idx_2.amp and idx_2 will be removed
+                    "
+                );
+            ui.checkbox(&mut ignore_borders, "ignore borders").on_hover_text("
+            do not check for neigboorhooding at merging step
+            with this flag every event in frame will be merged into first one
+            ");
 
             ui.collapsing("merge mapping", |ui| {
                 let image = if ctx.style().visuals.dark_mode {
@@ -241,6 +271,22 @@ impl UserInput for PostProcessParams {
                 };
                 ui.image(image);
             });
+
+            ui.collapsing("ignore channels", |ui| {
+                ignore_channels
+                .iter_mut()
+                .enumerate()
+                .collect::<Vec<_>>()
+                .chunks_mut(3)
+                .for_each(|chunk| {
+                    ui.horizontal(|ui| {
+                        chunk.iter_mut().for_each(|(idx, ignored)| {
+                            let idx_readable = idx.to_owned() + 1;
+                            ui.checkbox(ignored, &format!("{idx_readable}"));
+                        });
+                    });
+                });
+            });
         });
 
         PostProcessParams {
@@ -248,6 +294,7 @@ impl UserInput for PostProcessParams {
             merge_splits_first,
             merge_close_events,
             ignore_borders,
+            ignore_channels,
         }
     }
 }

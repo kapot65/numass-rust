@@ -16,10 +16,10 @@ use crate::{
 pub const CUTOFF_BIN_SIZE: u64 = 1_000_000_000;
 
 /// Размер блока, который будет проверяться на наличие проблем (в нс)
-const CHECK_BIN_SIZE: u64 = 10_000_000;
+pub const CHECK_BIN_SIZE: u64 = 10_000_000;
 
 /// Порог по HV для проверки точки (точки с HV выше не будут проверяться)
-const CHECK_HV_THRESHOLD: f32 = 16e3;
+pub const CHECK_HV_THRESHOLD: f32 = 16e3;
 
 /// Неизменяемые параметры, необходимые для обработки кадра
 /// могут либо задаваться статично, либо на каждую точку
@@ -42,6 +42,7 @@ pub struct Preprocess {
 }
 
 impl Preprocess {
+
     pub fn from_point(
         meta: Option<NumassMeta>,
         point: &rsb_event::Point,
@@ -101,9 +102,6 @@ impl Preprocess {
             bad_blocks,
         }
     }
-}
-
-impl Preprocess {
     /// calculate effective time of acquisition after removing bad blocks (in nanoseconds)
     /// `acquisition_time - bad_blocks_count as u64 * CUTOFF_BIN_SIZE`
     pub fn effective_time(&self) -> u64 {

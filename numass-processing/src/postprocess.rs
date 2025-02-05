@@ -30,6 +30,9 @@ pub struct PostProcessParams {
     pub merge_splits_first: bool,
     pub merge_close_events: bool,
     pub ignore_borders: bool,
+
+    /// ignore channels with index in this array set to true. Default is false for all channels.
+    pub ignore_channels: [bool; 7]
 }
 
 impl Default for PostProcessParams {
@@ -39,6 +42,7 @@ impl Default for PostProcessParams {
             merge_splits_first: false,
             merge_close_events: true,
             ignore_borders: false,
+            ignore_channels: [false; 7]
         }
     }
 }
@@ -55,7 +59,7 @@ pub fn post_process(
     }
 
     // TODO: think about code deduplication
-    let amplitudes = if params.cut_bad_blocks {
+    let mut amplitudes = if params.cut_bad_blocks {
         amplitudes
             .into_iter()
             .filter(|(timestamp, _)| {
@@ -86,6 +90,15 @@ pub fn post_process(
             })
             .collect::<BTreeMap<_, _>>()
     };
+
+    if params.ignore_channels != [false; 7] {
+        amplitudes.iter_mut().for_each(|(_, events)| {
+            events.retain(|(_, event)| match event {
+                FrameEvent::Event { channel, .. } => !params.ignore_channels[*channel as usize],
+                _ => true,
+            });
+        });
+    }
 
     (amplitudes, preprocess_params)
 }
