@@ -1,0 +1,21 @@
+[package]
+name = "numass-root"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cxx = { version = "1.0.138", features = ["c++17"] }
+# uniffi = { version = "0.25.0" }
+
+dataforge = { path = "../dataforge-parser-rust" }
+numass = { path = "../dataforge-parser-numass" }
+processing = { path = "../numass-processing" }
+protobuf = "3.3.0"
+
+[build-dependencies]
+cbindgen = "0.28.0"
+# uniffi = { version = "0.25.0", features = [ "build" ] }
+
+
+[lib]
+crate-type = ["cdylib"]
