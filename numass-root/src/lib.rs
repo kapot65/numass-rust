@@ -1,71 +1,95 @@
-use std::{
-    ffi::{c_char, CStr, CString},
-    path::PathBuf,
-};
+use std::path::PathBuf;
 
-use numass::protos::rsb_event;
+use numass::{protos::rsb_event, Reply};
 use processing::{
-    process::{extract_events, Algorithm, ProcessParams, TRAPEZOID_DEFAULT},
-    types::FrameEvent,
+    postprocess::{post_process, PostProcessParams}, process::{extract_events, ProcessParams}, types::FrameEvent
 };
 
 use cxx::CxxString;
 use protobuf::Message;
 
-/// cbindgen:prefix-with-name
 #[repr(C)]
-#[derive(Debug)]
-pub enum H {
-    Foo(i16),
-    Bar { x: u8, y: i16 },
-    Baz,
+pub struct ProcessedTree {
+    pub time: u64,
+    pub channel: u8,
+    pub amplitude: f32,
+    pub size: u16,
+    pub tree_ref: usize
 }
 
 #[no_mangle]
-pub extern "C" fn say_hello() {
-    println!("Hello from Rust!");
+/// возвращает [ProcessParams::default] в С++ виде
+pub extern "C" fn get_process_default() -> ProcessParams {
+    ProcessParams::default()
+}
+
+
+#[no_mangle]
+pub extern "C" fn parse_process(serialized: &CxxString, ok: Option<&mut bool>) -> ProcessParams {
+    let mut params = ProcessParams::default();
+    if let Ok(serialized_str) = serialized.to_str() {
+        if let Ok(parsed) = serde_json::from_str::<ProcessParams>(serialized_str) {
+            if let Some(ok) = ok {
+                *ok = true;
+            }
+            params = parsed
+        } else {
+            if let Some(ok) = ok {
+                *ok = false;
+            }
+        }
+    } else {
+        if let Some(ok) = ok {
+            *ok = false;
+        }
+    }
+    params
 }
 
 #[no_mangle]
-pub extern "C" fn eat_string(s: *const c_char) {
-    let string = unsafe { CStr::from_ptr(s) }.to_str().map(String::from);
-    println!("Got string: {:?}", string);
+pub extern "C" fn parse_postprocess(serialized: &CxxString, ok: Option<&mut bool>) -> PostProcessParams {
+    let mut params = PostProcessParams::default();
+    if let Ok(serialized_str) = serialized.to_str() {
+        if let Ok(parsed) = serde_json::from_str::<PostProcessParams>(serialized_str) {
+            if let Some(ok) = ok {
+                *ok = true;
+            }
+            params = parsed
+        } else {
+            if let Some(ok) = ok {
+                *ok = false;
+            }
+        }
+    } else {
+        if let Some(ok) = ok {
+            *ok = false;
+        }
+    }
+    params
 }
 
+// TODO: finish this function
 #[no_mangle]
-pub extern "C" fn eat_callback(callback: extern "C" fn(*const c_char)) {
-    let message = CString::new("Hello from Rust!").expect("CString::new failed");
-    callback(message.as_ptr());
-}
-
-#[no_mangle]
-pub extern "C" fn eat_enum(h: H) {
-    println!("h = {h:?}");
-}
-
-#[no_mangle]
-/// Необходимо использовать std::move !!!
-/// Или не удалять объект на время выполнения функции
-pub extern "C" fn eat_cxx_string(str: &CxxString) {
-    println!("Got CxxString: {:?}", str.to_str().unwrap().to_owned());
-}
-
-#[no_mangle]
-pub extern "C" fn eat_algorithm(algo: Algorithm) {
-    println!("Got algorithm: {algo:?}");
-}
-
-#[no_mangle]
-/// возвращает [TRAPEZOID_DEFAULT] в С++ виде
-pub extern "C" fn get_trapeziod_default() -> Algorithm {
-    TRAPEZOID_DEFAULT.clone()
+pub extern "C" fn is_point(
+    path: &CxxString,
+) -> bool {
+    let filepath = PathBuf::from(path.to_str().unwrap());
+    if let Ok((_, Reply::AcquirePoint {
+        ..
+    })) = dataforge::read_df_header_and_meta_sync(&mut std::fs::File::open(filepath).unwrap()) {
+        true
+    } else {
+        false
+    }
 }
 
 #[no_mangle]
 pub extern "C" fn process_point(
     path: &CxxString,
-    algo: &Algorithm,
-    fill_fn: extern "C" fn(u64, u8, f32),
+    processed_tree: &mut ProcessedTree,
+    fill_fn: extern "C" fn(&mut ProcessedTree, u64, u8, f32, u16),
+    process: &ProcessParams,
+    postprocess: Option<&PostProcessParams>
 ) {
     let filepath = PathBuf::from(path.to_str().unwrap());
 
@@ -78,77 +102,24 @@ pub extern "C" fn process_point(
         (message.meta, point)
     };
 
-    let (frames, _) = extract_events(
-        Some(meta),
-        point,
-        &ProcessParams {
-            algorithm: algo.clone(),
-            convert_to_kev: true,
-        },
-    );
+    let frames = {
+        let (frames, preprocess) = extract_events(Some(meta), point, process);
+        if let Some(postprocess) = postprocess {
+            let (frames, _) = post_process((frames, preprocess), &postprocess);
+            frames
+        } else {
+            frames
+        }
+    };
 
     frames.into_iter().for_each(|(frame_time, events)| {
         events.into_iter().for_each(|(offset, event)| {
             if let FrameEvent::Event {
-                channel, amplitude, ..
+                channel, amplitude, size
             } = event
             {
-                fill_fn(frame_time + offset as u64, channel, amplitude);
+                fill_fn(processed_tree, frame_time + offset as u64, channel, amplitude, size);
             }
         })
     });
 }
-
-// #[no_mangle]
-// pub extern "C" fn eat_cxx_string_ref(str: &CxxString) {
-//     println!("Got CxxString ref: {:?}", str.len());
-// }
-
-// uniffi::include_scaffolding!("processing");
-
-// use numass::protos::rsb_event;
-// use processing::{process::{ProcessParams, TRAPEZOID_DEFAULT}, types::FrameEvent};
-// use protobuf::Message;
-
-// pub fn add(left: u32, right: u32) -> u32 {
-//     left + right
-// }
-
-// pub fn vec_from_rust(val: u32) -> Vec<u32> {
-//     vec![val, val, val, val]
-// }
-
-// pub struct NumassEvent {
-//     pub offset: u16,
-//     pub event: FrameEvent
-// }
-
-// pub struct NumassTrigger {
-//     pub time: u64,
-//     pub events: Vec<NumassEvent>
-// }
-
-// pub fn process_point(filepath: String) -> Vec<NumassTrigger> {
-
-//     let mut point_file = std::fs::File::open(filepath).unwrap();
-//     let message = dataforge::read_df_message_sync::<numass::NumassMeta>(&mut point_file).unwrap();
-
-//     let point = rsb_event::Point::parse_from_bytes(&message.data.unwrap_or_default()[..]).unwrap();
-
-//     let frames = processing::process::extract_events(point, &ProcessParams {
-//         algorithm: TRAPEZOID_DEFAULT,
-//         convert_to_kev: true
-//     });
-
-//     frames.into_iter().map(|(time, events)| {
-//         let events = events.into_iter().map(|(offset, event)| {
-//             NumassEvent {
-//                 offset, event
-//             }
-//         }).collect::<Vec<_>>();
-
-//         NumassTrigger {
-//             time, events
-//         }
-//     }).collect::<Vec<_>>()
-// }

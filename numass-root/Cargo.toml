@@ -11,6 +11,7 @@ dataforge = { path = "../dataforge-parser-rust" }
 numass = { path = "../dataforge-parser-numass" }
 processing = { path = "../numass-processing" }
 protobuf = "3.3.0"
+serde_json = "1.0.138"
 
 [build-dependencies]
 cbindgen = "0.28.0"
@@ -18,4 +19,4 @@ cbindgen = "0.28.0"
 
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "staticlib"]
