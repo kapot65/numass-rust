@@ -1,6 +1,9 @@
 # numass-root
 Бинды для CERN ROOT (C++) алгоритмов из numass-processing
 
+На данный момент есть [convert-to-root](convert-to-root.cxx) со cli, который преобразует numass точки в формат ROOT
+(предполагается использование через numass-viewer по типу filtered-viewer, data-viewer).
+
 
 ## Сборка скриптов
 

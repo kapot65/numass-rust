@@ -4,6 +4,8 @@
 #include <TFile.h>
 #include <TApplication.h>
 
+#include <TMacro.h>
+#include <TObjString.h>
 #include <TString.h>
 #include "processing.h"
 
@@ -17,7 +19,7 @@ int main(int argc, char** argv) {
     program.add_argument("path")
         .help("Path to point");
 
-    program.add_argument("-p", "--process").required()
+    program.add_argument("-p", "--process")
         .help("processing params serialized to json");
 
     program.add_argument("--postprocess")
@@ -36,20 +38,23 @@ int main(int argc, char** argv) {
     }
 
     auto path = program.get<std::string>("path");
-    
-    auto input = program.get<std::string>("process");
 
-    auto ok = false;
-    auto params = parse_process(&input, &ok);
-    if (!ok) {
-        std::cerr << "Failed to parse process parameters" << std::endl;
-        return 1;
+    auto params = get_process_default();
+    if (program.present("--process")) {
+        auto ok = false;
+        auto input = program.get<std::string>("process");
+        params = parse_process(&input, &ok);
+        if (!ok) {
+            std::cerr << "Failed to parse process parameters" << std::endl;
+            return 1;
+        }
     }
 
     PostProcessParams *postprocess = nullptr;
     PostProcessParams postprocess_val;
     if (program.present("--postprocess")) {
         auto postprocess_input = program.get<std::string>("--postprocess");
+        auto ok = false;
         postprocess_val = parse_postprocess(&postprocess_input, &ok);
         postprocess = &postprocess_val;
         if (!ok) {
@@ -69,14 +74,15 @@ int main(int argc, char** argv) {
         output,
         "RECREATE"
     );
-    
+
     auto tree = process(
-        std::move(path),
+        path,
         &params,
         postprocess
     );
 
     file->Write();
+    file->Close();
 
     return 0;
 }
