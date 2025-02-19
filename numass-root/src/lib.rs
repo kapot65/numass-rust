@@ -1,8 +1,11 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, ptr::NonNull};
 
+use dataforge::read_df_header_and_rawmeta_sync;
 use numass::{protos::rsb_event, Reply};
 use processing::{
-    postprocess::{post_process, PostProcessParams}, process::{extract_events, ProcessParams}, types::FrameEvent
+    postprocess::{post_process, PostProcessParams},
+    process::{extract_events, ProcessParams},
+    types::FrameEvent,
 };
 
 use cxx::CxxString;
@@ -14,7 +17,7 @@ pub struct ProcessedTree {
     pub channel: u8,
     pub amplitude: f32,
     pub size: u16,
-    pub tree_ref: usize
+    pub tree_ref: usize,
 }
 
 #[no_mangle]
@@ -22,7 +25,6 @@ pub struct ProcessedTree {
 pub extern "C" fn get_process_default() -> ProcessParams {
     ProcessParams::default()
 }
-
 
 #[no_mangle]
 pub extern "C" fn parse_process(serialized: &CxxString, ok: Option<&mut bool>) -> ProcessParams {
@@ -47,7 +49,10 @@ pub extern "C" fn parse_process(serialized: &CxxString, ok: Option<&mut bool>) -
 }
 
 #[no_mangle]
-pub extern "C" fn parse_postprocess(serialized: &CxxString, ok: Option<&mut bool>) -> PostProcessParams {
+pub extern "C" fn parse_postprocess(
+    serialized: &CxxString,
+    ok: Option<&mut bool>,
+) -> PostProcessParams {
     let mut params = PostProcessParams::default();
     if let Ok(serialized_str) = serialized.to_str() {
         if let Ok(parsed) = serde_json::from_str::<PostProcessParams>(serialized_str) {
@@ -70,17 +75,38 @@ pub extern "C" fn parse_postprocess(serialized: &CxxString, ok: Option<&mut bool
 
 // TODO: finish this function
 #[no_mangle]
-pub extern "C" fn is_point(
-    path: &CxxString,
-) -> bool {
+pub extern "C" fn is_point(path: &CxxString) -> bool {
     let filepath = PathBuf::from(path.to_str().unwrap());
-    if let Ok((_, Reply::AcquirePoint {
-        ..
-    })) = dataforge::read_df_header_and_meta_sync(&mut std::fs::File::open(filepath).unwrap()) {
+    if let Ok((_, Reply::AcquirePoint { .. })) =
+        dataforge::read_df_header_and_meta_sync(&mut std::fs::File::open(filepath).unwrap())
+    {
         true
     } else {
         false
     }
+}
+
+#[no_mangle]
+pub extern "C" fn read_meta_c(path: &CxxString, buffer: NonNull<u8>, len: usize) -> usize {
+    let slice = unsafe { std::slice::from_raw_parts_mut(buffer.as_ptr(), len) };
+
+    let filepath = PathBuf::from(path.to_str().unwrap());
+
+    println!("Reading metadata from {filepath:?}");
+
+    let (_, meta_str) =
+        read_df_header_and_rawmeta_sync(&mut std::fs::File::open(filepath).unwrap()).unwrap();
+
+    if len < meta_str.len() {
+        panic!(
+            "Buffer is too small ({len}) to hold the metadata ({})",
+            meta_str.len()
+        )
+    }
+
+    slice[0..meta_str.len()].copy_from_slice(&meta_str);
+
+    meta_str.len()
 }
 
 #[no_mangle]
@@ -89,7 +115,7 @@ pub extern "C" fn process_point(
     processed_tree: &mut ProcessedTree,
     fill_fn: extern "C" fn(&mut ProcessedTree, u64, u8, f32, u16),
     process: &ProcessParams,
-    postprocess: Option<&PostProcessParams>
+    postprocess: Option<&PostProcessParams>,
 ) {
     let filepath = PathBuf::from(path.to_str().unwrap());
 
@@ -115,10 +141,18 @@ pub extern "C" fn process_point(
     frames.into_iter().for_each(|(frame_time, events)| {
         events.into_iter().for_each(|(offset, event)| {
             if let FrameEvent::Event {
-                channel, amplitude, size
+                channel,
+                amplitude,
+                size,
             } = event
             {
-                fill_fn(processed_tree, frame_time + offset as u64, channel, amplitude, size);
+                fill_fn(
+                    processed_tree,
+                    frame_time + offset as u64,
+                    channel,
+                    amplitude,
+                    size,
+                );
             }
         })
     });
