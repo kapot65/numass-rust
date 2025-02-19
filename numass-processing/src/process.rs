@@ -25,6 +25,7 @@ use crate::{
     types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame},
 };
 
+#[repr(C)]
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub struct HWResetParams {
     pub window: usize,
@@ -32,6 +33,7 @@ pub struct HWResetParams {
     pub size: usize,
 }
 
+#[repr(C)]
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub enum SkipOption {
     None,
@@ -39,6 +41,8 @@ pub enum SkipOption {
     Good,
 }
 
+
+#[repr(C)]
 /// Built-in algorithms params for processing the data.
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
 pub enum Algorithm {
@@ -100,6 +104,7 @@ impl Default for Algorithm {
     }
 }
 
+#[repr(C)]
 /// Built-in processing params.
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
 pub struct ProcessParams {

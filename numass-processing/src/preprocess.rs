@@ -25,7 +25,7 @@ pub const CHECK_HV_THRESHOLD: f32 = 16e3;
 /// могут либо задаваться статично, либо на каждую точку
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Preprocess {
-    pub baseline: Option<Vec<f32>>, // TODO: make more versatile
+    pub baseline: Option<[f32;7]>, // TODO: make more versatile
 
     /// предполагаемая HV точки
     pub hv: f32,
@@ -182,8 +182,8 @@ pub fn extract_waveforms(point: &rsb_event::Point) -> NumassWaveforms {
 /// extact baseline for channels from point
 /// each channel is converted to amplitude histogramm
 /// and then baseline is calculated as histogramm peak
-fn baseline_from_point(point: &rsb_event::Point, algo: &Algorithm) -> Vec<f32> {
-    let mut baselines = vec![0.0; 7];
+fn baseline_from_point(point: &rsb_event::Point, algo: &Algorithm) -> [f32; 7] {
+    let mut baselines = [0.0; 7];
 
     let amps = point_to_amp_hist(point, algo);
 

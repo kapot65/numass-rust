@@ -21,6 +21,7 @@ use {
     std::collections::HashSet,
 };
 
+#[repr(C)]
 /// Postprocessing params.
 #[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub struct PostProcessParams {
@@ -47,7 +48,21 @@ impl Default for PostProcessParams {
     }
 }
 
+fn ignore_channels(ignore_channels: &[bool; 7], amplitudes: &mut NumassEvents) {
+    if *ignore_channels != [false; 7] {
+        amplitudes.iter_mut().for_each(|(_, events)| {
+            events.retain(|(_, event)| match event {
+                FrameEvent::Event { channel, .. } => !ignore_channels[*channel as usize],
+                _ => true,
+            });
+        });
+    }
+}
+
 /// Built-in postprocessing algorithm.
+/// > [!NOTE]  
+/// > For now cut_bad_blocks works only with `merge_close_events` set to true.
+/// > TODO: fix it.
 pub fn post_process(
     process_result: (NumassEvents, Preprocess),
     params: &PostProcessParams,
@@ -55,6 +70,8 @@ pub fn post_process(
     let (amplitudes, preprocess_params) = process_result;
 
     if !params.merge_close_events {
+        let mut amplitudes = amplitudes;
+        ignore_channels(&params.ignore_channels, &mut amplitudes);
         return (amplitudes, preprocess_params);
     }
 
@@ -91,14 +108,7 @@ pub fn post_process(
             .collect::<BTreeMap<_, _>>()
     };
 
-    if params.ignore_channels != [false; 7] {
-        amplitudes.iter_mut().for_each(|(_, events)| {
-            events.retain(|(_, event)| match event {
-                FrameEvent::Event { channel, .. } => !params.ignore_channels[*channel as usize],
-                _ => true,
-            });
-        });
-    }
+    ignore_channels(&params.ignore_channels, &mut amplitudes);
 
     (amplitudes, preprocess_params)
 }
