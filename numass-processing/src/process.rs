@@ -36,7 +36,7 @@ pub struct HWResetParams {
 #[repr(C)]
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub enum SkipOption {
-    None,
+    None, // TODO: use rust Option<T> instead?
     Bad,
     Good,
 }
