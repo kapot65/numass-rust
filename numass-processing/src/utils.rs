@@ -1,6 +1,8 @@
 //! # Utils
 //! This module contains some utility functions not related to processing or postprocessing.
 
+use std::path::PathBuf;
+
 #[cfg(feature = "plotly")]
 use plotly::color::Color;
 #[cfg(feature = "egui")]
@@ -30,6 +32,38 @@ pub fn events_to_histogram(amplitudes: NumassEvents, histogram: HistogramParams)
     }
 
     histogram
+}
+
+/// Convert path in db (RUN/FILL/SET/POINT) to filename with info preserved.
+pub fn construct_filename(name: &str, pref_ext: Option<&str>) -> String {
+    let temp = PathBuf::from(name);
+
+    let mut name = temp.file_name().unwrap().to_str().unwrap().to_owned();
+    if let Some(pref_ext) = pref_ext {
+        if !name.ends_with(pref_ext) {
+            name = format!("{name}.{pref_ext}");
+        }
+    }
+
+    let mut set = "".to_string();
+    let mut run = "".to_string();
+
+    if let Some(set_path) = temp.parent() {
+        if let Some(set_filename) = set_path.file_name() {
+            if let Some(set_str) = set_filename.to_str() {
+                set = set_str.to_string();
+                if let Some(run_path) = set_path.parent() {
+                    if let Some(run_filename) = run_path.file_name() {
+                        if let Some(run_str) = run_filename.to_str() {
+                            run = run_str.to_string();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    format!("{run}{set}{name}")
 }
 
 /// Корретировка времени прихода триггера
