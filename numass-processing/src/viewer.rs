@@ -36,6 +36,13 @@ impl Default for ViewerState {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Hash)]
+pub struct ToROOTOptions {
+    pub filepath: PathBuf,
+    pub process: ProcessParams,
+    pub postprocess: PostProcessParams,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ViewerMode {
     FilteredEvents {
