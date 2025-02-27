@@ -10,7 +10,5 @@ use clap::Parser;
 pub struct Opt {
     pub directory: PathBuf,
     #[clap(long, default_value_t = SocketAddr::from_str("0.0.0.0:8085").unwrap())]
-    pub address: SocketAddr,
-    #[clap(long)]
-    pub cache_directory: Option<PathBuf>,
+    pub address: SocketAddr
 }

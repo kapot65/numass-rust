@@ -1,10 +1,7 @@
-use std::{path::PathBuf, time::Duration, collections::hash_map::DefaultHasher, hash::{Hash, Hasher}};
+use std::{env::temp_dir, hash::{DefaultHasher, Hash, Hasher}, path::PathBuf, time::Duration};
 
 use axum::{
-    routing::{get, post},
-    response::Response,
-    body::Body,
-    Router, Json, extract::{State, Path},
+    body::Body, extract::{Path, RawQuery, State}, response::Response, routing::{get, post}, Json, Router
 };
 
 #[cfg(not(debug_assertions))]
@@ -18,13 +15,9 @@ static GLOBAL: Jemalloc = Jemalloc;
 
 use backend::Opt;
 use dataforge::{DFMessage, read_df_message, read_df_header_and_meta};
-use processing::{numass::{self, protos::rsb_event}, preprocess::Preprocess, process::{extract_events, Algorithm, ProcessParams}, storage::FSRepr, types::NumassEvents};
+use processing::{numass::{self, protos::rsb_event}, preprocess::Preprocess, process::{extract_events, ProcessParams}, storage::FSRepr, types::NumassEvents, viewer::ToROOTOptions};
 use protobuf::Message;
 use tower_http::services::ServeDir;
-
-fn is_default_params(params: &ProcessParams) -> bool {
-    params.algorithm == Algorithm::default() && params.convert_to_kev
-}
 
 #[tokio::main]
 async fn main() {
@@ -51,62 +44,70 @@ async fn main() {
             let metadata = tokio::fs::metadata(PathBuf::from("/").join(filepath)).await.unwrap();
             axum::response::Json(metadata.modified().unwrap())
         }))
+        .route("/api/to-root", get(|
+            RawQuery(to_root_options): RawQuery, // TODO: change to valid for TFile::Open(url)
+            | async move {
+
+                // axum default queryparser doesn't have corresponding serializer
+                let root_options = serde_qs::from_str::<ToROOTOptions>(&to_root_options.unwrap()).unwrap();
+
+                let output = {
+                    let mut hasher = DefaultHasher::new();
+                    root_options.hash(&mut hasher);
+                    let hash = hasher.finish();
+                    temp_dir().join(format!("{}.root", hash))
+                };
+
+                let mut command = tokio::process::Command::new("convert-to-root");
+                command
+                    .arg(&root_options.filepath)
+                    .arg("--process")
+                    .arg(serde_json::to_string(&root_options.process).unwrap())
+                    .arg("--postprocess")
+                    .arg(serde_json::to_string(&root_options.postprocess).unwrap())
+                    .arg("--output")
+                    .arg(&output);
+
+
+                command.spawn().unwrap().wait().await.unwrap();
+
+                let content = tokio::fs::read(&output).await.unwrap();
+                // remove temp file
+                tokio::fs::remove_file(output).await.unwrap();
+
+                let out_name = processing::utils::construct_filename(root_options.filepath.to_str().unwrap(), Some("root"));
+
+                Response::builder()
+                    .header("Content-Disposition", format!("attachment; filename=\"{out_name}\""))
+                    .header("content-type", "application/octet-stream")
+                    .body(Body::from(content))
+                    .unwrap()
+        }))
         .route("/api/process/*path", post(|
-                State(args): State<Opt>,
                 Path(filepath): Path<PathBuf>, 
                 Json(processing): Json<ProcessParams>,
             | async move {
 
-            let hash = {
-                let mut hasher = DefaultHasher::new();
-                filepath.hash(&mut hasher);
-                processing.hash(&mut hasher);
-                hasher.finish()
-            };
-
-            let read_amplitudes = {
-                let cache_directory = args.cache_directory.clone();
-                let key = hash.to_string();
-                || async move {
-                    // TODO: switch to functions from processing::storage
-                    let mut point_file = tokio::fs::File::open(PathBuf::from("/").join(filepath)).await.unwrap(); 
-                    if let Ok(DFMessage {
-                        meta,
-                        data,
-                    }) = read_df_message::<numass::NumassMeta>(&mut point_file).await {
-                        if let numass::NumassMeta::Reply(numass::Reply::AcquirePoint { .. }) = &meta {
-                            let point = rsb_event::Point::parse_from_bytes(&data.unwrap()).unwrap(); // return None for bad parsing
-                            let out = Some(extract_events(
-                                Some(meta),
-                                point,
-                                &processing,
-                            ));
-                            let processed = rmp_serde::to_vec(&out).unwrap();
-
-                            if is_default_params(&processing) {
-                                if let Some(cache_directory) = cache_directory {
-                                    cacache::write(cache_directory, key, &processed).await.unwrap();
-                                }
-                            }
-                            processed
-                        } else {
-                            rmp_serde::to_vec::<Option<(NumassEvents, Preprocess)>>(&None).unwrap() // TODO: send error instead of None
-                        }
-                    } else {
-                        rmp_serde::to_vec::<Option<(NumassEvents, Preprocess)>>(&None).unwrap() // TODO: send error instead of None
-                    }
-                }
-            };
-
-            let amplitudes = if let Some(cache_directory) = args.cache_directory {
-                if let Ok(data) = cacache::read(cache_directory, &hash.to_string()).await {
-                    data
+            let mut point_file = tokio::fs::File::open(PathBuf::from("/").join(filepath)).await.unwrap(); 
+            let amplitudes = if let Ok(DFMessage {
+                meta,
+                data,
+            }) = read_df_message::<numass::NumassMeta>(&mut point_file).await {
+                if let numass::NumassMeta::Reply(numass::Reply::AcquirePoint { .. }) = &meta {
+                    let point = rsb_event::Point::parse_from_bytes(&data.unwrap()).unwrap(); // TODO: return None for bad parsing
+                    let out = Some(extract_events(
+                        Some(meta),
+                        point,
+                        &processing,
+                    ));
+                    rmp_serde::to_vec(&out).unwrap()
                 } else {
-                    read_amplitudes().await
+                    rmp_serde::to_vec::<Option<(NumassEvents, Preprocess)>>(&None).unwrap() // TODO: send error instead of None
                 }
             } else {
-                read_amplitudes().await
+                rmp_serde::to_vec::<Option<(NumassEvents, Preprocess)>>(&None).unwrap() // TODO: send error instead of None
             };
+
             
             Response::builder()
                 .header("content-type", "application/messagepack")
