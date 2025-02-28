@@ -1,9 +1,5 @@
 db_root: "/data-nvme"
 run: 2023_03
-e_min: 3.0
-e_max: 40.0
-e_peak: 19.0
-l_coeff: 0.85
 processing:
   #algorithm:
   #  !FirstPeak
