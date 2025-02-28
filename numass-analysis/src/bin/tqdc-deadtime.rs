@@ -21,15 +21,15 @@ use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() {
-    let presise = false;
+    let point_path = "/data-fast/numass-server/2024_11/Tritium_2_1/set_4/p196(20s)(HV1=10000)";
+    let precise = true;
     // true - считает дельты между событиями, false - между триггерами кадров
     let hist = Arc::new(Mutex::new(PointHistogram::new_step(0.0..3e5, 24.0 * 1.0)));
     let mut points = BTreeMap::new();
     points.insert(
         12000u16,
         vec![
-            PathBuf::from("/data-fast/numass-server/2024_11/Tritium_2_1/set_4/p96(30s)(HV1=14500)"),
-            // PathBuf::from("/data/numass-server/2024_03/Tritium_2/set_4/p140(30s)(HV1=12500)")
+            PathBuf::from(point_path),
         ],
     );
 
@@ -59,7 +59,7 @@ async fn main() {
                             .into_iter()
                             .filter_map(|(_ev_time, event)| {
                                 if let FrameEvent::Event { .. } = event {
-                                    if presise {
+                                    if precise {
                                         Some(time + _ev_time as u64)
                                     } else {
                                         Some(time)
@@ -114,7 +114,7 @@ async fn main() {
 
         let layout = Layout::new()
             .title(Title::new(
-                "Time Deltas for Tritium_2/set_[123]/p174(30s)(HV1=11000)",
+                &format!("Time Deltas for {point_path}"),
             ))
             .x_axis(Axis::new().title(Title::new("time delta, ns")))
             .y_axis(Axis::new().type_(plotly::layout::AxisType::Log))

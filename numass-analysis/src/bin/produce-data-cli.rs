@@ -1,13 +1,13 @@
 //! Основная обработка данных сеанса
-//! 
+//!
 //! Скрипт:
 //! - объединяет точки в группы по HV (с учетом мониторинга)
 //! - каждую группу переводит в формат [ProducedPoint]
 //! - сохраняет все получившиеся [ProducedPoint] в tsv таблицу
-//! 
+//!
 //! На вход принимается yaml файл со структурой [Opts]
-//! 
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc, vec};
+//!
+use std::{collections::BTreeMap, ops::Range, path::PathBuf, sync::Arc, vec};
 
 use clap::Parser;
 use indicatif::ProgressStyle;
@@ -28,17 +28,34 @@ use tikv_jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
+enum RANGES {
+    Singles,
+    Doubles,
+    Tripples,
+    Quadriples,
+}
+
+impl RANGES {
+    fn values(&self) -> Range<f32> {
+        match self {
+            RANGES::Singles => 4.5..18.5,
+            RANGES::Doubles => 18.5..31.0,
+            RANGES::Tripples => 31.0..45.0,
+            RANGES::Quadriples => 45.0..60.0,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct ProducedPoint {
     u_sp: u16,
-    l_curr: f32,
-    k: f64,        // 5..19.5 keV
-    l: f64,        // 5..[(U_sp -11000)/1000 +2] keV
-    doubles: f64,  // 19.5..33.5 keV (двойные)
-    tripples: f64, // 33.5..50 keV (тройные)
+    singles: f64,
+    doubles: f64,
+    tripples: f64,
+    quadriples: f64,
     triggers: usize,
     bad: usize,
-    time: u64,
+    time: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -79,8 +96,8 @@ async fn main() {
                 .join(group_name.clone())
                 .join(format!("set_{}", set_num));
 
-            let files = std::fs::read_dir(set_directory)
-                .unwrap()
+            let files = std::fs::read_dir(&set_directory)
+                .expect(&format!("Failed to read directory: {:?}", set_directory))
                 .filter_map(|file| {
                     if let Ok(file) = file {
                         let file_name = file.file_name().into_string().unwrap();
@@ -140,7 +157,7 @@ async fn main() {
         .iter()
         .map(|(u_sp, points)| {
             let u_sp_v = *u_sp;
-            let u_sp_kev = u_sp_v as f32 / 1000.0;
+            // let u_sp_kev = u_sp_v as f32 / 1000.0;
             let points = points.clone();
             let table = Arc::clone(&table);
             let pb: Arc<Mutex<indicatif::ProgressBar>> = Arc::clone(&pb);
@@ -154,21 +171,20 @@ async fn main() {
 
                 let mut out_point = ProducedPoint {
                     u_sp: u_sp_v,
-                    l_curr: u_sp_kev - 11.0 + 6.0,
-                    k: 0.0,
-                    l: 0.0,
+                    singles: 0.0,
                     doubles: 0.0,
                     tripples: 0.0,
+                    quadriples: 0.0,
                     triggers: 0,
                     bad: 0,
-                    time: 0,
+                    time: 0.0,
                 };
 
                 for filepath in points {
                     let monitor_coeff = if let Some(coeffs) = coeffs.as_ref() {
                         coeffs.get_by_index(&filepath) as f64
                     } else {
-                        1.0
+                        1.0 // Default to 1.0 if no coefficients are provided (needed for Background)
                     };
 
                     let (frames, preprocess) = process_point(&filepath, &processing)
@@ -177,11 +193,10 @@ async fn main() {
                         .1
                         .unwrap();
 
+                    let (frames, preprocess) = post_process((frames, preprocess), &post_processing);
                     out_point.triggers += frames.len();
 
-                    let (frames, _) = post_process((frames, preprocess), &post_processing);
-
-                    frames.iter().for_each(|(_, events)| {                        
+                    frames.iter().for_each(|(_, events)| {
                         let mut is_bad = false;
 
                         if events.is_empty() {
@@ -189,15 +204,14 @@ async fn main() {
                         } else {
                             events.iter().for_each(|(_, event)| match event {
                                 FrameEvent::Event { amplitude, .. } => {
-                                    if (4.0..19.5).contains(amplitude) {
-                                        out_point.k += monitor_coeff;
-                                        if (4.0..out_point.l_curr).contains(amplitude) {
-                                            out_point.l += monitor_coeff;
-                                        }
-                                    } else if (19.5..33.5).contains(amplitude) {
+                                    if (RANGES::Singles.values()).contains(amplitude) {
+                                        out_point.singles += monitor_coeff;
+                                    } else if (RANGES::Doubles.values()).contains(amplitude) {
                                         out_point.doubles += monitor_coeff;
-                                    } else if (33.5..50.0).contains(amplitude) {
+                                    } else if (RANGES::Tripples.values()).contains(amplitude) {
                                         out_point.tripples += monitor_coeff;
+                                    } else if (RANGES::Quadriples.values()).contains(amplitude) {
+                                        out_point.quadriples += monitor_coeff;
                                     }
                                 }
                                 FrameEvent::Reset { .. } => {
@@ -215,8 +229,11 @@ async fn main() {
                         }
                     });
 
-                    out_point.time += 30; // TODO: remove hardcode
-                                          // out_point.origins.push(filepath);
+                    if post_processing.merge_close_events && post_processing.cut_bad_blocks {
+                        out_point.time += (preprocess.effective_time() / 1_000_000_000) as f64;
+                    } else {
+                        out_point.time += 30.0; // TODO: remove hardcode
+                    }
                 }
 
                 table.lock().await.insert(u_sp_v, out_point);
@@ -229,7 +246,14 @@ async fn main() {
         handle.await.unwrap();
     }
 
-    let mut table_data = "u_sp\tl_curr\tk\tl\tdoubles\ttripples\tframes\tbad\ttime\n".to_string();
+    let mut table_data =
+        format!(
+            "u_sp\tsingles({:?})\tdoubles({:?})\ttripples({:?})\tquadriples({:?})\ttriggers\tbad\ttime\n",
+            RANGES::Singles.values(),
+            RANGES::Doubles.values(),
+            RANGES::Tripples.values(),
+            RANGES::Quadriples.values()
+        );
     table
         .try_lock()
         .unwrap()
@@ -237,14 +261,13 @@ async fn main() {
         .iter()
         .for_each(|(u_sp, point)| {
             table_data.push_str(&format!(
-                "{u_sp}\t{l_curr}\t{k}\t{l}\t{d}\t{t}\t{f}\t{r}\t{time}\n",
-                l_curr = point.l_curr,
-                k = point.k.round() as u64,
-                l = point.l.round() as u64,
-                d = point.doubles.round() as u64,
-                t = point.tripples.round() as u64,
-                f = point.triggers,
-                r = point.bad,
+                "{u_sp}\t{singles}\t{doubles}\t{tripples}\t{quadriples}\t{triggers}\t{bad}\t{time}\n",
+                singles = point.singles.round() as u64,
+                doubles = point.doubles.round() as u64,
+                tripples = point.tripples.round() as u64,
+                quadriples = point.quadriples.round() as u64,
+                triggers = point.triggers,
+                bad = point.bad,
                 time = point.time
             ));
         });

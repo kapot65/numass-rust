@@ -53,10 +53,12 @@ impl CorrectionCoeffs {
         }
     }
 
-    pub fn get(&self, fill: &str, set: &str) -> Option<&Coeffs> {
+    fn get(&self, fill: &str, set: &str) -> Option<&Coeffs> {
         self.coeffs.get(fill)?.get(set).map(|params| &params.corr_coef)
     }
 
+    /// получить поправку по номеру точки 
+    /// ! Коэффициенты должны быть рассчитаны по номерам точки
     pub fn get_by_index(&self, filepath: &Path) -> f32 {
 
         let (fill, set) = {
@@ -67,9 +69,11 @@ impl CorrectionCoeffs {
             )
         };
         
-        let Coeffs {a, b, c} = self.get(fill, set).unwrap();
+        let Coeffs {a, b, c} = self.get(fill, set).expect(
+            &format!("no data for {fill}, {set}")
+        );
 
-        let x = {
+        let x: f32 = {
             let filename = filepath.file_name().unwrap().to_str().unwrap();
             filename[1..filename.find('(').unwrap()].parse::<i32>().unwrap() as f32
         };
@@ -77,6 +81,8 @@ impl CorrectionCoeffs {
         a * x.powf(2.0) + b * x + c
     }
 
+    /// получить поправку по времени
+    /// ! Коэффициенты должны быть рассчитаны по абсолютному времени
     pub fn get_from_meta(&self, filepath: &Path, meta: &NumassMeta) -> f32 {
 
         let (fill, set) = {

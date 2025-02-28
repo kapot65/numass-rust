@@ -2,8 +2,6 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use analysis::{get_points_by_pattern, CorrectionCoeffs};
 
-use chrono::NaiveDateTime;
-
 use dataforge::read_df_header_and_meta_sync;
 
 use plotly::{
@@ -32,13 +30,14 @@ static GLOBAL: Jemalloc = Jemalloc;
 
 unzip_n!(pub 4);
 
-#[tokio::main(worker_threads = 3)]
-
+#[tokio::main]
 async fn main() {
-    let db_root = "/data-2/numass-server/";
+    let db_root = "/data-fast/numass-server";
 
-    let pattern = "/2024_03/Tritium_3/set_[12345678]/p*(30s)(HV1=14000)";
+    let pattern = "2024_11/Tritium_4/set_*[0-9]/p*(30s)(HV1=14000)";
     let exclude = [];
+
+    let monitor_file = "/data-fast/monitor_11_2024.json";
 
     let points = get_points_by_pattern(db_root, pattern, &exclude)
         .first_key_value()
@@ -46,13 +45,9 @@ async fn main() {
         .1
         .clone();
 
-    let coeffs = Arc::new(CorrectionCoeffs::load(
-        "/data-3/numass-server/monitor_test.json",
-    ));
+    let coeffs = Arc::new(CorrectionCoeffs::load(monitor_file));
 
-    let count_rates = Arc::new(Mutex::new(
-        BTreeMap::<NaiveDateTime, (usize, f32, String)>::new(),
-    ));
+    let count_rates = Arc::new(Mutex::new(BTreeMap::new()));
 
     let pb: Arc<Mutex<indicatif::ProgressBar>> =
         Arc::new(Mutex::new(indicatif::ProgressBar::new(points.len() as u64)));
@@ -78,7 +73,7 @@ async fn main() {
 
                 let point = load_point(&filepath).await;
 
-                let (amps, _) = post_process(
+                let (amps, preprocess) = post_process(
                     extract_events(
                         Some(meta.clone()),
                         point,
@@ -107,12 +102,14 @@ async fn main() {
                     })
                     .sum::<usize>();
 
+                let acq_duration = (preprocess.effective_time() / 1_000_000_000) as f32;
+
                 if let NumassMeta::Reply(Reply::AcquirePoint { start_time, .. }) = meta {
                     count_rates.lock().await.insert(
                         start_time,
                         (
-                            count_rate,
-                            count_rate as f32 * k,
+                            count_rate as f32 / acq_duration,
+                            count_rate as f32 * k / acq_duration,
                             filepath.to_str().unwrap().to_owned(),
                         ),
                     );
@@ -135,7 +132,7 @@ async fn main() {
         .title(Title::new(
             format!("Corrected count rates for {pattern}").as_str(),
         ))
-        .x_axis(Axis::new().title(Title::new("Counts")))
+        .y_axis(Axis::new().title(Title::new("Count rate, Hz")))
         .height(1000);
 
     let (x, y, z, text) = count_rates
