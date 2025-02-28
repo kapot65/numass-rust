@@ -75,6 +75,9 @@ int main(int argc, char** argv) {
         "RECREATE"
     );
 
+    auto meta = TString(get_meta(path));
+    file->WriteObject(&meta, "meta");
+
     auto tree = process(
         path,
         &params,

@@ -91,9 +91,7 @@ pub extern "C" fn read_meta_c(path: &CxxString, buffer: NonNull<u8>, len: usize)
     let slice = unsafe { std::slice::from_raw_parts_mut(buffer.as_ptr(), len) };
 
     let filepath = PathBuf::from(path.to_str().unwrap());
-
-    println!("Reading metadata from {filepath:?}");
-
+    
     let (_, meta_str) =
         read_df_header_and_rawmeta_sync(&mut std::fs::File::open(filepath).unwrap()).unwrap();
 
