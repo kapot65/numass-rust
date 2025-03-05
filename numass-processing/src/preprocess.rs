@@ -94,8 +94,18 @@ impl Preprocess {
             bad_blocks
         };
 
+        let baseline = match &algo {
+            Algorithm::Trapezoid { .. } => {
+                Some(baseline_from_point(point, algo))
+            }
+            Algorithm::Max => None,
+            Algorithm::FirstPeak { .. } => None,
+            Algorithm::Likhovid { .. } => None,
+            Algorithm::LongDiff { .. } => None,
+        };
+
         Self {
-            baseline: Some(baseline_from_point(point, algo)),
+            baseline,
             acquisition_time,
             start_time,
             hv,

@@ -195,9 +195,27 @@ pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 
     }
 }
 
-/// Extract events from single waveform.
-/// Do not use this function directly without reason, use [extract_events](crate::process::extract_events) instead.
-/// TODO: add ui argument description
+/// Extracts events from a [NumassFrame] (a series of waveforms for each channel).
+///
+/// # Arguments
+///
+/// * `frame` - A [NumassFrame] that'll be processed.
+/// * `algorithm` - An [Algorithm] that'll be used to extract events.
+/// * `preprocess` - An optional [Preprocess] (can be generated from [Preprocess::from_point]).
+/// * `ui` - An [PlotUi] for plotting additional info for debugging purposes. 
+///
+/// # Returns
+///
+/// * A collection of extracted events in tuple such (offset from the start of the frame, [FrameEvent]).
+///
+/// # Notes
+///
+/// * This function is intended to be used internally. External code should use the
+/// [extract_events](crate::process::extract_events) function instead.
+/// * It is assumed 3 processing modes are possible:
+///   - with `egui` feature and `ui` is not None is slow mode for single frame with maximum info (for filtered-viewer)
+///   - with `egui` feature and `ui` is None is fast mode for batch processing
+///   - without `egui` feature is fastest mode for non-graphical processing
 pub fn frame_to_events(
     frame: &NumassFrame,
     algorithm: &Algorithm,
@@ -239,7 +257,7 @@ pub fn frame_to_events(
                     let left = if x >= *left { x - left } else { 0 };
                     let right = std::cmp::min(waveform.len(), x + right);
                     let crop = &waveform[left..right];
-                    crop.iter().sum::<i16>() as f32 / crop.len() as f32
+                    crop.iter().sum::<i16>() as f32 / crop.len() as f32 // TODO: does i16 enough for sum?
                 };
 
                 (
@@ -470,7 +488,7 @@ pub fn frame_to_events(
                         .sum::<f32>()
                         / 12.0;
                     let b_pred = a
-                        + (baseline.as_ref().map_or(0.0, |b| b[*ch_id as usize]) / 10.916_667)
+                        + (baseline.as_ref().map_or(0.0, |b| b[*ch_id as usize]) / 10.916_667) // TODO: explain what is this?
                             * (last_idx as f32);
 
                     #[cfg(feature = "egui")]

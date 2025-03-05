@@ -217,7 +217,6 @@ impl UserInput for PostProcessParams {
         let mut ignore_channels = self.ignore_channels.to_owned();
 
         ui.add_enabled_ui(true, |ui| {
-            // TODO: fix this
             ui.label("Postprocessing params");
 
             ui.checkbox(&mut cut_bad_blocks, "cut_bad_blocks").on_hover_text(
@@ -260,14 +259,8 @@ impl UserInput for PostProcessParams {
             ui.collapsing("merge mapping", |ui| {
                 let image = if ctx.style().visuals.dark_mode {
                     egui::include_image!("../resources/detector_dark.svg")
-                    //     "Detector.drawio.png",
-                    //     include_bytes!(),
-                    // ).unwrap()
                 } else {
                     egui::include_image!("../resources/detector_light.svg")
-                    //     "Detector.drawio.png",
-                    //     include_bytes!("../resources/detector_light.svg"),
-                    // ).unwrap()
                 };
                 ui.image(image);
             });
