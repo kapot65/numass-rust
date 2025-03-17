@@ -27,23 +27,24 @@ use {
 pub struct PostProcessParams {
     /// remove events inside [bad_blocks](crate::preprocess::PreprocessParams::bad_blocks) timestamps
     pub cut_bad_blocks: bool,
-
+    pub merge_frames: Option<u16>,
     pub merge_splits_first: bool,
     pub merge_close_events: bool,
     pub ignore_borders: bool,
 
     /// ignore channels with index in this array set to true. Default is false for all channels.
-    pub ignore_channels: [bool; 7]
+    pub ignore_channels: [bool; 7],
 }
 
 impl Default for PostProcessParams {
     fn default() -> Self {
         Self {
             cut_bad_blocks: true,
+            merge_frames: None,
             merge_splits_first: false,
             merge_close_events: true,
             ignore_borders: false,
-            ignore_channels: [false; 7]
+            ignore_channels: [false; 7],
         }
     }
 }
@@ -59,6 +60,43 @@ fn ignore_channels(ignore_channels: &[bool; 7], amplitudes: &mut NumassEvents) {
     }
 }
 
+/// combine proccesed events into "frames" bigger length
+fn merge_close_frames(
+    mut amplitudes: NumassEvents,
+    merge_len: u16,
+    preprocess: &Preprocess,
+) -> NumassEvents {
+    let mut amplitudes = amplitudes.iter_mut().collect::<Vec<_>>();
+
+    let mut idx = amplitudes.len() - 1;
+    let mut to_remove = Vec::new(); // collect indices to remove to avoid borrowing issues
+
+    while idx > 0 {
+        let frames_delta = amplitudes[idx].0 - amplitudes[idx - 1].0;
+        if frames_delta < merge_len as u64 {
+            let frame_offset = frames_delta - preprocess.frame_len;
+
+            let amplitudes_2 = amplitudes[idx].1.clone(); // clone to avoid borrowing issues
+            amplitudes[idx - 1].1.extend(
+                amplitudes_2
+                    .into_iter()
+                    .map(|(offset, event)| (offset + frame_offset as u16, event)),
+            );
+            
+            to_remove.push(idx);
+        }
+        idx -= 1;
+    }
+
+    amplitudes.iter().enumerate().filter_map(|(idx, (offset, frame))| {
+        if to_remove.contains(&idx) {
+            None
+        } else {
+            Some((**offset, frame.iter().cloned().collect::<Vec<_>>()))
+        }
+    }).collect::<NumassEvents>()
+}
+
 /// Built-in postprocessing algorithm.
 /// > [!NOTE]  
 /// > For now cut_bad_blocks works only with `merge_close_events` set to true.
@@ -67,7 +105,11 @@ pub fn post_process(
     process_result: (NumassEvents, Preprocess),
     params: &PostProcessParams,
 ) -> (NumassEvents, Preprocess) {
-    let (amplitudes, preprocess_params) = process_result;
+    let (mut amplitudes, preprocess_params) = process_result;
+
+    if let Some(frame_len) = params.merge_frames {
+        amplitudes = merge_close_frames(amplitudes, frame_len, &preprocess_params);
+    }
 
     if !params.merge_close_events {
         let mut amplitudes = amplitudes;

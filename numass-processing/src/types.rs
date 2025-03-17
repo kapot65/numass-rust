@@ -13,7 +13,7 @@ pub type NumassFrame<'a> = BTreeMap<u8, &'a [i16]>;
 pub type NumassWaveforms<'a> = BTreeMap<u64, NumassFrame<'a>>;
 /// Numass processed events type (both for processing + postprocessing and processing only).
 pub type NumassEvents = BTreeMap<u64, Vec<NumassEvent>>;
-/// Numass event (position in waveform, amplitude).
+/// Numass event (position in waveform in ns, amplitude).
 pub type NumassEvent = (u16, FrameEvent);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -211,6 +211,7 @@ impl UserInput for ProcessParams {
 impl UserInput for PostProcessParams {
     fn input(&self, ui: &mut egui::Ui, ctx: &egui::Context) -> Self {
         let mut cut_bad_blocks = self.cut_bad_blocks;
+        let mut merge_frames = self.merge_frames;
         let mut merge_splits_first = self.merge_splits_first;
         let mut merge_close_events = self.merge_close_events;
         let mut ignore_borders = self.ignore_borders;
@@ -231,6 +232,33 @@ impl UserInput for PostProcessParams {
                     CHECK_HV_THRESHOLD * 1e-3
                 )
             );
+
+            ui.horizontal(|ui| {
+                let mut merge_frames_checked = merge_frames.is_some();
+                if ui.checkbox(&mut merge_frames_checked, "merge frames").on_hover_text(
+                    format!("
+                    Merge events between close frames into one.
+                    Loop goes from end to start merging any frame to previous one 
+                    if the distance between them is less than treshold.
+                    This operation applies before any other postprocessing.
+                    ")
+                ).clicked(){
+                    if merge_frames_checked {
+                        merge_frames = Some(5000);
+                    } else {
+                        merge_frames = None;
+                    }
+                }
+                
+                if merge_frames_checked {
+                    let mut merge_frames_value = merge_frames.unwrap();
+                    if ui.add(egui::Slider::new(&mut merge_frames_value, 1000..=65535).text("ns")).changed() {
+                        merge_frames = Some(merge_frames_value);
+                    } else {
+                        merge_frames = Some(merge_frames_value);
+                    }
+                }
+            });
 
             ui.checkbox(&mut merge_splits_first, "merge splits first")
                 .on_hover_text(
@@ -284,6 +312,7 @@ impl UserInput for PostProcessParams {
 
         PostProcessParams {
             cut_bad_blocks,
+            merge_frames,
             merge_splits_first,
             merge_close_events,
             ignore_borders,

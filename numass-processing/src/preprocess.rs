@@ -36,6 +36,10 @@ pub struct Preprocess {
     /// время набора точки в наносекундах
     pub acquisition_time: u64,
 
+
+    /// длина кадра в наносекундах
+    pub frame_len: u64,
+
     /// номера блоков, которые нужно исключить из анализа
     /// размер блока равен [CUTOFF_BIN_SIZE](crate::preprocess::CUTOFF_BIN_SIZE)
     pub bad_blocks: BTreeSet<usize>,
@@ -94,6 +98,19 @@ impl Preprocess {
             bad_blocks
         };
 
+        let frame_len = {
+            let mut frame_len = None;
+            'outer: for channel in &point.channels {
+                for block in &channel.blocks {
+                    for frame in &block.frames {
+                        frame_len = Some(frame.time);
+                        break 'outer;
+                    }
+                }
+            }
+            frame_len.unwrap()
+        };
+
         let baseline = match &algo {
             Algorithm::Trapezoid { .. } => {
                 Some(baseline_from_point(point, algo))
@@ -108,6 +125,7 @@ impl Preprocess {
             baseline,
             acquisition_time,
             start_time,
+            frame_len,
             hv,
             bad_blocks,
         }

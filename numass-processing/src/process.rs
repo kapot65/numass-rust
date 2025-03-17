@@ -82,7 +82,7 @@ pub const TRAPEZOID_DEFAULT: Algorithm = Algorithm::Trapezoid {
     center: 15,
     right: 6,
     treshold: 16,
-    min_length: 10,
+    min_length: 16,
     skip: SkipOption::None,
     reset_detection: HWResetParams {
         window: 10,

@@ -13,7 +13,7 @@ use protobuf::Message;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    numass::protos::rsb_event, preprocess::Preprocess, process::ProcessParams, types::NumassEvents,
+    numass::protos::rsb_event, postprocess::PostProcessParams, preprocess::Preprocess, process::ProcessParams, types::NumassEvents
 };
 
 /// Process point from the storage.
@@ -21,6 +21,7 @@ use crate::{
 pub async fn process_point(
     filepath: &Path,
     process: &ProcessParams,
+    postprocess: Option<&PostProcessParams>,
 ) -> Option<(NumassMeta, Option<(NumassEvents, Preprocess)>)> {
     let meta = load_meta(filepath).await;
 
@@ -29,16 +30,23 @@ pub async fn process_point(
         {
             // TODO: remove duplication with wasm32 branch. Maybe use async closures? https://rust-lang.github.io/async-book/07_workarounds/05_async_closures.html
             let point = load_point(filepath).await;
+
+            let events = if let Some(postprocess) = postprocess {
+                crate::postprocess::post_process(crate::process::extract_events(meta.clone(), point, process), postprocess)
+            } else {
+                crate::process::extract_events(meta.clone(), point, process)
+            };
+
             Some((
                 meta.clone().unwrap(),
-                Some(crate::process::extract_events(meta, point, process)),
+                Some(events),
             ))
         }
 
         #[cfg(target_arch = "wasm32")]
         {
             let amplitudes_raw = gloo::net::http::Request::post(&api_url("api/process", filepath))
-                .json(&process)
+                .json(&(process, postprocess))
                 .unwrap()
                 .send()
                 .await
