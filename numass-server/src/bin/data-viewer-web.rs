@@ -15,7 +15,7 @@ static GLOBAL: Jemalloc = Jemalloc;
 
 use backend::Opt;
 use dataforge::{DFMessage, read_df_message, read_df_header_and_meta};
-use processing::{numass::{self, protos::rsb_event}, preprocess::Preprocess, process::{extract_events, ProcessParams}, storage::FSRepr, types::NumassEvents, viewer::ToROOTOptions};
+use processing::{numass::{self, protos::rsb_event}, postprocess::{post_process, PostProcessParams}, preprocess::Preprocess, process::{extract_events, ProcessParams}, storage::{load_point, FSRepr}, types::NumassEvents, viewer::ToROOTOptions};
 use protobuf::Message;
 use tower_http::services::ServeDir;
 
@@ -85,7 +85,7 @@ async fn main() {
         }))
         .route("/api/process/*path", post(|
                 Path(filepath): Path<PathBuf>, 
-                Json(processing): Json<ProcessParams>,
+                Json((process, postprocessing)): Json<(ProcessParams, Option<PostProcessParams>)>,
             | async move {
 
             let mut point_file = tokio::fs::File::open(PathBuf::from("/").join(filepath)).await.unwrap(); 
@@ -95,11 +95,16 @@ async fn main() {
             }) = read_df_message::<numass::NumassMeta>(&mut point_file).await {
                 if let numass::NumassMeta::Reply(numass::Reply::AcquirePoint { .. }) = &meta {
                     let point = rsb_event::Point::parse_from_bytes(&data.unwrap()).unwrap(); // TODO: return None for bad parsing
-                    let out = Some(extract_events(
-                        Some(meta),
-                        point,
-                        &processing,
-                    ));
+
+                    let out = if let Some(postprocessing) = postprocessing {
+                        Some(post_process(extract_events(Some(meta), point, &process), &postprocessing))
+                    } else {
+                        Some(extract_events(
+                            Some(meta),
+                            point,
+                            &process,
+                        ))
+                    };
                     rmp_serde::to_vec(&out).unwrap()
                 } else {
                     rmp_serde::to_vec::<Option<(NumassEvents, Preprocess)>>(&None).unwrap() // TODO: send error instead of None
