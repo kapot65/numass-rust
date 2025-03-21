@@ -263,8 +263,8 @@ impl UserInput for PostProcessParams {
             ui.checkbox(&mut merge_splits_first, "merge splits first")
                 .on_hover_text(
                     "
-                    spit - neighboring events with time delta < 200 ns
-                    spits will be merged into one event in random order
+                    split - neighboring events with time delta < 200 ns
+                    splits will be merged into one event in random order
                     (based on which one is first)
                     this will be processed before main merging
                     "

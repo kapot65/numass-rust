@@ -139,7 +139,7 @@ pub fn extract_events(
     (
         point
             .into_iter()
-            .filter_map(|(time, frame)| {
+            .map(|(time, frame)| {
                 let mut events = frame_to_events(
                     &frame,
                     &params.algorithm,
@@ -157,11 +157,8 @@ pub fn extract_events(
                         }
                     });
                 }
-                if events.is_empty() {
-                    None
-                } else {
-                    Some((time, events))
-                }
+                
+                (time, events)
             })
             .collect::<BTreeMap<_, _>>(),
         preprocess,
