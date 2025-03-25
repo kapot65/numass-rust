@@ -78,6 +78,14 @@ pub fn api_url(prefix: &str, filepath: &Path) -> String {
 }
 
 /// Load point metadata only from the storage.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn load_meta_sync(filepath: &Path) -> Option<NumassMeta> {
+    let mut point_file = std::fs::File::open(&filepath).unwrap();
+    dataforge::read_df_header_and_meta_sync::<numass::NumassMeta>(&mut point_file)
+        .map_or(None, |(_, meta)| Some(meta))
+}
+
+/// Load point metadata only from the storage.
 pub async fn load_meta(filepath: &Path) -> Option<NumassMeta> {
     #[cfg(target_arch = "wasm32")]
     {
@@ -108,6 +116,18 @@ pub async fn load_modified_time(filepath: PathBuf) -> Option<SystemTime> {
         }
     } else {
         None
+    }
+}
+
+/// Load and parse point binary data from the storage.
+/// Do not use this function directly without reason.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn load_point_sync(filepath: &Path) -> rsb_event::Point {
+    if let Ok(mut point_file) = std::fs::File::open(&filepath) {
+        let message = dataforge::read_df_message_sync::<numass::NumassMeta>(&mut point_file).unwrap();
+        rsb_event::Point::parse_from_bytes(&message.data.unwrap_or(vec![])[..]).unwrap()
+    } else {
+        panic!("{filepath:?} open failed")
     }
 }
 
