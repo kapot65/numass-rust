@@ -36,10 +36,15 @@ clap = { version = "4.4.8", features = ["derive"] }
 serde_yaml = "0.9.27"
 
 [target.'cfg(target_family = "unix")'.dependencies]
-tikv-jemallocator = "0.5.4"
+tikv-jemallocator = "0.6.0"
 
 [patch."https://bitbucket.org/Kapot/dataforge-parser-rust.git"]
 dataforge = { path = "../dataforge-parser-rust" }
 
 [patch."https://bitbucket.org/Kapot/numass-processing.git"]
 processing = { path = "../numass-processing" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
