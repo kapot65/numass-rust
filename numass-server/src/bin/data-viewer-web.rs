@@ -15,7 +15,7 @@ static GLOBAL: Jemalloc = Jemalloc;
 
 use backend::Opt;
 use dataforge::{DFMessage, read_df_message, read_df_header_and_meta};
-use processing::{numass::{self, protos::rsb_event}, postprocess::{post_process, PostProcessParams}, preprocess::Preprocess, process::{extract_events, ProcessParams}, storage::{load_point, FSRepr}, types::NumassEvents, viewer::ToROOTOptions};
+use processing::{numass::{self, protos::rsb_event}, postprocess::{post_process, PostProcessParams}, preprocess::Preprocess, process::{extract_events, ProcessParams}, storage::FSRepr, types::NumassEvents, viewer::ToROOTOptions};
 use protobuf::Message;
 use tower_http::services::ServeDir;
 
