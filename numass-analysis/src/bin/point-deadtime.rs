@@ -13,7 +13,7 @@ async fn main() {
     let filepath = PathBuf::from("/data-nvme/2023_03/Tritium_2/set_1/p118(30s)(HV1=12000)");
     // let filepath = "/data-nvme/2023_03/Tritium_2/set_1/p52(30s)(HV1=15000)";
                                           
-    let (events, _) = process_point(&filepath, &ProcessParams::default()).await.unwrap().1.unwrap();
+    let (events, _) = process_point(&filepath, &ProcessParams::default(), None).await.unwrap().1.unwrap();
 
     let events =  events.into_keys().collect::<Vec<_>>();
 

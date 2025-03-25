@@ -61,7 +61,7 @@ async fn main() {
                 tokio::spawn(async move {
                     // load point manually because it must not be used from cache
                     // TODO: add cache expiration based on calibration parameters change
-                    let (_, events) = process_point(&filepath, &processing_params).await.unwrap();
+                    let (_, events) = process_point(&filepath, &processing_params, None).await.unwrap();
                     let events = events.unwrap().0;
                     {
                         let mut histogram = histogram.lock().await;
