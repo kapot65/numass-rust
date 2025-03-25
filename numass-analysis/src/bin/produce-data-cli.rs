@@ -187,20 +187,19 @@ async fn main() {
                         1.0 // Default to 1.0 if no coefficients are provided (needed for Background)
                     };
 
-                    let (frames, preprocess) = process_point(&filepath, &processing)
-                        .await
-                        .unwrap()
-                        .1
-                        .unwrap();
+                    let (frames, preprocess) =
+                        process_point(&filepath, &processing, Some(&post_processing))
+                            .await
+                            .unwrap()
+                            .1
+                            .unwrap();
 
-                    let (frames, preprocess) = post_process((frames, preprocess), &post_processing);
                     out_point.triggers += frames.len();
 
                     frames.iter().for_each(|(_, events)| {
                         let mut is_bad = false;
 
                         if events.is_empty() {
-                            is_bad = true;
                         } else {
                             events.iter().for_each(|(_, event)| match event {
                                 FrameEvent::Event { amplitude, .. } => {
