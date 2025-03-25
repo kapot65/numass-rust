@@ -16,7 +16,7 @@ use tokio::sync::Mutex;
 
 use analysis::CorrectionCoeffs;
 use processing::{
-    postprocess::{post_process, PostProcessParams},
+    postprocess::PostProcessParams,
     process::ProcessParams,
     storage::process_point,
     types::FrameEvent,
