@@ -36,7 +36,6 @@ pub struct Preprocess {
     /// время набора точки в наносекундах
     pub acquisition_time: u64,
 
-
     /// длина кадра в наносекундах
     pub frame_len: u64,
 
@@ -98,18 +97,11 @@ impl Preprocess {
             bad_blocks
         };
 
-        let frame_len = {
-            let mut frame_len = None;
-            'outer: for channel in &point.channels {
-                for block in &channel.blocks {
-                    for frame in &block.frames {
-                        frame_len = Some(frame.time);
-                        break 'outer;
-                    }
-                }
-            }
-            frame_len.unwrap()
-        };
+        let frame_len = ((point
+            .channels.first().unwrap()
+            .blocks.first().unwrap()
+            .frames.first().unwrap()
+            .data.len() / 2) * 8) as u64;
 
         let baseline = match &algo {
             Algorithm::Trapezoid { .. } => {
