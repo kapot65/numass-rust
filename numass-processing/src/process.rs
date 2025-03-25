@@ -208,7 +208,7 @@ pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 
 /// # Notes
 ///
 /// * This function is intended to be used internally. External code should use the
-/// [extract_events](crate::process::extract_events) function instead.
+///   [extract_events](crate::process::extract_events) function instead.
 /// * It is assumed 3 processing modes are possible:
 ///   - with `egui` feature and `ui` is not None is slow mode for single frame with maximum info (for filtered-viewer)
 ///   - with `egui` feature and `ui` is None is fast mode for batch processing
@@ -360,7 +360,7 @@ pub fn frame_to_events(
                     let offset = left + center + right;
 
                     let filtered = {
-                        let baseline = baseline.as_ref().map_or(0.0, |b| b[*ch_id as usize]) as f32;
+                        let baseline = baseline.as_ref().map_or(0.0, |b| b[*ch_id as usize]);
                         let mut filtered = emulate_fir(waveform, *right, *center, *left);
                         filtered.iter_mut().for_each(|val| *val -= baseline); // QUESTION: what is perf decrease/increase of this (compared to 1 complex map)?
                         filtered

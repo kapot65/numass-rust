@@ -92,7 +92,7 @@ fn merge_close_frames(
         if to_remove.contains(&idx) {
             None
         } else {
-            Some((**offset, frame.iter().cloned().collect::<Vec<_>>()))
+            Some((**offset, frame.to_vec()))
         }
     }).collect::<NumassEvents>()
 }
