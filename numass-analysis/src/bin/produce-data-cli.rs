@@ -28,20 +28,20 @@ use tikv_jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-enum RANGES {
+enum Ranges {
     Singles,
     Doubles,
     Tripples,
     Quadriples,
 }
 
-impl RANGES {
+impl Ranges {
     fn values(&self) -> Range<f32> {
         match self {
-            RANGES::Singles => 4.5..18.5,
-            RANGES::Doubles => 18.5..31.0,
-            RANGES::Tripples => 31.0..45.0,
-            RANGES::Quadriples => 45.0..60.0,
+            Ranges::Singles => 4.5..18.5,
+            Ranges::Doubles => 18.5..31.0,
+            Ranges::Tripples => 31.0..45.0,
+            Ranges::Quadriples => 45.0..60.0,
         }
     }
 }
@@ -97,7 +97,7 @@ async fn main() {
                 .join(format!("set_{}", set_num));
 
             let files = std::fs::read_dir(&set_directory)
-                .expect(&format!("Failed to read directory: {:?}", set_directory))
+                .unwrap_or_else(|_| panic!("Failed to read directory: {:?}", set_directory))
                 .filter_map(|file| {
                     if let Ok(file) = file {
                         let file_name = file.file_name().into_string().unwrap();
@@ -203,13 +203,13 @@ async fn main() {
                         } else {
                             events.iter().for_each(|(_, event)| match event {
                                 FrameEvent::Event { amplitude, .. } => {
-                                    if (RANGES::Singles.values()).contains(amplitude) {
+                                    if (Ranges::Singles.values()).contains(amplitude) {
                                         out_point.singles += monitor_coeff;
-                                    } else if (RANGES::Doubles.values()).contains(amplitude) {
+                                    } else if (Ranges::Doubles.values()).contains(amplitude) {
                                         out_point.doubles += monitor_coeff;
-                                    } else if (RANGES::Tripples.values()).contains(amplitude) {
+                                    } else if (Ranges::Tripples.values()).contains(amplitude) {
                                         out_point.tripples += monitor_coeff;
-                                    } else if (RANGES::Quadriples.values()).contains(amplitude) {
+                                    } else if (Ranges::Quadriples.values()).contains(amplitude) {
                                         out_point.quadriples += monitor_coeff;
                                     }
                                 }
@@ -248,10 +248,10 @@ async fn main() {
     let mut table_data =
         format!(
             "u_sp\tsingles({:?})\tdoubles({:?})\ttripples({:?})\tquadriples({:?})\ttriggers\tbad\ttime\n",
-            RANGES::Singles.values(),
-            RANGES::Doubles.values(),
-            RANGES::Tripples.values(),
-            RANGES::Quadriples.values()
+            Ranges::Singles.values(),
+            Ranges::Doubles.values(),
+            Ranges::Tripples.values(),
+            Ranges::Quadriples.values()
         );
     table
         .try_lock()

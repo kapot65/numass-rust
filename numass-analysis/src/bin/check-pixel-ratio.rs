@@ -70,10 +70,10 @@ async fn main() {
 
             let pb = Arc::clone(&pb);
 
-            let main_channel = main_channel;
+            let main_channel_local = main_channel;
 
-            let process = process.clone();
-            let postprocess = postprocess.clone();
+            let process_local = process.clone();
+            let postprocess_local = postprocess;
 
             let singles_range = singles_range.clone();
 
@@ -86,8 +86,8 @@ async fn main() {
                 let point = load_point(&filepath).await;
 
                 let (amps, _) = post_process(
-                    extract_events(Some(meta.clone()), point, &process),
-                    &postprocess,
+                    extract_events(Some(meta.clone()), point, &process_local),
+                    &postprocess_local,
                 );
 
                 let mut counts = BTreeMap::new();
@@ -105,12 +105,12 @@ async fn main() {
                     });
                 });
 
-                let main_count = counts[&main_channel];
+                let main_count = counts[&main_channel_local];
 
                 let counts = counts
                     .iter()
                     .filter_map(|(key, value)| {
-                        if *key != main_channel {
+                        if *key != main_channel_local {
                             Some((*key, *value as f64 / main_count as f64))
                         } else {
                             None

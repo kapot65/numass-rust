@@ -69,9 +69,7 @@ impl CorrectionCoeffs {
             )
         };
         
-        let Coeffs {a, b, c} = self.get(fill, set).expect(
-            &format!("no data for {fill}, {set}")
-        );
+        let Coeffs {a, b, c} = self.get(fill, set).unwrap_or_else(|| panic!("no data for {fill}, {set}"));
 
         let x: f32 = {
             let filename = filepath.file_name().unwrap().to_str().unwrap();
