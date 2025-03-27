@@ -1,0 +1,53 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../numass-processing"
+		},
+		{
+			"path": "../numass-root"
+		}
+	],
+	"extensions": {
+		"recommendations": [
+			"vadimcn.vscode-lldb",
+			"rust-lang.rust-analyzer",
+			"tamasfe.even-better-toml",
+			"julialang.language-julia",
+			"llvm-vs-code-extensions.vscode-clangd",
+			"twxs.cmake",
+			"sr-team.vscode-clangd-cmake",
+			"kylinideteam.cppdebug",
+			"ms-vscode.cmake-tools",
+		]
+	},
+	"settings": {
+		"files.associations": {
+			"calibrate.C": "cpp",
+			"fit.C": "cpp",
+			"fit-deltas.C": "cpp",
+			"ios": "cpp"
+		},
+		"clangd.fallbackFlags": [
+			"-I/home/chernov/.julia/conda/3/x86_64/include",
+			"-I/home/chernov/projects/numass-root"
+		],
+		"julia.environmentPath": "/home/chernov/projects/numass-analysis",
+		"json.schemas": [
+			{
+				"fileMatch": [
+					"*.continuerc.json"
+				],
+				"schema": true,
+				"url": "https://raw.githubusercontent.com/continuedev/continue/refs/heads/main/extensions/vscode/config_schema.json"
+			}
+		],
+		"clangd.checkUpdates": true,
+		"julia.additionalArgs": [
+			// "--threads=12"
+		],
+		"cmake.ignoreCMakeListsMissing": true
+	}
+}
