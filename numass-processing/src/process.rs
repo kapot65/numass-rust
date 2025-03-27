@@ -22,7 +22,7 @@ use crate::{
         KEV_COEFF_TRAPEZIOD,
     },
     preprocess::{emulate_fir, extract_waveforms, Preprocess},
-    types::{FrameEvent, NumassEvent, NumassEvents, NumassFrame},
+    types::{FrameEvent, NumassEvent, NumassEvents, NumassFrameFast},
 };
 
 #[repr(C)]
@@ -214,7 +214,7 @@ pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 
 ///   - with `egui` feature and `ui` is None is fast mode for batch processing
 ///   - without `egui` feature is fastest mode for non-graphical processing
 pub fn frame_to_events(
-    frame: &NumassFrame,
+    frame: &NumassFrameFast,
     algorithm: &Algorithm,
     preprocess: Option<&Preprocess>,
     #[cfg(feature = "egui")] ui: &mut Option<&mut PlotUi>,
@@ -544,7 +544,7 @@ pub fn frame_to_events(
     events
 }
 
-fn detect_reset(frame: &NumassFrame, params: &HWResetParams) -> Option<(usize, usize)> {
+fn detect_reset(frame: &NumassFrameFast, params: &HWResetParams) -> Option<(usize, usize)> {
     let HWResetParams {
         window,
         treshold,

@@ -8,9 +8,14 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessedWaveform(pub Vec<f32>);
 
-pub type NumassFrame<'a> = BTreeMap<u8, &'a [i16]>;
+pub type NumassFrame = BTreeMap<u8, Vec<i16>>;
 /// Numass point conveted to frames.
-pub type NumassWaveforms<'a> = BTreeMap<u64, NumassFrame<'a>>;
+pub type NumassWaveforms = BTreeMap<u64, NumassFrame>;
+
+pub type NumassFrameFast<'a> = BTreeMap<u8, &'a [i16]>;
+/// Numass point conveted to frames (no copy, Point must be alive for this data to be valid).
+pub type NumassWaveformsFast<'a> = BTreeMap<u64, NumassFrameFast<'a>>;
+
 /// Numass processed events type (both for processing + postprocessing and processing only).
 pub type NumassEvents = BTreeMap<u64, Vec<NumassEvent>>;
 /// Numass event (position in waveform in ns, amplitude).

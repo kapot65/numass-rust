@@ -5,11 +5,17 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::NaiveDateTime;
-use numass::{protos::rsb_event::{self, point::channel::block::Frame}, ExternalMeta, NumassMeta, Reply};
+use numass::{
+    protos::rsb_event::{self, point::channel::block::Frame},
+    ExternalMeta, NumassMeta, Reply,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    histogram::PointHistogram, process::Algorithm, types::NumassWaveforms, utils::correct_frame_time
+    histogram::PointHistogram,
+    process::Algorithm,
+    types::{NumassWaveforms, NumassWaveformsFast},
+    utils::correct_frame_time,
 };
 
 /// Размер блока, который будет вырезан, если в нем обнаружены проблемы (в нс)
@@ -132,17 +138,16 @@ impl Preprocess {
 
 pub fn emulate_fir(waveform: &[i16], right: usize, center: usize, left: usize) -> Vec<f32> {
     waveform
-    .windows(left + center + right)
-    .map(|window| {
-        (window[left + center..]
-            .iter()
-            .map(|val| *val as i32)
-            .sum::<i32>()
-            - window[..left].iter().map(|val| *val as i32).sum::<i32>())
-            as f32
-            / (left + right) as f32
-    })
-    .collect::<Vec<_>>()
+        .windows(left + center + right)
+        .map(|window| {
+            (window[left + center..]
+                .iter()
+                .map(|val| *val as i32)
+                .sum::<i32>()
+                - window[..left].iter().map(|val| *val as i32).sum::<i32>()) as f32
+                / (left + right) as f32
+        })
+        .collect::<Vec<_>>()
 }
 
 /// convert point to amplitudes histogram
@@ -183,7 +188,7 @@ pub fn frame_to_waveform(frame: &Frame) -> &[i16] {
 }
 
 /// remap waveforms from protobuf message to more convenient format (no copy).
-pub fn extract_waveforms(point: &rsb_event::Point) -> NumassWaveforms {
+pub fn extract_waveforms(point: &rsb_event::Point) -> NumassWaveformsFast {
     let mut waveforms = BTreeMap::new();
 
     for channel in &point.channels {
@@ -197,6 +202,21 @@ pub fn extract_waveforms(point: &rsb_event::Point) -> NumassWaveforms {
         }
     }
     waveforms
+}
+
+pub fn waveforms_fast_copy(waveforms: NumassWaveformsFast) -> NumassWaveforms {
+    waveforms
+        .iter()
+        .map(|(&time, channels)| {
+            (
+                time,
+                channels
+                    .iter()
+                    .map(|(&channel, &waveform)| (channel, waveform.to_vec()))
+                    .collect::<BTreeMap<_, _>>(),
+            )
+        })
+        .collect::<BTreeMap<_, _>>()
 }
 
 /// extact baseline for channels from point
