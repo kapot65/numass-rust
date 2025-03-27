@@ -10,7 +10,7 @@ use egui::mutex::Mutex;
 
 use apps::defaults::BOARD_IP;
 use processing::process::{frame_to_events, TRAPEZOID_DEFAULT};
-use processing::types::{FrameEvent, NumassFrame, ProcessedWaveform};
+use processing::types::{FrameEvent, NumassFrameFast, ProcessedWaveform};
 use processing::utils::{color_for_index, EguiLine};
 use processing::histogram::PointHistogram;
 use tqdc::{MTU_SIZE, TQDC_STREAM_PORT};
@@ -134,7 +134,7 @@ fn main() {
                                     if let Ok(combined) = MStreamTriggerAndUserData::try_from(&fragments[..]) {
 
                                         let data_blocks = combined.extract_data_blocks();
-                                        let frame: NumassFrame = data_blocks.iter().map(|ADCDataBlock {ch_num, waveform }| {
+                                        let frame: NumassFrameFast = data_blocks.iter().map(|ADCDataBlock {ch_num, waveform }| {
                                             (*ch_num, waveform.as_slice())
                                         }).collect::<BTreeMap<_,_>>();
 
