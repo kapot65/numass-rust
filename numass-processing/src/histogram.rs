@@ -220,15 +220,15 @@ impl PointHistogram {
         let right_border = bounds.max()[0] as f32;
 
         let events_in_window = self.events_all(Some(left_border..right_border));
-        let mut line = Line::new(self.build_egui_hist(&self.merge_channels()));
+        let mut line = Line::new(
+            format!("{name:?} ({events_in_window})"),
+            self.build_egui_hist(&self.merge_channels())
+        );
         if let Some(color) = color {
             line = line.color(color);
         }
         if let Some(thickness) = thickness {
             line = line.width(thickness);
-        }
-        if let Some(name) = name {
-            line = line.name(format!("{name} ({events_in_window})"));
         }
         plot_ui.line(line)
     }
@@ -243,9 +243,11 @@ impl PointHistogram {
         self.channels.iter().for_each(|(ch_num, channel)| {
             let events_in_window = events_in_window.get(&ch_num).unwrap_or(&0);
 
-            let mut line = Line::new(self.build_egui_hist(channel))
-                .color(color_for_index(*ch_num as usize))
-                .name(format!("ch #{}\t({events_in_window})", ch_num + 1));
+            let mut line = Line::new(
+                    format!("ch #{}\t({events_in_window})", ch_num + 1),
+                    self.build_egui_hist(channel)
+                )
+                .color(color_for_index(*ch_num as usize));
             if let Some(thickness) = thickness {
                 line = line.width(thickness);
             }

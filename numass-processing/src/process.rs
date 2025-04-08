@@ -302,9 +302,8 @@ pub fn frame_to_events(
             #[cfg(feature = "egui")]
             if let Some(ui) = ui {
                 ui.hline(
-                    HLine::new(*treshold as f64)
+                    HLine::new(format!("TRIGGER"), *treshold as f64)
                         .color(Color32::WHITE)
-                        .name(format!("TRIGGER")),
                 );
             }
 
@@ -369,6 +368,7 @@ pub fn frame_to_events(
                     #[cfg(feature = "egui")]
                     if let Some(ui) = ui {
                         let line = Line::new(
+                            format!("filtered + baseline ch# {}", ch_id + 1),
                             filtered
                                 .clone()
                                 .into_iter()
@@ -377,7 +377,6 @@ pub fn frame_to_events(
                                 .collect::<Vec<_>>(),
                         )
                         .color(color_for_index(*ch_id as usize))
-                        .name(format!("filtered + baseline ch# {}", ch_id + 1))
                         .style(egui_plot::LineStyle::Dashed { length: 10.0 });
                         ui.line(line);
                     };
@@ -496,20 +495,20 @@ pub fn frame_to_events(
 
                         ui.line(
                             Line::new(
+                                format!("range ch# {}", ch_id + 1),
                                 vec![[0.0, a as f64], [last_idx as f64, b_pred as f64]], //
                             )
                             .color(color_for_index(*ch_id as usize))
                             .style(egui_plot::LineStyle::Dashed { length: 10.0 })
-                            .name(format!("range ch# {}", ch_id + 1)),
                         );
 
                         ui.line(
                             Line::new(
+                                format!("range ch# {}", ch_id + 1),
                                 vec![[0.0, a_pred as f64], [last_idx as f64, b as f64]], //
                             )
                             .color(color_for_index(*ch_id as usize))
                             .style(egui_plot::LineStyle::Dashed { length: 10.0 })
-                            .name(format!("range ch# {}", ch_id + 1)),
                         )
                     }
 

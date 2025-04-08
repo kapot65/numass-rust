@@ -262,7 +262,7 @@ fn merge_splits(
         for (idx, (channel2, pos2, amplitude2)) in merges {
             if let (pos1, FrameEvent::Event { amplitude, .. }) = events[idx] {
                 ui.line(
-                    Line::new(vec![
+                    Line::new("".to_owned(), vec![ // TODO: check first arg
                         [pos1 as f64 / 8.0, amplitude as f64],
                         [pos2 as f64 / 8.0, amplitude2 as f64],
                     ])
@@ -362,12 +362,11 @@ pub fn post_process_frame(
             {
                 let name = format!("ch# {channel} merged");
                 ui.points(
-                    Points::new(vec![[pos as f64 / 8.0, amplitude as f64]])
+                    Points::new(name, vec![[pos as f64 / 8.0, amplitude as f64]])
                         .color(color_for_index(channel as usize))
                         .shape(MarkerShape::Circle)
                         .filled(false)
                         .radius(10.0)
-                        .name(name),
                 );
             }
         }
@@ -375,7 +374,7 @@ pub fn post_process_frame(
         for (idx, (channel2, pos2, amplitude2)) in merges {
             if let (pos1, FrameEvent::Event { amplitude, .. }) = events[idx] {
                 ui.line(
-                    Line::new(vec![
+                    Line::new(String::new(), vec![ // TODO: add name
                         [pos1 as f64 / 8.0, amplitude as f64],
                         [pos2 as f64 / 8.0, amplitude2 as f64],
                     ])

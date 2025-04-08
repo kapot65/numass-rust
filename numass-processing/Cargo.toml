@@ -12,9 +12,9 @@ chrono = { version = "0.4.22", features = ["serde"] }
 serde = { version = "1.0.163", features = ["derive"] }
 numass = { git = "https://github.com/kapot65/dataforge-parser-numass.git" }
 
-egui = { version = "0.27.2", optional = true }
-egui_plot = { version = "0.27.2", optional = true }
-egui_extras = { version =  "0.27.2", features = ["image", "svg"], optional = true }
+egui = { version = "0.31.1", optional = true }
+egui_plot = { version = "0.32.1", optional = true }
+egui_extras = { version =  "0.31.1", features = ["image", "svg"], optional = true }
 plotly = { version = "0.8.3", optional = true }
 rgb_hsv = { version = "1.0.1", optional = true }
 
