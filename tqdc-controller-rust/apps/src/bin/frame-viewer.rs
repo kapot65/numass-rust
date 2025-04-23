@@ -195,11 +195,11 @@ fn main() {
         "frame-viewer",
         native_options,
         Box::new(|_| {
-            Box::new(MyEguiApp {
+            Ok(Box::new(MyEguiApp {
                 channels,
                 histogram,
                 count_rate,
-            })
+            }))
         }),
     ).unwrap();
 }
