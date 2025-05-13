@@ -20,6 +20,14 @@ pub async fn events_to_point(
             let append = match &zero_suppression {
                 Some(params) => {
 
+                    let mut crop = None;
+                    for (idx, window) in channel.waveform.windows(30).enumerate() {
+                        if window[0].abs_diff(window[29]) > 5000 {
+                            crop = Some(idx);
+                            break;
+                        }
+                    }
+
                     // TODO: check this on real data
                     let waveform = channel.waveform.iter().map(|&x| x as f32).collect::<Vec<_>>();
                     let waveform = if let Some(fir) = &params.fir {
@@ -33,7 +41,14 @@ pub async fn events_to_point(
                     let baseline = waveform.iter().take(params.baseline).sum::<f32>()
                         / params.baseline as f32;
                     // convert into i16 in order to be able to find max
-                    let max = waveform.into_iter().map(|val| val as i16).max().unwrap() as f32 - baseline;
+                    let max = waveform.into_iter()
+                        .map(|val| val as i16);
+
+                    let max = if let Some(crop) = crop {
+                        max.take(crop).max().unwrap() as f32 - baseline
+                    } else {
+                        max.max().unwrap() as f32 - baseline
+                    };
                     max > (params.threshold * 4) as f32
                 }
                 None => true,
