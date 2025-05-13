@@ -17,6 +17,7 @@ use mstream::{MStreamTriggerAndUserData, MStreamADCBlocks, MStreamFragment};
 use regs::{as_run_state, Register16, Register32, RunMode, RunState, RunLogicControl};
 
 pub const MTU_SIZE: usize = 1536;
+const PREALLOCATE_SIZE: usize = 16_000_000_000 / MTU_SIZE; // 16 GB
 pub const MAX_FRAGMENTS_DISTANCE: usize = 1000;
 
 pub const TQDC_CONTROL_PORT: u16 = 33300;
@@ -184,7 +185,7 @@ impl TQDC {
         control: Arc<UdpSocket>,
         stream: Arc<UdpSocket>,
     ) -> Result<Vec<[u8; MTU_SIZE]>> {
-        let mut frames = Vec::with_capacity(30_000 * 100);
+        let mut frames = Vec::with_capacity(PREALLOCATE);
     
         stream
             .send_to(
