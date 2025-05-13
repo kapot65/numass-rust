@@ -185,7 +185,7 @@ impl TQDC {
         control: Arc<UdpSocket>,
         stream: Arc<UdpSocket>,
     ) -> Result<Vec<[u8; MTU_SIZE]>> {
-        let mut frames = Vec::with_capacity(PREALLOCATE);
+        let mut frames = Vec::with_capacity(PREALLOCATE_SIZE);
     
         stream
             .send_to(
