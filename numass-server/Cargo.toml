@@ -1,0 +1,35 @@
+[package]
+name = "backend"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+serde_json = "1.0.64"
+rmp-serde = "1.1.1"
+
+processing = { git = "https://github.com/kapot65/numass-processing.git" }
+protobuf = "3.7.1"
+serde_qs = "0.13.0"
+
+# native:
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+axum = "0.6.18"
+
+tokio = { version = "1.21.2", features = ["full"] }
+dataforge = { git = "https://github.com/kapot65/dataforge-parser-rust.git", features = ["tokio"]  }
+
+cacache = { version = "11.6.0", default-features = false,  features = ["tokio-runtime"] }
+clap = { version = "4.1.4", features = ["derive"]}
+tower-http = { version = "0.4.1", features = ["fs"] }
+
+[target.'cfg(target_family = "unix")'.dependencies]
+tikv-jemallocator = "0.5.4"
+
+[patch."https://github.com/kapot65/dataforge-parser-rust.git"]
+dataforge = { path = "../dataforge-parser-rust" }
+
+[patch."https://github.com/kapot65/numass-processing.git"]
+processing = { path = "../numass-processing" }
+
