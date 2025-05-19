@@ -8,10 +8,9 @@ members = [
 [workspace.dependencies]
 
 log = "0.4.20"
-
 tokio = { version = "1.21.2", features = ["full"] }
-dataforge = { git = "https://bitbucket.org/Kapot/dataforge-parser-rust.git", tag = "0.1.2", features = ["tokio"]  }
-processing = { git = "https://bitbucket.org/Kapot/numass-processing.git", features = ["egui"], tag = "0.1.2" }
+dataforge = { git = "https://github.com/kapot65/dataforge-parser-rust.git", features = ["tokio"]  }
+processing = { git = "https://github.com/kapot65/numass-processing.git", features = ["egui"] }
 eframe = "0.31.1"
 clap = { version = "4.0.26", features = ["derive"] }
 protobuf = "3.7.1"
@@ -19,8 +18,8 @@ protobuf = "3.7.1"
 serde = { version = "1.0.163", features = ["derive"] }
 serde_json = "1.0.91"
 
-[patch."https://bitbucket.org/Kapot/dataforge-parser-rust.git"]
+[patch."https://github.com/kapot65/dataforge-parser-rust.git"]
 dataforge = { path = "../dataforge-parser-rust" }
 
-[patch."https://bitbucket.org/Kapot/numass-processing.git"]
+[patch."https://github.com/kapot65/numass-processing.git"]
 processing = { path = "../numass-processing" }
