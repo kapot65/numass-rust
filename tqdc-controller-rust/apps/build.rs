@@ -16,4 +16,6 @@ fn main() {
 
     // Обновляем версию для Cargo (опционально, для отображения в cargo)
     println!("cargo:rustc-env=CARGO_PKG_VERSION={}", git_version);
+    println!("cargo:rerun-if-changed=.git/HEAD");
+    println!("cargo:rerun-if-changed=.git/refs");
 }
