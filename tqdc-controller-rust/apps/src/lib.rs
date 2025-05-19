@@ -56,14 +56,25 @@ pub async fn events_to_point(
                         params.threshold
                     };
 
-                    let baseline = waveform.iter().take(params.baseline).sum::<f32>()
-                        / params.baseline as f32;
+                    let baseline = if let Some(crop) = crop {
+                        if crop < params.baseline {
+                            waveform.iter().skip(crop + 120).take(params.baseline).sum::<f32>()/ params.baseline as f32
+                        } else {
+                            waveform.iter().take(params.baseline).sum::<f32>()/ params.baseline as f32
+                        }
+                    } else { // not enough bins on frame begin - process after reset
+                        waveform.iter().take(params.baseline).sum::<f32>()/ params.baseline as f32
+                    };
                     // convert into i16 in order to be able to find max
                     let max = waveform.into_iter()
                         .map(|val| val as i16);
 
                     let max = if let Some(crop) = crop {
-                        max.take(crop).max().unwrap() as f32 - baseline
+                        if crop == 0 { // not enough bins on frame begin - process after reset
+                            max.skip(120).max().unwrap() as f32 - baseline
+                        } else {
+                            max.take(crop).max().unwrap() as f32 - baseline
+                        }              
                     } else {
                         max.max().unwrap() as f32 - baseline
                     };
