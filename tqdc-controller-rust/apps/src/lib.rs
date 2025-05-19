@@ -38,6 +38,24 @@ pub async fn events_to_point(
                         waveform
                     };
 
+                    let treshold = if channel.ch_num == 0 && params.th_1.is_some() {
+                        params.th_1.unwrap()
+                    } else if channel.ch_num == 1 && params.th_2.is_some() {
+                        params.th_2.unwrap()
+                    } else if channel.ch_num == 2 && params.th_3.is_some() {
+                        params.th_3.unwrap()
+                    } else if channel.ch_num == 3 && params.th_4.is_some() {
+                        params.th_4.unwrap()
+                    } else if channel.ch_num == 4 && params.th_5.is_some() {
+                        params.th_5.unwrap()
+                    } else if channel.ch_num == 5 && params.th_6.is_some() {
+                        params.th_6.unwrap()
+                    } else if channel.ch_num == 6 && params.th_7.is_some() {
+                        params.th_7.unwrap()
+                    } else {
+                        params.threshold
+                    };
+
                     let baseline = waveform.iter().take(params.baseline).sum::<f32>()
                         / params.baseline as f32;
                     // convert into i16 in order to be able to find max

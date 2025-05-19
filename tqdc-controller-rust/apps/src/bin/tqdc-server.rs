@@ -47,6 +47,14 @@ struct Args {
     #[arg(long, default_value_t = 34)]
     zero_suppression_threshold: i16,
 
+    zs_th_1: Option<i16>,
+    zs_th_2: Option<i16>,
+    zs_th_3: Option<i16>,
+    zs_th_4: Option<i16>,
+    zs_th_5: Option<i16>,
+    zs_th_6: Option<i16>,
+    zs_th_7: Option<i16>,
+
     /// FIR coefficients for zero suppression
     /// comma-separated (no spaces) list of floats (e.g. 1.0,2.0,3.0)
     #[arg(long, value_delimiter = ',')]
@@ -90,6 +98,13 @@ async fn acquire_point(
         Some(ZeroSuppressionParams {
             baseline: args.zero_suppression_baseline,
             threshold: args.zero_suppression_threshold,
+            th_1: args.zs_th_1,
+            th_2: args.zs_th_2,
+            th_3: args.zs_th_3,
+            th_4: args.zs_th_4,
+            th_5: args.zs_th_5,
+            th_6: args.zs_th_6,
+            th_7: args.zs_th_7,
             fir: args.zero_suppression_fir,
         })
     } else {
