@@ -38,7 +38,7 @@ pub async fn events_to_point(
                         waveform
                     };
 
-                    let treshold = if channel.ch_num == 0 && params.th_1.is_some() {
+                    let threshold = if channel.ch_num == 0 && params.th_1.is_some() {
                         params.th_1.unwrap()
                     } else if channel.ch_num == 1 && params.th_2.is_some() {
                         params.th_2.unwrap()
@@ -67,7 +67,7 @@ pub async fn events_to_point(
                     } else {
                         max.max().unwrap() as f32 - baseline
                     };
-                    max > (params.threshold * 4) as f32
+                    max > (threshold * 4) as f32
                 }
                 None => true,
             };

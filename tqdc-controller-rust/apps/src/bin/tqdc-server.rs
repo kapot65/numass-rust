@@ -47,12 +47,19 @@ struct Args {
     #[arg(long, default_value_t = 34)]
     zero_suppression_threshold: i16,
 
+    #[arg(long)]
     zs_th_1: Option<i16>,
+    #[arg(long)]
     zs_th_2: Option<i16>,
+    #[arg(long)]
     zs_th_3: Option<i16>,
+    #[arg(long)]
     zs_th_4: Option<i16>,
+    #[arg(long)]
     zs_th_5: Option<i16>,
+    #[arg(long)]
     zs_th_6: Option<i16>,
+    #[arg(long)]
     zs_th_7: Option<i16>,
 
     /// FIR coefficients for zero suppression
