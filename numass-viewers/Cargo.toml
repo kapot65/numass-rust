@@ -1,0 +1,72 @@
+[package]
+name = "viewers"
+version = "0.1.0"
+authors = ["Vasily Chernov <kapot65@gmail.com>"]
+edition = "2021"
+
+[dependencies]
+egui = "0.31.1"
+egui_plot = "0.32.1"
+egui_extras = { version = "0.31.1", features = ["image", "svg"] }
+eframe = { version = "0.31.1" }
+
+serde = { version = "1.0.163", features = ["derive"] }
+serde_json = "1.0.91"
+serde_qs = "0.13.0"
+rmp-serde = "1.1.1"
+
+tracing = "0.1.37"
+
+processing = { git = "https://github.com/kapot65/numass-processing.git", features = [
+    "egui",
+] }
+
+protobuf = "3.7.1"
+
+chrono = "0.4.23"
+natord = "1.0.9"
+globset = "0.4.11"
+
+
+# native:
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tracing-subscriber = "0.3"
+
+tokio = { version = "1.21.2", features = ["full"] }
+dataforge = { git = "https://github.com/kapot65/dataforge-parser-rust.git", features = [
+    "tokio",
+] }
+
+rfd = "0.14.1"
+home = "0.5.4"
+which = "6.0.1"
+
+clap = { version = "4.5.26", features = ["derive"] }
+
+[target.'cfg(target_family = "unix")'.dependencies]
+tikv-jemallocator = "0.5.4"
+
+# web:
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+tracing-wasm = "0.2"
+console_error_panic_hook = "0.1.6"
+
+dataforge = { git = "https://github.com/kapot65/dataforge-parser-rust.git" }
+
+wasm-bindgen = "0.2.86"
+wasm-bindgen-futures = "0.4"
+
+js-sys = "0.3.52"
+gloo = { version = "0.11.0", features = [
+    "net",
+    "console",
+    "utils",
+    "worker",
+    "futures",
+] }
+
+[patch."https://github.com/kapot65/dataforge-parser-rust.git"]
+dataforge = { path = "../dataforge-parser-rust" }
+
+[patch."https://github.com/kapot65/numass-processing.git"]
+processing = { path = "../numass-processing" }
