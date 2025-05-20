@@ -64,7 +64,7 @@ pub enum ReplyStatus {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ZeroSuppressionParams {
-    pub baseline: usize,
+    pub baseline: Option<usize>,
     pub threshold: i16,
     pub th_1: Option<i16>,
     pub th_2: Option<i16>,
