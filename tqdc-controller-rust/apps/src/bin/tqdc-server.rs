@@ -40,6 +40,10 @@ struct Args {
     #[clap(long, short, action)]
     zero_suppression: bool,
 
+
+    #[clap(long, short, action)]
+    zero_suppression_use_baseline: bool,
+
     /// number of first bins taken to calculate baseline
     #[arg(long, default_value_t = 16)]
     zero_suppression_baseline: usize,
@@ -101,9 +105,15 @@ async fn acquire_point(
 
     let config : Option<Value>= Some(serde_json::from_reader(std::fs::File::open(config_filepath).unwrap()).unwrap());
 
+    let baseline = if args.zero_suppression_use_baseline {
+        Some(args.zero_suppression_baseline)
+    } else {
+        None
+    };
+
     let zero_suppression = if args.zero_suppression {
         Some(ZeroSuppressionParams {
-            baseline: args.zero_suppression_baseline,
+            baseline,
             threshold: args.zero_suppression_threshold,
             th_1: args.zs_th_1,
             th_2: args.zs_th_2,
@@ -145,6 +155,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     let args = Args::parse();
+
+    println!("{:?}", args);
 
     let listener =
         TcpListener::bind(SocketAddr::new([0,0,0,0].into(), args.host_dataforge_port)).await?;
