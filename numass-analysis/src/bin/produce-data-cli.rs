@@ -130,9 +130,16 @@ async fn main() {
 
                 let u_sp = {
                     let point_name = point_name.as_str();
-                    point_name[point_name.len() - 6..point_name.len() - 1]
+
+                    if point_name.ends_with(".df") {
+                        point_name[point_name.len() - 9..point_name.len() - 4]
                         .parse::<u16>()
                         .unwrap()
+                    } else {
+                        point_name[point_name.len() - 6..point_name.len() - 1]
+                        .parse::<u16>()
+                        .unwrap()
+                    }
                 };
 
                 points.entry(u_sp).or_insert(vec![]).push(point);

@@ -17,7 +17,12 @@ pub fn get_points_by_pattern(db_root: &str, pattern: &str, exclude: &[String]) -
 
             let u_sp = {
                 let filepath = filepath.file_name().unwrap().to_str().unwrap();
-                filepath[filepath.len() - 6..filepath.len() - 1].parse::<u16>().unwrap()
+
+                if filepath.ends_with(".df") {
+                    filepath[filepath.len() - 9..filepath.len() - 4].parse::<u16>().unwrap()
+                } else {
+                    filepath[filepath.len() - 6..filepath.len() - 1].parse::<u16>().unwrap()
+                }
             };
             points.entry(u_sp).or_insert(vec![]).push(filepath);
         }
@@ -36,6 +41,7 @@ pub struct Coeffs {
     pub a: f32,
     pub b: f32,
     pub c: f32,
+    pub d: f32,
 }
 
 pub struct CorrectionCoeffs {
@@ -69,14 +75,14 @@ impl CorrectionCoeffs {
             )
         };
         
-        let Coeffs {a, b, c} = self.get(fill, set).unwrap_or_else(|| panic!("no data for {fill}, {set}"));
+        let Coeffs {a, b, c, d} = self.get(fill, set).unwrap_or_else(|| panic!("no data for {fill}, {set}"));
 
         let x: f32 = {
             let filename = filepath.file_name().unwrap().to_str().unwrap();
             filename[1..filename.find('(').unwrap()].parse::<i32>().unwrap() as f32
         };
 
-        a * x.powf(2.0) + b * x + c
+        a * x.powf(3.0) + b * x.powf(2.0) + c * x + d
     }
 
     /// получить поправку по времени
@@ -104,13 +110,13 @@ impl CorrectionCoeffs {
         // }
 
 
-        let Coeffs {a, b, c} = self.get(fill, set).unwrap();
+        let Coeffs {a, b, c, d} = self.get(fill, set).unwrap();
 
         if let NumassMeta::Reply(Reply::AcquirePoint { start_time, ..
         }) = meta {
-            let secs = start_time.timestamp() - (3600 * 3);
+            let secs = start_time.and_utc().timestamp() - (3600 * 3);
             let x= (secs % 1_000_000) as f32;
-            1.0 / (a * x.powf(2.0) + b * x + c)
+            1.0 / (a * x.powf(3.0) + b * x.powf(2.0) + c * x + d)
         } else {
             panic!("wrong message type")
         }
