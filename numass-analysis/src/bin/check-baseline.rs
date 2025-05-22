@@ -65,7 +65,7 @@ async fn main() {
                                         ..
                                     } = TRAPEZOID_DEFAULT
                                     {
-                                        emulate_fir(frame_to_waveform(frame), right, center, left)
+                                        emulate_fir(frame_to_waveform(frame), right.into(), center.into(), left.into())
                                     } else {
                                         panic!("Unsupported algorithm")
                                     }
