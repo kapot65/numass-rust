@@ -83,10 +83,20 @@ impl UserInput for ProcessParams {
             {
                 algorithm = LONGDIFF_DEFAULT
             }
+            if ui
+                .add(egui::RadioButton::new(
+                    matches!(algorithm, Algorithm::Average),
+                    "Average",
+                ))
+                .clicked()
+            {
+                algorithm = Algorithm::Average
+            }
         });
 
         let algorithm = match algorithm {
             Algorithm::Max => algorithm,
+            Algorithm::Average => algorithm,
             Algorithm::Likhovid { left, right } => {
                 let mut left = left;
                 ui.add(egui::Slider::new(&mut left, 0..=30).text("left"));
@@ -222,11 +232,11 @@ impl UserInput for PostProcessParams {
 
             ui.checkbox(&mut cut_bad_blocks, "cut_bad_blocks").on_hover_text(
                 format!("
-                point is splitted into {} s length blocks 
+                point is splitted into {} s length blocks
                 each block is also be splitted into {} s subblock
                 the block is considered bad if any of its subblocks contains 0 events
                 the cutting applies only on points with HV < {} keV
-                ", 
+                ",
                     CUTOFF_BIN_SIZE  as f32 * 1e-9,
                     CHECK_BIN_SIZE as f32 * 1e-9,
                     CHECK_HV_THRESHOLD * 1e-3
@@ -238,7 +248,7 @@ impl UserInput for PostProcessParams {
                 if ui.checkbox(&mut merge_frames_checked, "merge frames").on_hover_text(
                     format!("
                     Merge events between close frames into one.
-                    Loop goes from end to start merging any frame to previous one 
+                    Loop goes from end to start merging any frame to previous one
                     if the distance between them is less than treshold.
                     This operation applies before any other postprocessing.
                     ")
@@ -249,7 +259,7 @@ impl UserInput for PostProcessParams {
                         merge_frames = None;
                     }
                 }
-                
+
                 if merge_frames_checked {
                     let mut merge_frames_value = merge_frames.unwrap();
                     if ui.add(egui::Slider::new(&mut merge_frames_value, 1000..=65535).text("ns")).changed() {

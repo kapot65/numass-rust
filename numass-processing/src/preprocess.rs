@@ -31,7 +31,7 @@ pub const CHECK_HV_THRESHOLD: f32 = 16e3;
 /// могут либо задаваться статично, либо на каждую точку
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Preprocess {
-    pub baseline: Option<[f32;7]>, // TODO: make more versatile
+    pub baseline: Option<[f32; 7]>, // TODO: make more versatile
 
     /// предполагаемая HV точки
     pub hv: f32,
@@ -51,39 +51,35 @@ pub struct Preprocess {
 }
 
 impl Preprocess {
-
     pub fn from_point(
         meta: Option<NumassMeta>,
         point: &rsb_event::Point,
         algo: &Algorithm,
     ) -> Self {
+        let (acquisition_time, start_time) = if let Some(NumassMeta::Reply(Reply::AcquirePoint {
+            acquisition_time,
+            start_time,
+            ..
+        })) = meta
+        {
+            ((acquisition_time * 1e9) as u64, start_time)
+        } else {
+            panic!("acquisition_time/start_time not found in metadata")
+        };
 
-        let (acquisition_time, start_time) =
-            if let Some(NumassMeta::Reply(Reply::AcquirePoint {
-                acquisition_time,
-                start_time,
-                ..
-            })) = meta
-            {
-                ((acquisition_time * 1e9) as u64, start_time)
-            } else {
-                panic!("acquisition_time/start_time not found in metadata")
-            };
-
-        let hv =
-            if let Some(NumassMeta::Reply(Reply::AcquirePoint {
-                external_meta:
-                    Some(ExternalMeta {
-                        hv1_value: Some(hv),
-                        ..
-                    }),
-                ..
-            })) = meta
-            {
-                hv
-            } else {
-                -1.0 // TODO: fix this!
-            };
+        let hv = if let Some(NumassMeta::Reply(Reply::AcquirePoint {
+            external_meta:
+                Some(ExternalMeta {
+                    hv1_value: Some(hv),
+                    ..
+                }),
+            ..
+        })) = meta
+        {
+            hv
+        } else {
+            -1.0 // TODO: fix this!
+        };
 
         let bad_blocks = if hv > CHECK_HV_THRESHOLD {
             BTreeSet::new()
@@ -115,19 +111,27 @@ impl Preprocess {
         };
 
         let frame_len = ((point
-            .channels.first().unwrap()
-            .blocks.first().unwrap()
-            .frames.first().unwrap()
-            .data.len() / 2) * 8) as u64;
+            .channels
+            .first()
+            .unwrap()
+            .blocks
+            .first()
+            .unwrap()
+            .frames
+            .first()
+            .unwrap()
+            .data
+            .len()
+            / 2)
+            * 8) as u64;
 
         let baseline = match &algo {
-            Algorithm::Trapezoid { .. } => {
-                Some(baseline_from_point(point, algo))
-            }
+            Algorithm::Trapezoid { .. } => Some(baseline_from_point(point, algo)),
             Algorithm::Max => None,
             Algorithm::FirstPeak { .. } => None,
             Algorithm::Likhovid { .. } => None,
             Algorithm::LongDiff { .. } => None,
+            Algorithm::Average => None,
         };
 
         Self {
@@ -190,12 +194,7 @@ pub fn point_to_amp_hist(point: &rsb_event::Point, algo: &Algorithm) -> PointHis
 }
 
 pub fn frame_to_waveform(frame: &Frame) -> &[i16] {
-    unsafe {
-        std::slice::from_raw_parts(
-            frame.data.as_ptr() as *const i16,
-            frame.data.len() / 2,
-        )
-    }
+    unsafe { std::slice::from_raw_parts(frame.data.as_ptr() as *const i16, frame.data.len() / 2) }
 }
 
 /// remap waveforms from protobuf message to more convenient format (no copy).

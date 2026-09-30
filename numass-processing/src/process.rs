@@ -18,8 +18,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     constants::{
-        KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_LONGDIFF, KEV_COEFF_MAX,
-        KEV_COEFF_TRAPEZIOD,
+        KEV_COEFF_AVERAGE, KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_LONGDIFF,
+        KEV_COEFF_MAX, KEV_COEFF_TRAPEZIOD,
     },
     preprocess::{emulate_fir, extract_waveforms, Preprocess},
     types::{FrameEvent, NumassEvent, NumassEvents, NumassFrameFast},
@@ -84,6 +84,7 @@ pub enum Algorithm {
         #[cfg_attr(feature = "clap", command(flatten))]
         reset_detection: HWResetParams,
     },
+    Average,
 }
 
 // Scalar defaults shared between the `*_DEFAULT` singletons and the clap
@@ -219,6 +220,10 @@ pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 
         }
         Algorithm::LongDiff { .. } => {
             let [a, b] = KEV_COEFF_LONGDIFF[ch_id as usize];
+            a * *amplitude + b
+        }
+        Algorithm::Average => {
+            let [a, b] = KEV_COEFF_AVERAGE[ch_id as usize];
             a * *amplitude + b
         }
     }
@@ -574,6 +579,22 @@ pub fn frame_to_events(
 
             events
         }
+        Algorithm::Average => frame
+            .iter()
+            .map(|(ch_id, waveform)| {
+                let amplitude =
+                    waveform.iter().map(|&val| val as f32).sum::<f32>() / waveform.len() as f32;
+
+                (
+                    0,
+                    FrameEvent::Event {
+                        channel: *ch_id,
+                        amplitude,
+                        size: waveform.len() as u16,
+                    },
+                )
+            })
+            .collect::<Vec<_>>(),
     };
 
     events.sort_by_key(|(pos, _)| *pos);
@@ -618,4 +639,44 @@ pub fn find_first_peak(waveform: &[i16], threshold: i16) -> Option<usize> {
                 && (*idx == waveform.len() - 1 || waveform[idx + 1] <= amp)
         })
         .map(|(idx, _)| idx)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use crate::process::{frame_to_events, Algorithm};
+    use crate::types::FrameEvent;
+
+    #[test]
+    fn average_algorithm_computes_mean_amplitude() {
+        let waveform = vec![2i16, 4, 6, 8];
+        let frame = BTreeMap::from([(0u8, waveform.as_slice())]);
+
+        let events = frame_to_events(
+            &frame,
+            &Algorithm::Average,
+            None,
+            #[cfg(feature = "egui")]
+            &mut None,
+        );
+
+        assert_eq!(events.len(), 1);
+
+        let (pos, event) = &events[0];
+        assert_eq!(*pos, 0);
+
+        match event {
+            FrameEvent::Event {
+                channel,
+                amplitude,
+                size,
+            } => {
+                assert_eq!(*channel, 0);
+                assert_eq!(*amplitude, 5.0);
+                assert_eq!(*size, 4);
+            }
+            _ => panic!("expected a FrameEvent::Event, got {event:?}"),
+        }
+    }
 }
