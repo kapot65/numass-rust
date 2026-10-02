@@ -10,7 +10,7 @@ members = [
 log = "0.4.20"
 tokio = { version = "1.21.2", features = ["full"] }
 dataforge = { git = "https://github.com/kapot65/dataforge-parser-rust.git", features = ["tokio"]  }
-processing = { git = "https://github.com/kapot65/numass-processing.git", features = ["egui"] }
+processing = { git = "https://github.com/kapot65/numass-processing.git", features = ["egui", "clap"] }
 eframe = "0.31.1"
 clap = { version = "4.0.26", features = ["derive"] }
 protobuf = "3.7.1"
