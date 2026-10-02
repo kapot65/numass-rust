@@ -230,6 +230,7 @@ fn main() {
                 histogram,
                 count_rate,
                 process_params: process_params_ui,
+                params_open: true,
             }))
         }),
     )
@@ -241,6 +242,7 @@ struct MyEguiApp {
     channels: Arc<Mutex<BTreeMap<u8, ProcessedWaveform>>>,
     count_rate: Arc<Mutex<BTreeMap<u8, f64>>>,
     process_params: Arc<Mutex<ProcessParams>>,
+    params_open: bool,
 }
 
 impl eframe::App for MyEguiApp {
@@ -249,32 +251,57 @@ impl eframe::App for MyEguiApp {
 
         let channels = self.channels.lock().clone();
 
-        egui::TopBottomPanel::top("count_rates").show(ctx, |ui| {
-            let count_rate_lock = self.count_rate.lock();
+        if self.params_open {
+            egui::SidePanel::left("processing_params")
+                .default_width(350.0)
+                .show(ctx, |ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                        if ui
+                            .add(egui::Button::new("<").frame(false))
+                            .on_hover_text("Collapse")
+                            .clicked()
+                        {
+                            self.params_open = false;
+                        }
+                    });
+                    ui.separator();
 
-            ui.label("count_rates:");
-            for (ch_num, count_rate) in count_rate_lock.iter() {
-                ui.label(format!("ch {}: {count_rate:>8.2} Hz", ch_num + 1));
-            }
-        });
+                    let params = self.process_params.lock().clone();
+                    let new_params = params.input(ui, ctx);
+                    if new_params != params {
+                        *self.process_params.lock() = new_params;
+                    }
 
-        egui::SidePanel::left("processing_params")
-            .default_width(350.0)
-            .show(ctx, |ui| {
-                ui.heading("Processing params");
+                    ui.separator();
 
-                let params = self.process_params.lock().clone();
-                let new_params = params.input(ui, ctx);
-                if new_params != params {
-                    *self.process_params.lock() = new_params;
-                }
-            });
+                    let count_rate_lock = self.count_rate.lock();
+                    ui.label("Count rates");
+                    for (ch_num, count_rate) in count_rate_lock.iter() {
+                        ui.label(format!("ch {}: {count_rate:>8.2} Hz", ch_num + 1));
+                    }
+                });
+        } else {
+            egui::SidePanel::left("processing_params_collapsed")
+                .exact_width(28.0)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    if ui
+                        .add(egui::Button::new(">").frame(false))
+                        .on_hover_text("Show processing params")
+                        .clicked()
+                    {
+                        self.params_open = true;
+                    }
+                });
+        }
 
         egui::SidePanel::left("waveforms")
             .default_width(500.0)
             .show(ctx, |ui| {
                 Plot::new("waveforms")
                     .legend(Legend::default())
+                    .x_axis_label("sample")
+                    .y_axis_label("ADC")
                     .show(ui, |plot_ui| {
                         channels.into_iter().for_each(|(ch_num, waveform)| {
                             waveform.draw_egui(
@@ -291,6 +318,8 @@ impl eframe::App for MyEguiApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             Plot::new("hists")
                 .legend(Legend::default())
+                .x_axis_label("amplitude")
+                .y_axis_label("counts")
                 .show(ui, |plot_ui| {
                     let hist = self.histogram.lock().clone();
                     hist.draw_egui_each_channel(plot_ui, None);
