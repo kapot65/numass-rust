@@ -11,7 +11,7 @@ use egui_plot::{Legend, Plot};
 use apps::defaults::BOARD_IP;
 use processing::histogram::PointHistogram;
 use processing::process::{frame_to_events, Algorithm, ProcessParams};
-use processing::types::{FrameEvent, NumassFrameFast, ProcessedWaveform};
+use processing::types::{FrameEvent, NumassFrame, NumassFrameFast, ProcessedWaveform};
 use processing::utils::{color_for_index, EguiLine};
 use processing::widgets::UserInput;
 use tqdc::mlink::MlinkMessage;
@@ -63,7 +63,7 @@ fn main() {
 
     let algorithm = algorithm.unwrap_or_default();
     let process_params = Arc::new(Mutex::new(ProcessParams {
-        algorithm,
+        algorithm: algorithm.clone(),
         convert_to_kev: false,
     }));
     let process_params_ui = Arc::clone(&process_params);
@@ -78,8 +78,14 @@ fn main() {
     let channels_bg = Arc::new(Mutex::new(BTreeMap::new()));
     let channels = Arc::clone(&channels_bg);
 
+    let raw_frame_bg = Arc::new(Mutex::new(None::<NumassFrame>));
+    let raw_frame = Arc::clone(&raw_frame_bg);
+
     let count_rate_bg = Arc::new(Mutex::new(BTreeMap::new()));
     let count_rate = Arc::clone(&count_rate_bg);
+
+    let packet_rate_bg = Arc::new(Mutex::new(0.0f64));
+    let packet_rate = Arc::clone(&packet_rate_bg);
 
     std::thread::spawn(move || {
         let tqdc_address = SocketAddr::new(tqdc_ip, TQDC_STREAM_PORT);
@@ -102,6 +108,7 @@ fn main() {
             BTreeMap::new();
 
         let mut seq = 0;
+        let mut fragment_count = 0u64;
 
         loop {
             let mut buf = [0; MTU_SIZE];
@@ -124,6 +131,7 @@ fn main() {
                     )
                     .unwrap();
                     seq += 1;
+                    fragment_count += 1;
 
                     fragments_buf
                         .entry(fragment.header.fragment_id)
@@ -132,12 +140,17 @@ fn main() {
 
                     let elapsed_ms = refresh_timer.elapsed().as_millis();
                     if elapsed_ms > plots_refresh_interval_ms {
+                        let packet_rate_val = fragment_count as f64 / (elapsed_ms as f64 / 1000.0);
+                        *packet_rate_bg.lock() = packet_rate_val;
+                        fragment_count = 0;
+
                         let channels_bg = Arc::clone(&channels_bg);
                         let histogram_bg = Arc::clone(&histogram_bg);
                         let counts = Arc::clone(&counts);
 
                         let count_rate_bg = Arc::clone(&count_rate_bg);
                         let process_params = Arc::clone(&process_params);
+                        let raw_frame_bg = Arc::clone(&raw_frame_bg);
 
                         fragments_buf = {
                             std::thread::spawn(move || {
@@ -147,6 +160,7 @@ fn main() {
                                 let algorithm = process_params.lock().algorithm.clone();
 
                                 let mut channels = None;
+                                let mut raw_frame = None;
 
                                 fragments_buf.iter().for_each(|(_, fragments)| {
                                     let fragments = fragments.values().collect::<Vec<_>>();
@@ -188,6 +202,14 @@ fn main() {
                                                     })
                                                     .collect::<BTreeMap<_, _>>(),
                                             );
+                                            raw_frame = Some(
+                                                frame
+                                                    .iter()
+                                                    .map(|(ch_num, waveform)| {
+                                                        (*ch_num, waveform.to_vec())
+                                                    })
+                                                    .collect::<BTreeMap<_, _>>(),
+                                            );
                                         }
                                     } else {
                                         println!("failed to combine fragments");
@@ -198,6 +220,10 @@ fn main() {
 
                                 if let Some(channels) = channels {
                                     *channels_bg.lock() = channels;
+                                }
+
+                                if let Some(raw_frame) = raw_frame {
+                                    *raw_frame_bg.lock() = Some(raw_frame);
                                 }
 
                                 counts.iter_mut().for_each(|(_, count)| {
@@ -227,9 +253,16 @@ fn main() {
         Box::new(|_| {
             Ok(Box::new(MyEguiApp {
                 channels,
+                raw_frame,
                 histogram,
                 count_rate,
+                packet_rate,
                 process_params: process_params_ui,
+                process_params_edit: ProcessParams {
+                    algorithm: algorithm.clone(),
+                    convert_to_kev: false,
+                },
+                draw_algorithm: false,
                 params_open: true,
             }))
         }),
@@ -240,8 +273,12 @@ fn main() {
 struct MyEguiApp {
     histogram: Arc<Mutex<PointHistogram>>,
     channels: Arc<Mutex<BTreeMap<u8, ProcessedWaveform>>>,
+    raw_frame: Arc<Mutex<Option<NumassFrame>>>,
     count_rate: Arc<Mutex<BTreeMap<u8, f64>>>,
+    packet_rate: Arc<Mutex<f64>>,
     process_params: Arc<Mutex<ProcessParams>>,
+    process_params_edit: ProcessParams,
+    draw_algorithm: bool,
     params_open: bool,
 }
 
@@ -266,19 +303,31 @@ impl eframe::App for MyEguiApp {
                     });
                     ui.separator();
 
-                    let params = self.process_params.lock().clone();
-                    let new_params = params.input(ui, ctx);
-                    if new_params != params {
-                        *self.process_params.lock() = new_params;
+                    let new_params = self.process_params_edit.input(ui, ctx);
+                    self.process_params_edit = new_params;
+
+                    ui.separator();
+
+                    if ui.button("apply").clicked() {
+                        *self.process_params.lock() = self.process_params_edit.clone();
+                        self.histogram.lock().clear();
                     }
 
                     ui.separator();
 
-                    let count_rate_lock = self.count_rate.lock();
-                    ui.label("Count rates");
-                    for (ch_num, count_rate) in count_rate_lock.iter() {
-                        ui.label(format!("ch {}: {count_rate:>8.2} Hz", ch_num + 1));
+                    ui.checkbox(&mut self.draw_algorithm, "draw algorithm work");
+
+                    ui.separator();
+
+                    {
+                        let count_rate_lock = self.count_rate.lock();
+                        ui.label("Count rates");
+                        for (ch_num, count_rate) in count_rate_lock.iter() {
+                            ui.label(format!("ch {}: {count_rate:>8.2} Hz", ch_num + 1));
+                        }
                     }
+                    let packet_rate = *self.packet_rate.lock();
+                    ui.label(format!("packets: {packet_rate:>8.2} Hz"));
                 });
         } else {
             egui::SidePanel::left("processing_params_collapsed")
@@ -312,10 +361,27 @@ impl eframe::App for MyEguiApp {
                                 None,
                             );
                         });
+
+                        if self.draw_algorithm {
+                            if let Some(frame) = self.raw_frame.lock().clone() {
+                                let frame_fast: NumassFrameFast = frame
+                                    .iter()
+                                    .map(|(ch_num, waveform)| (*ch_num, waveform.as_slice()))
+                                    .collect();
+                                let algorithm = self.process_params.lock().algorithm.clone();
+                                frame_to_events(&frame_fast, &algorithm, None, &mut Some(plot_ui));
+                            }
+                        }
                     });
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("clear").clicked() {
+                    self.histogram.lock().clear();
+                }
+            });
+
             Plot::new("hists")
                 .legend(Legend::default())
                 .x_axis_label("amplitude")

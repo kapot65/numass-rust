@@ -1,0 +1,16 @@
+# --- Workspace tooling / meta ---
+.cache/
+.threadbridge/
+.memory-bank/
+.zed/
+
+# --- Build artifacts ---
+target/
+target-*/
+dist/
+
+# --- Experiment data artifacts (numass-analysis) ---
+numass-analysis/*.zip
+numass-analysis/*.html
+numass-analysis/*.tsv
+numass-analysis/*.yaml

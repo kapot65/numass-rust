@@ -1,0 +1,41 @@
+{
+  "models": [
+    {
+      "title": "Qwen2.5 Coder (Home)",
+      "provider": "ollama",
+      "apiBase": "http://home:11434",
+      "model": "qwen2.5-coder:32b",
+      // "systemMessage": "This is a custom system message",
+      "contextLength": 4608
+    },
+    {
+      "title": "Qwen2.5 Coder 14b (Home)",
+      "provider": "ollama",
+      "apiBase": "http://home:11434",
+      "model": "qwen2.5-coder:14b",
+      "contextLength": 32768
+    },
+    {
+      "title": "Qwen2.5 Coder (Work)",
+      "provider": "ollama",
+      "apiBase": "http://work:11434",
+      "contextLength": 32768,
+      "model": "qwen2.5-coder:14b"
+    },
+    {
+      "title": "Qwen2.5 Coder 14b (Dacha)",
+      "provider": "ollama",
+      "apiBase": "http://dacha:11434",
+      "contextLength": 18000,
+      "model": "qwen2.5-coder:14b"
+    }
+  ],
+  "allowAnonymousTelemetry": false,
+  "tabAutocompleteModel": {
+    "title": "Qwen2.5 Coder (Home)",
+    "provider": "ollama",
+    "apiBase": "http://home:11434",
+    "model": "qwen2.5-coder:32b",
+    "contextLength": 4608
+  }
+}

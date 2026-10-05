@@ -1,0 +1,27 @@
+[workspace]
+resolver = "2"
+members = [
+    "dataforge-parser-numass",
+    "dataforge-parser-rust",
+    "numass-analysis",
+    "numass-processing",
+    # "numass-processing-py",
+    "numass-root",
+    "numass-server",
+    "numass-viewers",
+    "tqdc-controller-rust/apps",
+    "tqdc-controller-rust/tqdc",
+]
+
+[workspace.dependencies]
+log = "0.4.20"
+tokio = { version = "1.21.2", features = ["full"] }
+dataforge = { path = "dataforge-parser-rust" }
+numass = { path = "dataforge-parser-numass" }
+processing = { path = "numass-processing" }
+eframe = "0.31.1"
+clap = { version = "4.0.26", features = ["derive"] }
+protobuf = "3.7.1"
+serde = { version = "1.0.163", features = ["derive"] }
+serde_json = "1.0.91"
+tikv-jemallocator = "0.6.0"
