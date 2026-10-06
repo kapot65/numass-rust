@@ -226,7 +226,7 @@ impl eframe::App for BundleViewer {
                             plot_ui.points(
                                 Points::new(format!("ch #{}", ch_num + 1), points)
                                     .color(color_for_index((ch_num) as usize))
-                                    .radius(3.0),
+                                    .radius(3.0_f32),
                             )
                         }
                     });

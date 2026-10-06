@@ -198,7 +198,7 @@ pub fn frame_to_waveform(frame: &Frame) -> &[i16] {
 }
 
 /// remap waveforms from protobuf message to more convenient format (no copy).
-pub fn extract_waveforms(point: &rsb_event::Point) -> NumassWaveformsFast {
+pub fn extract_waveforms(point: &rsb_event::Point) -> NumassWaveformsFast<'_> {
     let mut waveforms = BTreeMap::new();
 
     for channel in &point.channels {

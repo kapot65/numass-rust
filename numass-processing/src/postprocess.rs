@@ -406,7 +406,7 @@ pub fn post_process_frame(
                         .color(color_for_index(channel as usize))
                         .shape(MarkerShape::Circle)
                         .filled(false)
-                        .radius(10.0)
+                        .radius(10.0_f32)
                 );
             }
         }

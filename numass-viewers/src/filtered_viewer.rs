@@ -146,7 +146,7 @@ impl<'a> FilteredViewer<'a> {
                             .color(color_for_index(*channel as usize))
                             .shape(MarkerShape::Diamond)
                             .filled(false)
-                            .radius(10.0),
+                            .radius(10.0_f32),
                     );
                 }
                 FrameEvent::Reset { size } => {

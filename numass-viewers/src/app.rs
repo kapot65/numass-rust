@@ -902,7 +902,7 @@ impl eframe::App for DataViewerApp {
                             })
                             .collect::<Vec<_>>();
 
-                        plot_ui.points(Points::new("PPT", points).radius(3.0));
+                        plot_ui.points(Points::new("PPT", points).radius(3.0_f32));
                     });
                 }
                 PlotMode::PPV => {
@@ -939,7 +939,7 @@ impl eframe::App for DataViewerApp {
                             })
                             .collect::<Vec<_>>();
 
-                        plot_ui.points(Points::new("PPV", points).radius(3.0));
+                        plot_ui.points(Points::new("PPV", points).radius(3.0_f32));
 
                         if plot_ui.response().clicked() {
                             if let Some(pos) = plot_ui.pointer_coordinate() {

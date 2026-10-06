@@ -538,7 +538,7 @@ impl eframe::App for FaradeyViewerApp {
                             })
                             .collect::<Vec<_>>();
 
-                        plot_ui.points(Points::new("PPT", points).radius(3.0));
+                        plot_ui.points(Points::new("PPT", points).radius(3.0_f32));
                     });
                 }
                 PlotMode::Ppv => {
@@ -566,7 +566,7 @@ impl eframe::App for FaradeyViewerApp {
                             })
                             .collect::<Vec<_>>();
 
-                        plot_ui.points(Points::new("PPV", points).radius(3.0));
+                        plot_ui.points(Points::new("PPV", points).radius(3.0_f32));
                     });
                 }
             }

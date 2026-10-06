@@ -40,7 +40,7 @@ async fn main() {
     eframe::run_native(
         std::fs::canonicalize(&filepath).unwrap().to_str().unwrap(),
         native_options,
-        Box::new(|ctx| {
+        Box::new(|_ctx| {
             let process = if let Some(process) = args.process {
                 serde_json::from_str(&process).expect("cant parse algorithm param")
             } else {
