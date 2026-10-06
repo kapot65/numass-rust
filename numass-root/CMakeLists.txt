@@ -6,7 +6,7 @@ option(ENABLE_NATIVE_OPTIMIZATION "Enable -O3 -march=native" ON)
 
 # По умолчанию собираем Release (иначе Corrosion соберёт Rust в dev-профиле)
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
 # Генерировать build/compile_commands.json для clangd (навигация по C++/ROOT)
@@ -21,7 +21,12 @@ CPMAddPackage(
     GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
     GIT_TAG v0.5.1
 )
-corrosion_import_crate(MANIFEST_PATH ${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml)
+
+message(${CMAKE_CURRENT_SOURCE_DIR})
+corrosion_import_crate(
+    MANIFEST_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../Cargo.toml
+    CRATES numass-root
+)
 
 # argparse — header-only парсер аргументов
 CPMAddPackage(
@@ -46,7 +51,7 @@ target_include_directories(convert-to-root PRIVATE
 )
 
 if(ENABLE_NATIVE_OPTIMIZATION)
-    target_compile_options(convert-to-root PRIVATE -O3 -march=native)
+  target_compile_options(convert-to-root PRIVATE -O3 -march=native)
 endif()
 
 target_link_libraries(

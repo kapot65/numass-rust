@@ -18,6 +18,7 @@ serde_json = "1.0.138"
 
 [build-dependencies]
 cbindgen = "0.28.0"
+cmake = "0.1.58"
 # uniffi = { version = "0.25.0", features = [ "build" ] }
 
 # [patch."https://github.com/kapot65/numass-processing.git"]

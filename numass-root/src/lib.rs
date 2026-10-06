@@ -3,10 +3,10 @@ use std::{path::PathBuf, ptr::NonNull};
 use dataforge::{
     read_df_header_and_meta_sync, read_df_header_and_rawmeta_sync, read_df_message_sync,
 };
-use numass::{protos::rsb_event, NumassMeta, Reply};
+use numass::{NumassMeta, Reply, protos::rsb_event};
 use numass_processing::{
-    postprocess::{post_process, PostProcessParams},
-    process::{extract_events, ProcessParams},
+    postprocess::{PostProcessParams, post_process},
+    process::{ProcessParams, extract_events},
     types::FrameEvent,
 };
 
@@ -23,7 +23,7 @@ pub struct ProcessedTree {
 }
 
 /// Проверяет, что строка является валидным JSON описанием [ProcessParams].
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn validate_process(serialized: &CxxString) -> bool {
     serialized
         .to_str()
@@ -33,7 +33,7 @@ pub extern "C" fn validate_process(serialized: &CxxString) -> bool {
 }
 
 /// Проверяет, что строка является валидным JSON описанием [PostProcessParams].
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn validate_postprocess(serialized: &CxxString) -> bool {
     serialized
         .to_str()
@@ -43,7 +43,7 @@ pub extern "C" fn validate_postprocess(serialized: &CxxString) -> bool {
 }
 
 /// Возвращает `true`, если файл является numass-точкой.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn is_point(path: &CxxString) -> bool {
     let Ok(path_str) = path.to_str() else {
         return false;
@@ -61,7 +61,7 @@ pub extern "C" fn is_point(path: &CxxString) -> bool {
 /// Читает сырую мета-информацию точки в переданный буфер.
 ///
 /// Возвращает длину прочитанных данных. Паникует, если буфер слишком мал.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn read_meta_c(path: &CxxString, buffer: NonNull<u8>, len: usize) -> usize {
     let slice = unsafe { std::slice::from_raw_parts_mut(buffer.as_ptr(), len) };
 
@@ -102,7 +102,7 @@ fn postprocess_params_from_json(serialized: &CxxString) -> PostProcessParams {
 /// Параметры обработки передаются как JSON-строки (см. [ProcessParams] и
 /// [PostProcessParams]). Пустая или невалидная строка означает параметры по
 /// умолчанию; `None` для postprocess отключает пост-обработку.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn process_point(
     path: &CxxString,
     processed_tree: &mut ProcessedTree,
