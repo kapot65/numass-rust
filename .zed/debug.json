@@ -1,0 +1,14 @@
+[
+  {
+    "label": "Run ROOT script",
+    "adapter": "CodeLLDB",
+    "request": "launch",
+    "program": "/home/chernov/apps/root/bin/root",
+    "args": ["-l", "-q", "$ZED_FILE"],
+    "cwd": "$ZED_DIRNAME",
+    "env": {
+      "ROOTSYS": "/home/chernov/apps/root",
+      "LD_LIBRARY_PATH": "/home/chernov/apps/root/lib"
+    }
+  }
+]

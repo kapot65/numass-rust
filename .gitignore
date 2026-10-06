@@ -2,7 +2,6 @@
 .cache/
 .threadbridge/
 .memory-bank/
-.zed/
 
 # --- Build artifacts ---
 target/

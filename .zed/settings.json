@@ -1,0 +1,21 @@
+{
+    "lsp": {
+        "rust-analyzer": {
+            "initialization_options": {
+                "check": {
+                    "command": "clippy"
+                },
+                "diagnostics": {
+                    "styleLints": {
+                        "enable": true
+                    }
+                }
+            }
+        },
+        "clangd": {
+            "binary": {
+                "arguments": ["--compile-commands-dir=numass-root/build"]
+            }
+        }
+    }
+}
