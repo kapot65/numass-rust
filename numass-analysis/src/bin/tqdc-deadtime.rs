@@ -29,8 +29,8 @@ async fn main() {
     points.insert(12000u16, vec![PathBuf::from(point_path)]);
 
     let handles = points
-        .iter()
-        .flat_map(|(_, filepaths)| {
+        .values()
+        .flat_map(|filepaths| {
             filepaths.iter().map(|filepath| {
                 let hist = Arc::clone(&hist);
                 let filepath = filepath.clone();

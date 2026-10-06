@@ -1,8 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    sync::{atomic::AtomicUsize, Arc},
-    time::Duration,
-};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use numass_analysis::{get_points_by_pattern, CorrectionCoeffs};
 

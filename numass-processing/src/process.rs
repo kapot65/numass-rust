@@ -13,7 +13,7 @@ use {
     egui_plot::{HLine, Line, PlotUi},
 };
 
-use numass::{protos::rsb_event, NumassMeta};
+use numass::{NumassMeta, protos::rsb_event};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -21,7 +21,7 @@ use crate::{
         KEV_COEFF_AVERAGE, KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_LONGDIFF,
         KEV_COEFF_MAX, KEV_COEFF_TRAPEZIOD,
     },
-    preprocess::{emulate_fir, extract_waveforms, Preprocess},
+    preprocess::{Preprocess, emulate_fir, extract_waveforms},
     types::{FrameEvent, NumassEvent, NumassEvents, NumassFrameFast},
 };
 
@@ -357,7 +357,7 @@ pub fn frame_to_events(
 
                     if ch_id == &1 {
                         if let Some((idx, _)) =
-                            waveform.iter().enumerate().find(|(_, &val)| val == 8189)
+                            waveform.iter().enumerate().find(|(_, val)| **val == 8189)
                         {
                             let end = if let Some((reset_start, _)) = reset {
                                 reset_start
@@ -379,7 +379,7 @@ pub fn frame_to_events(
 
                     if ch_id == &5 {
                         if let Some((idx, _)) =
-                            waveform.iter().enumerate().find(|(_, &val)| val == 8081)
+                            waveform.iter().enumerate().find(|(_, val)| **val == 8081)
                         {
                             let end = if let Some((reset_start, _)) = reset {
                                 reset_start
@@ -645,7 +645,7 @@ pub fn find_first_peak(waveform: &[i16], threshold: i16) -> Option<usize> {
 mod tests {
     use std::collections::BTreeMap;
 
-    use crate::process::{frame_to_events, Algorithm};
+    use crate::process::{Algorithm, frame_to_events};
     use crate::types::FrameEvent;
 
     #[test]
