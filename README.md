@@ -6,15 +6,15 @@
 
 | Каталог | Назначение |
 | --- | --- |
-| `dataforge-parser-rust` | Парсер протокола DataForge envelope |
-| `dataforge-parser-numass` | Типы numass-данных для DataForge |
-| `numass-processing` | Общие алгоритмы обработки numass-точек |
-| `numass-analysis` | Скрипты обработки данных numass |
-| `numass-processing-py` | Python-биндинги (`numass-processing`) |
-| `numass-root` | C++-биндинги к CERN ROOT + утилита `convert-to-root` |
-| `numass-server` | Сервер (кросс-компиляция) |
-| `numass-viewers` | Визуализация (wasm) |
-| `tqdc-controller-rust` | Контроллер TQDC (`frame-viewer`) |
+| [`dataforge-parser-rust`](dataforge-parser-rust/README.md) | Парсер протокола DataForge envelope |
+| [`dataforge-parser-numass`](dataforge-parser-numass/README.md) | Типы numass-данных для DataForge |
+| [`numass-processing`](numass-processing/README.md) | Общие алгоритмы обработки numass-точек |
+| [`numass-analysis`](numass-analysis/README.md) | Скрипты обработки данных numass |
+| [`numass-processing-py`](numass-processing-py/README.md) | Python-биндинги (`numass-processing`) |
+| [`numass-root`](numass-root/README.md) | C++-биндинги к CERN ROOT + утилита `convert-to-root` |
+| [`numass-server`](numass-server/README.md) | Сервер (кросс-компиляция) |
+| [`numass-viewers`](numass-viewers/README.md) | Визуализация (wasm) |
+| [`tqdc-controller-rust`](tqdc-controller-rust/README.md) | Контроллер TQDC (`frame-viewer`) |
 
 Подробности — в `README.md` соответствующего подпроекта.
 
@@ -38,3 +38,38 @@
   либо соберите Vdt локально и передайте `-DCMAKE_PREFIX_PATH=/path/to/vdt`.
 
 Полный список и инструкции — [`numass-root/README.md`](numass-root/README.md).
+
+### `numass-server` (дополнительно)
+
+Для сборки `numass-server` нужны:
+
+- Rust (rustup) и WASM-таргет `wasm32-unknown-unknown`
+- [Trunk](https://trunkrs.dev/) — сборка WASM-фронтенда (`cargo install trunk`)
+- [Nushell](https://www.nushell.sh/) — для скрипта деплоя `update-web-viewer.nu`
+
+Для кросс-компиляции (деплой на удалённую машину) дополнительно:
+
+- [cross](https://github.com/cross-rs/cross) — кросс-компиляция (`cargo install cross`)
+- Podman — контейнерный рантайм для `cross` (`sudo apt install podman`)
+
+Обновить весь стек целиком одной командой:
+
+```shell
+rustup update && rustup target add wasm32-unknown-unknown && cargo install trunk
+```
+
+## Деплой `data-viewer-web`
+
+Сборку и деплой выполняет скрипт [`update-web-viewer.nu`](update-web-viewer.nu):
+
+- **Нативно** (на этой машине): сборка в `target/`, установка бинаря в `/usr/local/bin` и перезапуск systemd-сервиса `data-viewer-web`:
+
+    ```shell
+    nu update-web-viewer.nu
+    ```
+
+- **На удалённую машину** (кросс-компиляция под `x86_64-unknown-linux-gnu`): сборка в `target-cross/`, копирование бинаря по `scp` и перезапуск сервиса по `ssh`:
+
+    ```shell
+    nu update-web-viewer.nu 192.168.111.1
+    ```

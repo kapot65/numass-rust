@@ -1,5 +1,5 @@
 ## Prepare project
-- install toolchain and deps (see [update-stack](update-stack.sh))
+- install toolchain and deps (see [`numass-server`](../numass-server/README.md))
 
 ## Debug wasm app
 
