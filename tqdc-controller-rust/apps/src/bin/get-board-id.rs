@@ -4,10 +4,10 @@ use tokio::net::UdpSocket;
 
 use clap::Parser;
 
-use apps::defaults::BOARD_IP;
-use tqdc::TQDC_CONTROL_PORT;
-use tqdc::mlink::{CtrlReg, MlinkMessage};
-use tqdc::regs::Register16;
+use numass_tqdc::mlink::{CtrlReg, MlinkMessage};
+use numass_tqdc::regs::Register16;
+use numass_tqdc::TQDC_CONTROL_PORT;
+use numass_tqdc_apps::defaults::BOARD_IP;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

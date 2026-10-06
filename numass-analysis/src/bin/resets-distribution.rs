@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use plotly::{common::Title, layout::Axis, Layout, Plot};
 
-use processing::{
+use numass_processing::{
     histogram::PointHistogram,
     process::{ProcessParams, TRAPEZOID_DEFAULT},
     storage::{load_meta, load_point},
@@ -24,9 +24,8 @@ async fn main() {
 
     let meta = load_meta(&filepath).await;
     let point = load_point(&filepath).await;
-    
 
-    let (frames, _) = processing::process::extract_events(
+    let (frames, _) = numass_processing::process::extract_events(
         meta,
         point,
         &ProcessParams {
@@ -47,7 +46,9 @@ async fn main() {
     let mut plot = Plot::new();
 
     let layout = Layout::new()
-        .title(Title::new(format!("resets distribution {filepath:?}").as_str()))
+        .title(Title::new(
+            format!("resets distribution {filepath:?}").as_str(),
+        ))
         .x_axis(Axis::new().title(Title::new("position, bins")))
         .height(1000);
 

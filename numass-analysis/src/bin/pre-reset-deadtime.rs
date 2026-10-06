@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use plotly::{common::Title, layout::Axis, Layout, Plot};
 
-use processing::{
+use numass_processing::{
     histogram::PointHistogram,
     process::{ProcessParams, SkipOption, TRAPEZOID_DEFAULT},
     storage::process_point,
@@ -24,7 +24,7 @@ async fn main() {
     };
 
     match &mut process.algorithm {
-        processing::process::Algorithm::Trapezoid { skip, .. } => *skip = SkipOption::Good,
+        numass_processing::process::Algorithm::Trapezoid { skip, .. } => *skip = SkipOption::Good,
         _ => unreachable!(),
     }
 

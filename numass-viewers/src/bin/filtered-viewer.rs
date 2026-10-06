@@ -15,7 +15,7 @@ fn main() {
 async fn main() {
     use clap::Parser;
     use egui_extras::install_image_loaders;
-    use viewers::filtered_viewer::FilteredViewer;
+    use numass_viewers::filtered_viewer::FilteredViewer;
 
     #[derive(Parser, Debug)]
     #[clap(author, version, about, long_about = None)]
@@ -43,13 +43,13 @@ async fn main() {
     let process = if let Some(process) = args.process {
         serde_json::from_str(&process).expect("cant parse algorithm param")
     } else {
-        processing::process::ProcessParams::default()
+        numass_processing::process::ProcessParams::default()
     };
 
     let postprocess = if let Some(postprocess) = args.postprocess {
         serde_json::from_str(&postprocess).expect("cant parse postprocess param")
     } else {
-        processing::postprocess::PostProcessParams::default()
+        numass_processing::postprocess::PostProcessParams::default()
     };
 
     let viewer =

@@ -145,41 +145,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
-name = "analysis"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bincode",
- "cacache 13.1.0",
- "cached",
- "chrono",
- "clap",
- "dataforge",
- "eframe",
- "egui",
- "egui_plot",
- "eyre",
- "glob",
- "indicatif",
- "itertools",
- "linreg",
- "natord",
- "plotly",
- "plotters",
- "processing",
- "protobuf",
- "serde",
- "serde_json",
- "serde_with 3.24.0",
- "serde_yaml",
- "statrs",
- "tikv-jemallocator",
- "tokio",
- "unzip-n",
- "unzip3",
-]
-
-[[package]]
 name = "android-activity"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -276,30 +241,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cab112f0a86d568ea0e627cc1d6be74a1e9cd55214684db5561995f6dad897c6"
 dependencies = [
  "num-traits",
-]
-
-[[package]]
-name = "apps"
-version = "0.1.4"
-dependencies = [
- "battery",
- "chrono",
- "clap",
- "dataforge",
- "eframe",
- "egui_plot",
- "env_logger",
- "eyre",
- "home",
- "log",
- "processing",
- "protobuf",
- "serde_json",
- "ssh2",
- "tikv-jemallocator",
- "tokio",
- "tokio-timerfd",
- "tqdc",
 ]
 
 [[package]]
@@ -676,24 +617,6 @@ dependencies = [
  "rustversion",
  "tower-layer",
  "tower-service",
-]
-
-[[package]]
-name = "backend"
-version = "0.1.0"
-dependencies = [
- "axum",
- "cacache 11.7.1",
- "clap",
- "dataforge",
- "processing",
- "protobuf",
- "rmp-serde",
- "serde_json",
- "serde_qs",
- "tikv-jemallocator",
- "tokio",
- "tower-http",
 ]
 
 [[package]]
@@ -1513,7 +1436,7 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
 name = "dataforge"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "arrayref",
  "byteorder",
@@ -3750,7 +3673,7 @@ dependencies = [
 
 [[package]]
 name = "numass"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "dataforge",
@@ -3764,16 +3687,166 @@ dependencies = [
 ]
 
 [[package]]
+name = "numass-analysis"
+version = "0.2.0"
+dependencies = [
+ "async-trait",
+ "bincode",
+ "cacache 13.1.0",
+ "cached",
+ "chrono",
+ "clap",
+ "dataforge",
+ "eframe",
+ "egui",
+ "egui_plot",
+ "eyre",
+ "glob",
+ "indicatif",
+ "itertools",
+ "linreg",
+ "natord",
+ "numass-processing",
+ "plotly",
+ "plotters",
+ "protobuf",
+ "serde",
+ "serde_json",
+ "serde_with 3.24.0",
+ "serde_yaml",
+ "statrs",
+ "tikv-jemallocator",
+ "tokio",
+ "unzip-n",
+ "unzip3",
+]
+
+[[package]]
+name = "numass-processing"
+version = "0.2.0"
+dependencies = [
+ "chrono",
+ "clap",
+ "dataforge",
+ "egui",
+ "egui_extras",
+ "egui_plot",
+ "gloo",
+ "js-sys",
+ "natord",
+ "numass",
+ "plotly",
+ "protobuf",
+ "rgb_hsv",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "tokio",
+ "urlencoding",
+]
+
+[[package]]
 name = "numass-root"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cbindgen",
  "cxx",
  "dataforge",
  "numass",
- "processing",
+ "numass-processing",
  "protobuf",
  "serde_json",
+]
+
+[[package]]
+name = "numass-server"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "cacache 11.7.1",
+ "clap",
+ "dataforge",
+ "numass-processing",
+ "protobuf",
+ "rmp-serde",
+ "serde_json",
+ "serde_qs",
+ "tikv-jemallocator",
+ "tokio",
+ "tower-http",
+]
+
+[[package]]
+name = "numass-tqdc"
+version = "0.2.0"
+dependencies = [
+ "arrayref",
+ "eyre",
+ "home",
+ "log",
+ "serde_json",
+ "strum 0.25.0",
+ "strum_macros 0.25.3",
+ "tokio",
+ "ux",
+]
+
+[[package]]
+name = "numass-tqdc-apps"
+version = "0.2.0"
+dependencies = [
+ "battery",
+ "chrono",
+ "clap",
+ "dataforge",
+ "eframe",
+ "egui_plot",
+ "env_logger",
+ "eyre",
+ "home",
+ "log",
+ "numass-processing",
+ "numass-tqdc",
+ "protobuf",
+ "serde_json",
+ "ssh2",
+ "tikv-jemallocator",
+ "tokio",
+ "tokio-timerfd",
+]
+
+[[package]]
+name = "numass-viewers"
+version = "0.2.0"
+dependencies = [
+ "chrono",
+ "clap",
+ "console_error_panic_hook",
+ "dataforge",
+ "eframe",
+ "egui",
+ "egui_extras",
+ "egui_plot",
+ "globset",
+ "gloo",
+ "home",
+ "js-sys",
+ "natord",
+ "numass-processing",
+ "protobuf",
+ "rfd",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "serde_qs",
+ "tikv-jemallocator",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "tracing-wasm",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "which 6.0.3",
 ]
 
 [[package]]
@@ -4532,30 +4605,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
 dependencies = [
  "unicode-ident",
-]
-
-[[package]]
-name = "processing"
-version = "0.1.3"
-dependencies = [
- "chrono",
- "clap",
- "dataforge",
- "egui",
- "egui_extras",
- "egui_plot",
- "gloo",
- "js-sys",
- "natord",
- "numass",
- "plotly",
- "protobuf",
- "rgb_hsv",
- "rmp-serde",
- "serde",
- "serde_json",
- "tokio",
- "urlencoding",
 ]
 
 [[package]]
@@ -6050,21 +6099,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
 
 [[package]]
-name = "tqdc"
-version = "0.1.0"
-dependencies = [
- "arrayref",
- "eyre",
- "home",
- "log",
- "serde_json",
- "strum 0.25.0",
- "strum_macros 0.25.3",
- "tokio",
- "ux",
-]
-
-[[package]]
 name = "tracing"
 version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6344,40 +6378,6 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "viewers"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "clap",
- "console_error_panic_hook",
- "dataforge",
- "eframe",
- "egui",
- "egui_extras",
- "egui_plot",
- "globset",
- "gloo",
- "home",
- "js-sys",
- "natord",
- "processing",
- "protobuf",
- "rfd",
- "rmp-serde",
- "serde",
- "serde_json",
- "serde_qs",
- "tikv-jemallocator",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "tracing-wasm",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "which 6.0.3",
-]
 
 [[package]]
 name = "walkdir"

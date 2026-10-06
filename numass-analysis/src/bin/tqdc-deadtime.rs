@@ -10,9 +10,9 @@ use std::{
 
 use plotly::{common::Title, layout::Axis, Layout, Plot};
 
-use processing::{
+use numass_processing::{
     histogram::PointHistogram,
-    preprocess::{Preprocess, extract_waveforms},
+    preprocess::{extract_waveforms, Preprocess},
     process::{frame_to_events, TRAPEZOID_DEFAULT},
     storage::{load_meta, load_point},
     types::FrameEvent,
@@ -26,12 +26,7 @@ async fn main() {
     // true - считает дельты между событиями, false - между триггерами кадров
     let hist = Arc::new(Mutex::new(PointHistogram::new_step(0.0..3e5, 24.0 * 1.0)));
     let mut points = BTreeMap::new();
-    points.insert(
-        12000u16,
-        vec![
-            PathBuf::from(point_path),
-        ],
-    );
+    points.insert(12000u16, vec![PathBuf::from(point_path)]);
 
     let handles = points
         .iter()
@@ -113,9 +108,7 @@ async fn main() {
         let mut plot = Plot::new();
 
         let layout = Layout::new()
-            .title(Title::new(
-                &format!("Time Deltas for {point_path}"),
-            ))
+            .title(Title::new(&format!("Time Deltas for {point_path}")))
             .x_axis(Axis::new().title(Title::new("time delta, ns")))
             .y_axis(Axis::new().type_(plotly::layout::AxisType::Log))
             .height(1000);

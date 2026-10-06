@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 use egui::{mutex::Mutex, Visuals};
 use egui_plot::{Legend, Points};
-use processing::{
+use numass_processing::{
     numass::{protos::rsb_event, NumassMeta},
     postprocess::{post_process, PostProcessParams},
     process::{extract_events, ProcessParams},
@@ -226,7 +226,7 @@ impl eframe::App for BundleViewer {
                             plot_ui.points(
                                 Points::new(format!("ch #{}", ch_num + 1), points)
                                     .color(color_for_index((ch_num) as usize))
-                                    .radius(3.0)
+                                    .radius(3.0),
                             )
                         }
                     });

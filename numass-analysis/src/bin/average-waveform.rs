@@ -2,13 +2,12 @@ use std::path::PathBuf;
 
 use plotters::prelude::*;
 
-use processing::{
-    process::find_first_peak, storage::load_point, types::RawWaveform, utils::correct_amp
+use numass_processing::{
+    process::find_first_peak, storage::load_point, types::RawWaveform, utils::correct_amp,
 };
 
 #[tokio::main]
 async fn main() {
-
     #[derive(Debug, Clone)]
     struct WaveformNormed {
         waveform: RawWaveform,
@@ -44,12 +43,25 @@ async fn main() {
             let bin = find_first_peak(waveform.0.as_slice(), threshold);
             bin.map(|bin| {
                 // mirror neighbors if peak is on the edge
-                let left = if bin == 0 { waveform.0[bin + 1] } else { waveform.0[bin - 1] };
+                let left = if bin == 0 {
+                    waveform.0[bin + 1]
+                } else {
+                    waveform.0[bin - 1]
+                };
                 let center = waveform.0[bin];
-                let right = if bin == waveform.0.len() - 1 { left } else { waveform.0[bin + 1] };
-    
+                let right = if bin == waveform.0.len() - 1 {
+                    left
+                } else {
+                    waveform.0[bin + 1]
+                };
+
                 let (x, y) = correct_amp(left as f32, center as f32, right as f32);
-                WaveformNormed { waveform, bin, x, y }
+                WaveformNormed {
+                    waveform,
+                    bin,
+                    x,
+                    y,
+                }
             })
         });
 
@@ -77,7 +89,8 @@ async fn main() {
                     group.len()
                 );
 
-                let filename = format!("/home/chernov/Documents/produced/average-waveforms/{idx}.png");
+                let filename =
+                    format!("/home/chernov/Documents/produced/average-waveforms/{idx}.png");
 
                 let root = BitMapBackend::new(&filename, (1920, 1080)).into_drawing_area();
                 root.fill(&WHITE).unwrap();

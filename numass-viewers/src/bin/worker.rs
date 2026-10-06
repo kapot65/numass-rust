@@ -5,7 +5,7 @@ fn main() {
 #[cfg(target_arch = "wasm32")]
 fn main() {
     use gloo::worker::Registrable;
-    use viewers::PointProcessor;
+    use numass_viewers::PointProcessor;
     console_error_panic_hook::set_once();
     PointProcessor::registrar().register();
 }

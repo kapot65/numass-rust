@@ -5,15 +5,15 @@ use std::{
 };
 
 use dataforge::DFMessage;
-use plotly::{
-    common::{ErrorData, ErrorType},
-    Plot, Scatter,
-};
-use processing::{
+use numass_processing::{
     numass::{self, protos::rsb_event::Point},
     preprocess::{emulate_fir, frame_to_waveform, Preprocess},
     process::{Algorithm, TRAPEZOID_DEFAULT},
     storage::load_meta,
+};
+use plotly::{
+    common::{ErrorData, ErrorType},
+    Plot, Scatter,
 };
 use protobuf::Message;
 
@@ -65,7 +65,12 @@ async fn main() {
                                         ..
                                     } = TRAPEZOID_DEFAULT
                                     {
-                                        emulate_fir(frame_to_waveform(frame), right.into(), center.into(), left.into())
+                                        emulate_fir(
+                                            frame_to_waveform(frame),
+                                            right.into(),
+                                            center.into(),
+                                            left.into(),
+                                        )
                                     } else {
                                         panic!("Unsupported algorithm")
                                     }

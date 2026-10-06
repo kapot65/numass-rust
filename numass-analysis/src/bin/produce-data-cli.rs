@@ -14,11 +14,9 @@ use indicatif::ProgressStyle;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use analysis::CorrectionCoeffs;
-use processing::{
-    postprocess::PostProcessParams,
-    process::ProcessParams,
-    storage::process_point,
+use numass_analysis::CorrectionCoeffs;
+use numass_processing::{
+    postprocess::PostProcessParams, process::ProcessParams, storage::process_point,
     types::FrameEvent,
 };
 
@@ -134,12 +132,12 @@ async fn main() {
 
                     if point_name.ends_with(".df") {
                         point_name[point_name.len() - 9..point_name.len() - 4]
-                        .parse::<u16>()
-                        .unwrap()
+                            .parse::<u16>()
+                            .unwrap()
                     } else {
                         point_name[point_name.len() - 6..point_name.len() - 1]
-                        .parse::<u16>()
-                        .unwrap()
+                            .parse::<u16>()
+                            .unwrap()
                     }
                 };
 
@@ -167,7 +165,7 @@ async fn main() {
             let u_sp_v = *u_sp;
             let u_sp_kev = u_sp_v as f32 / 1000.0;
 
-            let unders = 4.0..(u_sp_kev-4.0);
+            let unders = 4.0..(u_sp_kev - 4.0);
 
             let points = points.clone();
             let table = Arc::clone(&table);

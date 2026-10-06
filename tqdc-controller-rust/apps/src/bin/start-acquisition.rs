@@ -4,10 +4,10 @@ use tokio::net::UdpSocket;
 
 use clap::Parser;
 
-use apps::defaults::BOARD_IP;
-use tqdc::TQDC_CONTROL_PORT;
-use tqdc::mlink::{CtrlReg, MlinkMessage};
-use tqdc::regs::{Register16, Register32, RunLogicControl, RunMode};
+use numass_tqdc::mlink::{CtrlReg, MlinkMessage};
+use numass_tqdc::regs::{Register16, Register32, RunLogicControl, RunMode};
+use numass_tqdc::TQDC_CONTROL_PORT;
+use numass_tqdc_apps::defaults::BOARD_IP;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -25,40 +25,34 @@ async fn main() -> io::Result<()> {
         0x0001,
         0xFEFE,
         vec![
-            
-        CtrlReg::Write16 {
-            address: Register16::RunLogicControl,
-            value: RunLogicControl::SoftClear as u16,
-        }, 
-        CtrlReg::Write16 {
-            address: Register16::RunLogicControl,
-            value: RunLogicControl::Stop as u16,
-        }, 
-        
-        CtrlReg::Write16 {
-            address: Register16::RunLogicRunMode,
-            value: RunMode::Time as u16,
-        },
-        CtrlReg::Write32 {
-            address: Register32::RunTimeLimit,
-            value: 5000,
-        },
-        
-        
-        CtrlReg::Write16 {
-            address: Register16::RunLogicControl,
-            value: RunLogicControl::SoftClear as u16,
-        }, 
-        CtrlReg::Write16 {
-            address: Register16::RunLogicControl,
-            value: RunLogicControl::Stop as u16,
-        },
-        
-        
-        CtrlReg::Write16 {
-            address: Register16::RunLogicControl,
-            value: RunLogicControl::Run as u16,
-        },
+            CtrlReg::Write16 {
+                address: Register16::RunLogicControl,
+                value: RunLogicControl::SoftClear as u16,
+            },
+            CtrlReg::Write16 {
+                address: Register16::RunLogicControl,
+                value: RunLogicControl::Stop as u16,
+            },
+            CtrlReg::Write16 {
+                address: Register16::RunLogicRunMode,
+                value: RunMode::Time as u16,
+            },
+            CtrlReg::Write32 {
+                address: Register32::RunTimeLimit,
+                value: 5000,
+            },
+            CtrlReg::Write16 {
+                address: Register16::RunLogicControl,
+                value: RunLogicControl::SoftClear as u16,
+            },
+            CtrlReg::Write16 {
+                address: Register16::RunLogicControl,
+                value: RunLogicControl::Stop as u16,
+            },
+            CtrlReg::Write16 {
+                address: Register16::RunLogicControl,
+                value: RunLogicControl::Run as u16,
+            },
         ],
     );
 

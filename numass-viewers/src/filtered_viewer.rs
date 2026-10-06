@@ -3,16 +3,16 @@ use std::{collections::BTreeMap, ops::Range, path::PathBuf, vec};
 use egui::{Color32, Visuals};
 use egui_plot::{Legend, MarkerShape, PlotUi, Points, VLine};
 
-use processing::{
+use numass_processing::{
     postprocess::{post_process_frame, PostProcessParams},
-    preprocess::{Preprocess, extract_waveforms},
+    preprocess::{extract_waveforms, Preprocess},
     process::{convert_to_kev, frame_to_events, ProcessParams},
     storage::{load_meta, load_point},
     types::{FrameEvent, NumassFrameFast, NumassWaveformsFast, ProcessedWaveform},
     utils::{color_for_index, EguiLine},
 };
 
-use processing::widgets::UserInput;
+use numass_processing::widgets::UserInput;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -135,40 +135,39 @@ impl<'a> FilteredViewer<'a> {
 
                     plot_ui.vline(
                         VLine::new(name.clone(), (*pos as f64) / 8.0)
-                            .color(color_for_index(*channel as usize))
+                            .color(color_for_index(*channel as usize)),
                     );
                     plot_ui.vline(
-                        VLine::new(name.clone(),(*pos + *size * 8) as f64 / 8.0)
-                            .color(color_for_index(*channel as usize))
+                        VLine::new(name.clone(), (*pos + *size * 8) as f64 / 8.0)
+                            .color(color_for_index(*channel as usize)),
                     );
                     plot_ui.points(
                         Points::new(name, vec![[*pos as f64 / 8.0, *amplitude as f64]])
                             .color(color_for_index(*channel as usize))
                             .shape(MarkerShape::Diamond)
                             .filled(false)
-                            .radius(10.0)
+                            .radius(10.0),
                     );
                 }
                 FrameEvent::Reset { size } => {
+                    plot_ui.vline(VLine::new("RESET", *pos as f64 / 8.0).color(Color32::WHITE));
                     plot_ui.vline(
-                        VLine::new("RESET", *pos as f64 / 8.0)
-                            .color(Color32::WHITE)
-                    );
-                    plot_ui.vline(
-                        VLine::new("RESET", (*pos + *size * 8) as f64 / 8.0)
-                            .color(Color32::WHITE)
+                        VLine::new("RESET", (*pos + *size * 8) as f64 / 8.0).color(Color32::WHITE),
                     );
                 }
                 FrameEvent::Overflow { channel, size } => {
                     plot_ui.vline(
                         VLine::new(format!("OVERFLOW ch# {}", channel), *pos as f64 / 8.0)
                             .color(color_for_index(*channel as usize))
-                            .style(egui_plot::LineStyle::Dashed { length: 10.0 })
+                            .style(egui_plot::LineStyle::Dashed { length: 10.0 }),
                     );
                     plot_ui.vline(
-                        VLine::new(format!("OVERFLOW ch# {}", channel),(*pos + *size * 8) as f64 / 8.0)
-                            .color(color_for_index(*channel as usize))
-                            .style(egui_plot::LineStyle::Dashed { length: 10.0 })
+                        VLine::new(
+                            format!("OVERFLOW ch# {}", channel),
+                            (*pos + *size * 8) as f64 / 8.0,
+                        )
+                        .color(color_for_index(*channel as usize))
+                        .style(egui_plot::LineStyle::Dashed { length: 10.0 }),
                     );
                 }
                 FrameEvent::Frame { .. } => {}

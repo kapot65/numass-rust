@@ -1,11 +1,15 @@
-use std::{collections::HashMap, sync::Arc, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
-use processing::{histogram::HistogramParams, process::{extract_events, ProcessParams, TRAPEZOID_DEFAULT}, storage::{load_meta, load_point}, utils::events_to_histogram};
+use numass_processing::{
+    histogram::HistogramParams,
+    process::{extract_events, ProcessParams, TRAPEZOID_DEFAULT},
+    storage::{load_meta, load_point},
+    utils::events_to_histogram,
+};
 use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() {
-
     let algorithm = TRAPEZOID_DEFAULT;
 
     let points = [
@@ -57,16 +61,26 @@ async fn main() {
                 let calibration_data = Arc::clone(&calibration_data);
                 let algorithm = algorithm.clone();
                 tokio::spawn(async move {
-
                     let filepath = PathBuf::from(filepath);
 
                     let meta = load_meta(&filepath).await;
                     let point = load_point(&filepath).await;
-                    let (events, _) = extract_events(meta, point, &ProcessParams { algorithm, convert_to_kev: false });
+                    let (events, _) = extract_events(
+                        meta,
+                        point,
+                        &ProcessParams {
+                            algorithm,
+                            convert_to_kev: false,
+                        },
+                    );
 
-                    let histogram  = events_to_histogram(
+                    let histogram = events_to_histogram(
                         events,
-                        HistogramParams { range: 0.0..400.0, bins: 400 });
+                        HistogramParams {
+                            range: 0.0..400.0,
+                            bins: 400,
+                        },
+                    );
 
                     for (ch_id, y) in histogram.channels {
                         let (x, _) = y

@@ -1,6 +1,6 @@
-use std::{collections::BTreeMap, path::Path};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::{collections::BTreeMap, path::Path};
 
 use eframe::{
     egui::{self, mutex::Mutex, Ui},
@@ -9,7 +9,7 @@ use eframe::{
 use egui::Visuals;
 use egui_plot::{HLine, Legend, Plot, PlotPoint, Points, VLine};
 
-use processing::{
+use numass_processing::{
     histogram::PointHistogram,
     preprocess::Preprocess,
     storage::LoadState,
@@ -22,7 +22,7 @@ use processing::{
 use {
     crate::process_point,
     home::home_dir,
-    processing::{storage::FSRepr, viewer::PointState},
+    numass_processing::{storage::FSRepr, viewer::PointState},
     tokio::spawn,
     which::which,
 };
@@ -35,7 +35,7 @@ use {
         net::http::Request,
         worker::{oneshot::OneshotBridge, Spawnable},
     },
-    processing::{
+    numass_processing::{
         storage::{api_url, FSRepr},
         viewer::{PointState, ToROOTOptions, ViewerMode},
     },
@@ -704,7 +704,7 @@ impl DataViewerApp {
             let processing = params.clone();
             spawn(async move {
                 let modified =
-                    processing::storage::load_modified_time(filepath.clone().into()).await;
+                    numass_processing::storage::load_modified_time(filepath.clone().into()).await;
                 if let Some(modified) = modified {
                     let conf: egui::mutex::MutexGuard<'_, BTreeMap<String, PointState>> =
                         configuration_local.lock();
@@ -787,7 +787,7 @@ impl Default for DataViewerApp {
 impl eframe::App for DataViewerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.set_visuals(Visuals::dark());
-        
+
         ctx.request_repaint_after(std::time::Duration::from_secs(1));
 
         egui::SidePanel::left("left").show(ctx, |ui| {
@@ -1016,8 +1016,11 @@ impl eframe::App for DataViewerApp {
                             } = state[current]
                             {
                                 plot_ui.hline(
-                                    HLine::new("selection", counts as f64 / (acquisition_time as f64 * 1e-9))
-                                        .color(Color32::WHITE),
+                                    HLine::new(
+                                        "selection",
+                                        counts as f64 / (acquisition_time as f64 * 1e-9),
+                                    )
+                                    .color(Color32::WHITE),
                                 );
                                 plot_ui.vline(VLine::new("selection", hv).color(Color32::WHITE));
                             }

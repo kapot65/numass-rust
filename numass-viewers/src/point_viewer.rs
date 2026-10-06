@@ -2,7 +2,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use egui::{mutex::Mutex, Visuals};
 use egui_plot::{GridMark, Legend};
-use processing::{
+use numass_processing::{
     numass::protos::rsb_event,
     storage::load_point,
     types::{ProcessedWaveform, RawWaveform},
@@ -82,7 +82,7 @@ impl eframe::App for PointViewer {
     #[allow(unused_variables)]
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         ctx.set_visuals(Visuals::dark());
-        
+
         let state = self.state.lock().clone();
 
         match state {
@@ -140,9 +140,7 @@ impl eframe::App for PointViewer {
 
                         egui_plot::Plot::new("waveforms")
                             .legend(Legend::default())
-                            .x_axis_formatter(|GridMark { value, .. }, _| {
-                                format!("{value:.3} μs")
-                            })
+                            .x_axis_formatter(|GridMark { value, .. }, _| format!("{value:.3} μs"))
                             .show(ui, |plot_ui| {
                                 for (ch_num, offset, waveform) in chunks[self.current_chunk].clone()
                                 {

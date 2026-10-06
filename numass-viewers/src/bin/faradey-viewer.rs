@@ -6,10 +6,10 @@ use {
     chrono::NaiveDateTime,
     eframe::egui::{self, mutex::Mutex, Ui},
     egui_plot::{Legend, Line, Plot, Points},
-    processing::numass::{self, ExternalMeta, NumassMeta, Reply},
-    processing::storage::load_meta,
-    processing::storage::FSRepr,
-    processing::storage::LoadState,
+    numass_processing::numass::{self, ExternalMeta, NumassMeta, Reply},
+    numass_processing::storage::load_meta,
+    numass_processing::storage::FSRepr,
+    numass_processing::storage::LoadState,
     serde::{Deserialize, Serialize},
     std::collections::BTreeMap,
     std::io::BufRead,
@@ -109,7 +109,7 @@ const EMPTY_FARADEY_POINT: FaradeyPointState = FaradeyPointState {
 // TODO: add error handling
 #[cfg(not(target_arch = "wasm32"))]
 async fn process_faradey_point(filepath: PathBuf) -> Option<FaradeyPointState> {
-    let modified = processing::storage::load_modified_time(filepath.clone()).await; // TODO: remove clone
+    let modified = numass_processing::storage::load_modified_time(filepath.clone()).await; // TODO: remove clone
 
     let meta = load_meta(&filepath).await;
     let (hv, start_time) = if let Some(NumassMeta::Reply(Reply::AcquirePoint {
@@ -485,7 +485,10 @@ impl eframe::App for FaradeyViewerApp {
                                 ..
                             } = cache
                             {
-                                let values = values.iter().map(|value| *value * TO_FA).collect::<Vec<_>>();
+                                let values = values
+                                    .iter()
+                                    .map(|value| *value * TO_FA)
+                                    .collect::<Vec<_>>();
                                 let x = times_millis
                                     .iter()
                                     .map(|&t| (t - times_millis[0]) as f64 * 1e-3)
@@ -525,7 +528,10 @@ impl eframe::App for FaradeyViewerApp {
                                 } = cache
                                 {
                                     let mean = values.iter().sum::<f64>() / values.len() as f64;
-                                    Some([start_time.and_utc().timestamp_millis() as f64, mean * TO_FA])
+                                    Some([
+                                        start_time.and_utc().timestamp_millis() as f64,
+                                        mean * TO_FA,
+                                    ])
                                 } else {
                                     None
                                 }

@@ -4,7 +4,7 @@ use dataforge::{
     read_df_header_and_meta_sync, read_df_header_and_rawmeta_sync, read_df_message_sync,
 };
 use numass::{protos::rsb_event, NumassMeta, Reply};
-use processing::{
+use numass_processing::{
     postprocess::{post_process, PostProcessParams},
     process::{extract_events, ProcessParams},
     types::FrameEvent,

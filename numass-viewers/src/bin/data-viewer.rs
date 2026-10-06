@@ -1,6 +1,6 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-use viewers::app;
+use numass_viewers::app;
 
 #[cfg(target_family = "unix")]
 use tikv_jemallocator::Jemalloc;
@@ -13,7 +13,7 @@ static GLOBAL: Jemalloc = Jemalloc;
 #[tokio::main]
 async fn main() -> eframe::Result<()> {
     use egui_extras::install_image_loaders;
-    use processing::storage::FSRepr;
+    use numass_processing::storage::FSRepr;
     use {clap::Parser, std::path::PathBuf};
 
     #[derive(Parser, Debug)]
@@ -57,8 +57,8 @@ async fn main() -> eframe::Result<()> {
 fn main() {
     use eframe::web_sys::{self, window};
     use egui_extras::install_image_loaders;
-    use processing::viewer::ViewerMode;
-    use viewers::{bundle_viewer, filtered_viewer, point_viewer, trigger_viewer};
+    use numass_processing::viewer::ViewerMode;
+    use numass_viewers::{bundle_viewer, filtered_viewer, point_viewer, trigger_viewer};
     use wasm_bindgen::JsCast;
     use wasm_bindgen_futures::spawn_local;
 
@@ -135,7 +135,9 @@ fn main() {
                         web_options,
                         Box::new(|ctx| {
                             install_image_loaders(&ctx.egui_ctx);
-                            Ok(Box::new(point_viewer::PointViewer::init_with_point(filepath)))
+                            Ok(Box::new(point_viewer::PointViewer::init_with_point(
+                                filepath,
+                            )))
                         }),
                     )
                     .await
@@ -177,7 +179,9 @@ fn main() {
                         web_options,
                         Box::new(|ctx| {
                             install_image_loaders(&ctx.egui_ctx);
-                            Ok(Box::new(trigger_viewer::TriggerViewer::init_with_point(filepath)))
+                            Ok(Box::new(trigger_viewer::TriggerViewer::init_with_point(
+                                filepath,
+                            )))
                         }),
                     )
                     .await
@@ -187,9 +191,6 @@ fn main() {
 
         None => {
             spawn_local(async move {
-
-                
-
                 web_runner
                     .start(
                         get_canvas_element_by_id_or_die("the_canvas_id"), // hardcode it

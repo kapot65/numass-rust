@@ -1,7 +1,9 @@
 [package]
-name = "apps"
-version = "0.1.4"
-edition = "2021"
+name = "numass-tqdc-apps"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -13,12 +15,12 @@ tokio-timerfd = "0.2.0"
 env_logger = "0.11.3"
 log = { workspace = true }
 
-tqdc = {path = "../tqdc"}
+numass_tqdc = {workspace = true}
 
 tokio = { workspace = true }
 serde_json = { workspace = true }
 dataforge = { workspace = true, features = ["tokio"] }
-processing = { workspace = true, features = ["egui", "clap"] }
+numass_processing = { workspace = true, features = ["egui", "clap"] }
 eframe = { workspace = true }
 egui_plot = "0.32.1"
 clap = { workspace = true }

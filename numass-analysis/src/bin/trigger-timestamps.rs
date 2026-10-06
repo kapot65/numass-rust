@@ -4,7 +4,7 @@
 
 use std::{collections::BTreeSet, path::PathBuf};
 
-use processing::storage::load_point;
+use numass_processing::storage::load_point;
 
 #[tokio::main]
 async fn main() {

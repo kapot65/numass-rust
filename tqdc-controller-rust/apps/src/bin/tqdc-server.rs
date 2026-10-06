@@ -12,12 +12,12 @@ use tokio::task::JoinHandle;
 use eyre::{ContextCompat, Report, Result};
 use serde_json::Value;
 
-use apps::events_to_point;
 use dataforge::{read_df_message, write_df_message};
-use processing::numass::{self, NumassMeta, ZeroSuppressionParams, ExternalMeta};
-use tqdc::TQDC;
+use numass_processing::numass::{self, ExternalMeta, NumassMeta, ZeroSuppressionParams};
+use numass_tqdc::TQDC;
+use numass_tqdc_apps::events_to_point;
 
-use apps::defaults::BOARD_IP;
+use numass_tqdc_apps::defaults::BOARD_IP;
 
 #[cfg(target_family = "unix")]
 use tikv_jemallocator::Jemalloc;
@@ -39,7 +39,6 @@ struct Args {
 
     #[clap(long, short, action)]
     zero_suppression: bool,
-
 
     #[clap(long, short, action)]
     zero_suppression_use_baseline: bool,
@@ -83,9 +82,8 @@ async fn acquire_point(
     board: &TQDC,
     args: Args,
 ) -> Result<(NumassMeta, Option<Vec<u8>>)> {
-    
     let start_time = Local::now().naive_local();
-    
+
     let events = board.acquire_point(acquisition_time as u32).await?;
 
     if events.is_empty() {
@@ -103,7 +101,8 @@ async fn acquire_point(
         home.join::<std::path::PathBuf>(".config/AFI Electronics/TQDC2/default/default.json".into())
     };
 
-    let config : Option<Value>= Some(serde_json::from_reader(std::fs::File::open(config_filepath).unwrap()).unwrap());
+    let config: Option<Value> =
+        Some(serde_json::from_reader(std::fs::File::open(config_filepath).unwrap()).unwrap());
 
     let baseline = if args.zero_suppression_use_baseline {
         Some(args.zero_suppression_baseline)
@@ -151,15 +150,17 @@ async fn acquire_point(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-
     env_logger::init();
 
     let args = Args::parse();
 
     println!("{:?}", args);
 
-    let listener =
-        TcpListener::bind(SocketAddr::new([0,0,0,0].into(), args.host_dataforge_port)).await?;
+    let listener = TcpListener::bind(SocketAddr::new(
+        [0, 0, 0, 0].into(),
+        args.host_dataforge_port,
+    ))
+    .await?;
 
     info!("tqdc-server works on 0.0.0.0:{}", args.host_dataforge_port);
 
@@ -206,11 +207,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             external_meta,
                         } => {
                             match acquire_point(
-                                acquisition_time, 
-                                external_meta, 
+                                acquisition_time,
+                                external_meta,
                                 &board,
-                                args.clone()
-                            ).await
+                                args.clone(),
+                            )
+                            .await
                             {
                                 Ok((meta, data)) => {
                                     if let Some(backup_folder) = args.backup_folder {

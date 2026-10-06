@@ -1,6 +1,10 @@
-use std::{collections::BTreeMap, sync::{atomic::AtomicUsize, Arc}, time::Duration};
+use std::{
+    collections::BTreeMap,
+    sync::{atomic::AtomicUsize, Arc},
+    time::Duration,
+};
 
-use analysis::{get_points_by_pattern, CorrectionCoeffs};
+use numass_analysis::{get_points_by_pattern, CorrectionCoeffs};
 
 use dataforge::read_df_header_and_meta_sync;
 
@@ -10,7 +14,7 @@ use plotly::{
     Layout, Plot, Scatter,
 };
 
-use processing::{
+use numass_processing::{
     numass::{NumassMeta, Reply},
     postprocess::{post_process, PostProcessParams},
     process::{extract_events, ProcessParams, TRAPEZOID_DEFAULT},
@@ -41,15 +45,15 @@ async fn main() {
         "set_27".to_owned(),
         "set_28".to_owned(),
         "set_29".to_owned(),
-    //     "set_34".to_owned(),
-    //     "set_35".to_owned(),
-    //     "set_36".to_owned(),
-    //     "set_37".to_owned(),
-    //     "set_38".to_owned(),
-    //     "set_39".to_owned(),
-    //     "set_40".to_owned(),
-    //     "set_41".to_owned(),
-    //     "set_42".to_owned(),
+        //     "set_34".to_owned(),
+        //     "set_35".to_owned(),
+        //     "set_36".to_owned(),
+        //     "set_37".to_owned(),
+        //     "set_38".to_owned(),
+        //     "set_39".to_owned(),
+        //     "set_40".to_owned(),
+        //     "set_41".to_owned(),
+        //     "set_42".to_owned(),
     ];
     // let exclude = [];
 
@@ -57,8 +61,6 @@ async fn main() {
 
     let max_runs = 24;
     let current_runs = Arc::new(Mutex::new(0));
-
-
 
     let points = get_points_by_pattern(db_root, pattern, &exclude)
         .first_key_value()
@@ -85,7 +87,7 @@ async fn main() {
             let coeffs = Arc::clone(&coeffs);
             let current_runs = Arc::clone(&current_runs);
 
-            tokio::spawn( async move {
+            tokio::spawn(async move {
                 let (_, meta) = read_df_header_and_meta_sync::<NumassMeta>(
                     &mut std::fs::File::open(&filepath).unwrap(),
                 )
@@ -97,7 +99,7 @@ async fn main() {
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 }
                 *current_runs.lock().await += 1;
-                
+
                 let point = load_point(&filepath).await;
 
                 let (amps, preprocess) = post_process(

@@ -3,9 +3,9 @@ use std::{path::PathBuf, sync::Arc};
 
 use app::ProcessingStatus;
 use egui::mutex::Mutex;
-use processing::{utils::events_to_histogram, viewer::EMPTY_POINT};
+use numass_processing::{utils::events_to_histogram, viewer::EMPTY_POINT};
 
-use processing::{
+use numass_processing::{
     histogram::HistogramParams, postprocess::PostProcessParams, process::ProcessParams,
     viewer::PointState,
 };
@@ -47,13 +47,13 @@ pub async fn process_point(
     post_process: PostProcessParams,
     histogram: HistogramParams,
 ) -> Option<PointState> {
-    let modified = processing::storage::load_modified_time(filepath.clone()).await; // TODO: remove clone
+    let modified = numass_processing::storage::load_modified_time(filepath.clone()).await; // TODO: remove clone
 
-    let events = processing::storage::process_point(&filepath, &process, Some(&post_process)).await;
+    let events =
+        numass_processing::storage::process_point(&filepath, &process, Some(&post_process)).await;
 
     events.map(|(_, events)| {
         if let Some((events, preprocess)) = events {
-
             let histogram = events_to_histogram(events, histogram);
 
             let counts = Some(histogram.events_all(None));

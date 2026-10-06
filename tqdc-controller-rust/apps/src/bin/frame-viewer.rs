@@ -8,15 +8,15 @@ use eframe::egui;
 use egui::mutex::Mutex;
 use egui_plot::{Legend, Plot};
 
-use apps::defaults::BOARD_IP;
-use processing::histogram::PointHistogram;
-use processing::process::{frame_to_events, Algorithm, ProcessParams};
-use processing::types::{FrameEvent, NumassFrame, NumassFrameFast, ProcessedWaveform};
-use processing::utils::{color_for_index, EguiLine};
-use processing::widgets::UserInput;
-use tqdc::mlink::MlinkMessage;
-use tqdc::mstream::{ADCDataBlock, MStreamTriggerAndUserData};
-use tqdc::{MTU_SIZE, TQDC_STREAM_PORT};
+use numass_processing::histogram::PointHistogram;
+use numass_processing::process::{frame_to_events, Algorithm, ProcessParams};
+use numass_processing::types::{FrameEvent, NumassFrame, NumassFrameFast, ProcessedWaveform};
+use numass_processing::utils::{color_for_index, EguiLine};
+use numass_processing::widgets::UserInput;
+use numass_tqdc::mlink::MlinkMessage;
+use numass_tqdc::mstream::{ADCDataBlock, MStreamTriggerAndUserData};
+use numass_tqdc::{MTU_SIZE, TQDC_STREAM_PORT};
+use numass_tqdc_apps::defaults::BOARD_IP;
 
 #[cfg(target_family = "unix")]
 use tikv_jemallocator::Jemalloc;
@@ -104,7 +104,7 @@ fn main() {
 
         let counts = Arc::new(Mutex::new(BTreeMap::new()));
 
-        let mut fragments_buf: BTreeMap<u16, BTreeMap<u16, tqdc::mstream::MStreamFragment>> =
+        let mut fragments_buf: BTreeMap<u16, BTreeMap<u16, numass_tqdc::mstream::MStreamFragment>> =
             BTreeMap::new();
 
         let mut seq = 0;

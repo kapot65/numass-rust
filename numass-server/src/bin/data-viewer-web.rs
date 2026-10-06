@@ -1,11 +1,20 @@
-use std::{env::temp_dir, hash::{DefaultHasher, Hash, Hasher}, path::PathBuf, time::Duration};
+use std::{
+    env::temp_dir,
+    hash::{DefaultHasher, Hash, Hasher},
+    path::PathBuf,
+    time::Duration,
+};
 
 use axum::{
-    body::Body, extract::{Path, RawQuery, State}, response::Response, routing::{get, post}, Json, Router
+    body::Body,
+    extract::{Path, RawQuery, State},
+    response::Response,
+    routing::{get, post},
+    Json, Router,
 };
 
 #[cfg(not(debug_assertions))]
-use axum::{response::Html, body::Full};
+use axum::{body::Full, response::Html};
 
 #[cfg(target_family = "unix")]
 use tikv_jemallocator::Jemalloc;
@@ -13,16 +22,23 @@ use tikv_jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-use backend::Opt;
-use dataforge::{DFMessage, read_df_message, read_df_header_and_meta};
-use processing::{numass::{self, protos::rsb_event}, postprocess::{post_process, PostProcessParams}, preprocess::Preprocess, process::{extract_events, ProcessParams}, storage::FSRepr, types::NumassEvents, viewer::ToROOTOptions};
+use dataforge::{read_df_header_and_meta, read_df_message, DFMessage};
+use numass_processing::{
+    numass::{self, protos::rsb_event},
+    postprocess::{post_process, PostProcessParams},
+    preprocess::Preprocess,
+    process::{extract_events, ProcessParams},
+    storage::FSRepr,
+    types::NumassEvents,
+    viewer::ToROOTOptions,
+};
+use numass_server::Opt;
 use protobuf::Message;
 use tower_http::services::ServeDir;
 
 #[tokio::main]
 async fn main() {
-
-    let args = <backend::Opt as clap::Parser>::parse();
+    let args = <numass_server::Opt as clap::Parser>::parse();
     let address = args.address;
 
     println!("Starting server at {}", address);
@@ -75,7 +91,7 @@ async fn main() {
                 // remove temp file
                 tokio::fs::remove_file(output).await.unwrap();
 
-                let out_name = processing::utils::construct_filename(root_options.filepath.to_str().unwrap(), Some("root"));
+                let out_name = numass_processing::utils::construct_filename(root_options.filepath.to_str().unwrap(), Some("root"));
 
                 Response::builder()
                     .header("Content-Disposition", format!("attachment; filename=\"{out_name}\""))
@@ -84,11 +100,11 @@ async fn main() {
                     .unwrap()
         }))
         .route("/api/process/*path", post(|
-                Path(filepath): Path<PathBuf>, 
+                Path(filepath): Path<PathBuf>,
                 Json((process, postprocessing)): Json<(ProcessParams, Option<PostProcessParams>)>,
             | async move {
 
-            let mut point_file = tokio::fs::File::open(PathBuf::from("/").join(filepath)).await.unwrap(); 
+            let mut point_file = tokio::fs::File::open(PathBuf::from("/").join(filepath)).await.unwrap();
             let amplitudes = if let Ok(DFMessage {
                 meta,
                 data,
@@ -113,7 +129,7 @@ async fn main() {
                 rmp_serde::to_vec::<Option<(NumassEvents, Preprocess)>>(&None).unwrap() // TODO: send error instead of None
             };
 
-            
+
             Response::builder()
                 .header("content-type", "application/messagepack")
                 .body(Body::from(amplitudes))
@@ -123,30 +139,51 @@ async fn main() {
         .with_state(args);
 
     #[cfg(not(debug_assertions))]
-    let app = app.route("/", get(|| async  {
-        Html(include_str!("../../dist/index.html"))
-    })).route("/data-viewer.js", get(|| async  {
-        Response::builder()
-            .header("content-type", "application/javascript")
-            .body(Full::from(include_str!("../../dist/data-viewer.js")))
-            .unwrap()
-    })).route("/data-viewer_bg.wasm", get(|| async  {
-        Response::builder()
-            .header("content-type", "application/wasm")
-            .body(Body::from(include_bytes!("../../dist/data-viewer_bg.wasm").to_vec()))
-            .unwrap()
-    })).route("/worker.js", get(|| async  {
-        Response::builder()
-            .header("content-type", "application/javascript")
-            .body(Full::from(include_str!("../../dist/worker.js")))
-            .unwrap()
-    })).route("/worker_bg.wasm", get(|| async  {
-        Response::builder()
-            .header("content-type", "application/wasm")
-            .body(Body::from(include_bytes!("../../dist/worker_bg.wasm").to_vec()))
-            .unwrap()
-    }));
-
+    let app = app
+        .route(
+            "/",
+            get(|| async { Html(include_str!("../../dist/index.html")) }),
+        )
+        .route(
+            "/data-viewer.js",
+            get(|| async {
+                Response::builder()
+                    .header("content-type", "application/javascript")
+                    .body(Full::from(include_str!("../../dist/data-viewer.js")))
+                    .unwrap()
+            }),
+        )
+        .route(
+            "/data-viewer_bg.wasm",
+            get(|| async {
+                Response::builder()
+                    .header("content-type", "application/wasm")
+                    .body(Body::from(
+                        include_bytes!("../../dist/data-viewer_bg.wasm").to_vec(),
+                    ))
+                    .unwrap()
+            }),
+        )
+        .route(
+            "/worker.js",
+            get(|| async {
+                Response::builder()
+                    .header("content-type", "application/javascript")
+                    .body(Full::from(include_str!("../../dist/worker.js")))
+                    .unwrap()
+            }),
+        )
+        .route(
+            "/worker_bg.wasm",
+            get(|| async {
+                Response::builder()
+                    .header("content-type", "application/wasm")
+                    .body(Body::from(
+                        include_bytes!("../../dist/worker_bg.wasm").to_vec(),
+                    ))
+                    .unwrap()
+            }),
+        );
 
     axum::Server::bind(&address)
         .tcp_keepalive(Some(Duration::from_secs(600)))

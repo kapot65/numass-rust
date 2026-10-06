@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 use tokio::io::AsyncWriteExt;
 
-use processing::numass::{protos::rsb_event, ZeroSuppressionParams};
-use tqdc::mstream::MStreamADCBlocks;
+use numass_processing::numass::{protos::rsb_event, ZeroSuppressionParams};
+use numass_tqdc::mstream::MStreamADCBlocks;
 
 pub async fn events_to_point(
     events: Vec<MStreamADCBlocks>,
@@ -19,7 +19,6 @@ pub async fn events_to_point(
         for channel in frame.adc_blocks {
             let append = match &zero_suppression {
                 Some(params) => {
-
                     let mut crop = None;
                     for (idx, window) in channel.waveform.windows(30).enumerate() {
                         if window[0].abs_diff(window[29]) > 5000 {
@@ -29,11 +28,22 @@ pub async fn events_to_point(
                     }
 
                     // TODO: check this on real data
-                    let waveform = channel.waveform.iter().map(|&x| x as f32).collect::<Vec<_>>();
+                    let waveform = channel
+                        .waveform
+                        .iter()
+                        .map(|&x| x as f32)
+                        .collect::<Vec<_>>();
                     let waveform = if let Some(fir) = &params.fir {
-                        waveform.windows(fir.len()).map(|window| {
-                            window.iter().zip(fir).map(|(&amp, &coeff)| amp * coeff).sum::<f32>()
-                        }).collect::<Vec<_>>()
+                        waveform
+                            .windows(fir.len())
+                            .map(|window| {
+                                window
+                                    .iter()
+                                    .zip(fir)
+                                    .map(|(&amp, &coeff)| amp * coeff)
+                                    .sum::<f32>()
+                            })
+                            .collect::<Vec<_>>()
                     } else {
                         waveform
                     };
@@ -56,28 +66,33 @@ pub async fn events_to_point(
                         params.threshold
                     };
 
-                    let baseline = params.baseline.map(|baseline| {
-                        if let Some(crop) = crop {
-                            if crop < baseline {
-                                waveform.iter().skip(crop + 120).take(baseline).sum::<f32>()/ baseline as f32
+                    let baseline = params
+                        .baseline
+                        .map(|baseline| {
+                            if let Some(crop) = crop {
+                                if crop < baseline {
+                                    waveform.iter().skip(crop + 120).take(baseline).sum::<f32>()
+                                        / baseline as f32
+                                } else {
+                                    waveform.iter().take(baseline).sum::<f32>() / baseline as f32
+                                }
                             } else {
-                                waveform.iter().take(baseline).sum::<f32>()/ baseline as f32
+                                // not enough bins on frame begin - process after reset
+                                waveform.iter().take(baseline).sum::<f32>() / baseline as f32
                             }
-                        } else { // not enough bins on frame begin - process after reset
-                            waveform.iter().take(baseline).sum::<f32>()/ baseline as f32
-                        }
-                    }).unwrap_or(0.0);
+                        })
+                        .unwrap_or(0.0);
 
                     // convert into i16 in order to be able to find max
-                    let max = waveform.into_iter()
-                        .map(|val| val as i16);
+                    let max = waveform.into_iter().map(|val| val as i16);
 
                     let max = if let Some(crop) = crop {
-                        if crop == 0 { // not enough bins on frame begin - process after reset
+                        if crop == 0 {
+                            // not enough bins on frame begin - process after reset
                             max.skip(120).max().unwrap() as f32 - baseline
                         } else {
                             max.take(crop).max().unwrap() as f32 - baseline
-                        }              
+                        }
                     } else {
                         max.max().unwrap() as f32 - baseline
                     };

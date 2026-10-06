@@ -15,7 +15,7 @@ fn main() {
 #[tokio::main]
 async fn main() {
     use clap::Parser;
-    use viewers::trigger_viewer::TriggerViewer;
+    use numass_viewers::trigger_viewer::TriggerViewer;
 
     #[derive(Parser, Debug)]
     #[clap(author, version, about, long_about = None)]
@@ -33,9 +33,7 @@ async fn main() {
     eframe::run_native(
         std::fs::canonicalize(&filepath).unwrap().to_str().unwrap(),
         native_options,
-        Box::new(|ctx| {
-            Ok(Box::new(TriggerViewer::init_with_point(filepath)))
-        }),
+        Box::new(|ctx| Ok(Box::new(TriggerViewer::init_with_point(filepath)))),
     )
     .unwrap();
 }

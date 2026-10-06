@@ -2,7 +2,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use egui::{mutex::Mutex, Color32, Visuals};
 use egui_plot::{GridMark, Legend, VLine};
-use processing::{
+use numass_processing::{
     histogram::PointHistogram,
     numass::{protos::rsb_event, NumassMeta, Reply},
     preprocess::{Preprocess, CUTOFF_BIN_SIZE},
@@ -155,9 +155,7 @@ impl eframe::App for TriggerViewer {
             egui::CentralPanel::default().show(ctx, |ui| {
                 egui_plot::Plot::new("triggers")
                     .legend(Legend::default())
-                    .x_axis_formatter(|GridMark { value, .. }, _| {
-                        format!("{:.3} s", value * 1e-9)
-                    })
+                    .x_axis_formatter(|GridMark { value, .. }, _| format!("{:.3} s", value * 1e-9))
                     .show(ui, |plot_ui| {
                         if self.per_channel {
                             trigger_density.draw_egui_each_channel(plot_ui, None);
@@ -171,11 +169,11 @@ impl eframe::App for TriggerViewer {
                             bad_blocks.iter().for_each(|idx| {
                                 plot_ui.vline(
                                     VLine::new("BAD", CUTOFF_BIN_SIZE as f64 * (*idx as f64))
-                                        .color(Color32::WHITE)
+                                        .color(Color32::WHITE),
                                 );
                                 plot_ui.vline(
-                                    VLine::new("BAD",CUTOFF_BIN_SIZE as f64 * ((*idx + 1) as f64))
-                                        .color(Color32::WHITE)
+                                    VLine::new("BAD", CUTOFF_BIN_SIZE as f64 * ((*idx + 1) as f64))
+                                        .color(Color32::WHITE),
                                 );
                             });
                         }

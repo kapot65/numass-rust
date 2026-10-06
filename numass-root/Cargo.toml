@@ -1,7 +1,9 @@
 [package]
 name = "numass-root"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 cxx = { version = "1.0.138", features = ["c++17"] }
@@ -9,7 +11,7 @@ cxx = { version = "1.0.138", features = ["c++17"] }
 
 dataforge = { workspace = true }
 numass = { workspace = true }
-processing = { workspace = true, features = ["egui", "plotly"] }
+numass_processing = { workspace = true, features = ["egui", "plotly"] }
 # processing = { git = "https://github.com/kapot65/numass-processing.git", features = ["egui", "plotly"] }
 protobuf = "3.3.0"
 serde_json = "1.0.138"

@@ -13,12 +13,20 @@ members = [
     "tqdc-controller-rust/tqdc",
 ]
 
+[workspace.package]
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.85"
+
 [workspace.dependencies]
 log = "0.4.20"
 tokio = { version = "1.21.2", features = ["full"] }
 dataforge = { path = "dataforge-parser-rust" }
 numass = { path = "dataforge-parser-numass" }
-processing = { path = "numass-processing" }
+numass_processing = { package = "numass-processing", path = "numass-processing" }
+numass_tqdc = { package = "numass-tqdc", path = "tqdc-controller-rust/tqdc" }
+# numass_tqdc_apps = { path = "tqdc-controller-rust/apps" }
 eframe = "0.31.1"
 clap = { version = "4.0.26", features = ["derive"] }
 protobuf = "3.7.1"

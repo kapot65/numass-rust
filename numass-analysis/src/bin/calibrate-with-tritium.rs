@@ -1,10 +1,12 @@
 use std::path::PathBuf;
 
-use analysis::get_points_by_pattern;
-use processing::{process::TRAPEZOID_DEFAULT, types::FrameEvent};
+use numass_analysis::get_points_by_pattern;
+use numass_processing::{process::TRAPEZOID_DEFAULT, types::FrameEvent};
 
 use {
-    processing::{histogram::PointHistogram, process::ProcessParams, storage::process_point},
+    numass_processing::{
+        histogram::PointHistogram, process::ProcessParams, storage::process_point,
+    },
     std::sync::Arc,
     tokio::sync::Mutex,
 };
@@ -17,7 +19,6 @@ static GLOBAL: Jemalloc = Jemalloc;
 
 #[tokio::main]
 async fn main() {
-
     let run = "2024_11";
 
     let pattern = format!("{run}/Tritium_[34]/set_[1234567]/p*");
@@ -44,8 +45,7 @@ async fn main() {
     let hist = PointHistogram::new(8.0..20.0, 240);
 
     for u_sp in u_sp {
-        let points =
-            get_points_by_pattern("/data-fast/numass-server/", &pattern, &exclude);
+        let points = get_points_by_pattern("/data-fast/numass-server/", &pattern, &exclude);
         let points = points[&u_sp].clone();
         let pb = Arc::new(Mutex::new(indicatif::ProgressBar::new(points.len() as u64)));
         let histogram = Arc::new(Mutex::new(hist.clone()));
@@ -61,7 +61,9 @@ async fn main() {
                 tokio::spawn(async move {
                     // load point manually because it must not be used from cache
                     // TODO: add cache expiration based on calibration parameters change
-                    let (_, events) = process_point(&filepath, &processing_params, None).await.unwrap();
+                    let (_, events) = process_point(&filepath, &processing_params, None)
+                        .await
+                        .unwrap();
                     let events = events.unwrap().0;
                     {
                         let mut histogram = histogram.lock().await;

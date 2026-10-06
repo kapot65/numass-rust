@@ -1,7 +1,9 @@
 [package]
-name = "analysis"
-version = "0.1.0"
-edition = "2021"
+name = "numass-analysis"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
@@ -13,7 +15,7 @@ serde_json = "1.0.91"
 tokio = { version = "1.21.2", features = ["full"] }
 protobuf = "3.7.1"
 dataforge = { workspace = true, features = ["tokio"] }
-processing = { workspace = true, features = ["egui", "plotly"] }
+numass_processing = { workspace = true, features = ["egui", "plotly"] }
 
 serde_with = "3.0.0"
 linreg = "0.2.0"
@@ -37,15 +39,6 @@ serde_yaml = "0.9.27"
 
 [target.'cfg(target_family = "unix")'.dependencies]
 tikv-jemallocator = { workspace = true }
-
-# [patch."https://github.com/kapot65/dataforge-parser-rust.git"]
-# dataforge = { path = "../dataforge-parser-rust" }
-
-# [patch."https://github.com/kapot65/dataforge-parser-numass.git"]
-# numass = { path = "../dataforge-parser-numass" }
-
-# [patch."https://github.com/kapot65/numass-processing.git"]
-# processing = { path = "../numass-processing" }
 
 [profile.release]
 lto = true

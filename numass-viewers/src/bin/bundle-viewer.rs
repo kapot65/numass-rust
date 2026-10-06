@@ -14,7 +14,7 @@ static GLOBAL: Jemalloc = Jemalloc;
 #[tokio::main]
 async fn main() {
     use clap::Parser;
-    use viewers::bundle_viewer::BundleViewer;
+    use numass_viewers::bundle_viewer::BundleViewer;
 
     #[derive(Parser, Debug)]
     #[clap(author, version, about, long_about = None)]
@@ -44,13 +44,13 @@ async fn main() {
             let process = if let Some(process) = args.process {
                 serde_json::from_str(&process).expect("cant parse algorithm param")
             } else {
-                processing::process::ProcessParams::default()
+                numass_processing::process::ProcessParams::default()
             };
 
             let postprocess = if let Some(postprocess) = args.postprocess {
                 serde_json::from_str(&postprocess).expect("cant parse postprocess param")
             } else {
-                processing::postprocess::PostProcessParams::default()
+                numass_processing::postprocess::PostProcessParams::default()
             };
 
             Ok(Box::new(BundleViewer::init_with_point(

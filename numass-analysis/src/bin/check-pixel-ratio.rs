@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use analysis::get_points_by_pattern;
+use numass_analysis::get_points_by_pattern;
 
 use dataforge::read_df_header_and_meta_sync;
 
@@ -16,7 +16,7 @@ use plotly::{
     Layout, Plot, Scatter,
 };
 
-use processing::{
+use numass_processing::{
     numass::{NumassMeta, Reply},
     postprocess::{post_process, PostProcessParams},
     process::{extract_events, ProcessParams, TRAPEZOID_DEFAULT},
@@ -161,8 +161,11 @@ async fn main() {
     let mut plot = Plot::new();
     let layout = Layout::new()
         .title(Title::new(
-            format!("Pixel ratio for channels relative to channel {} for {pattern}", main_channel + 1)
-                .as_str(),
+            format!(
+                "Pixel ratio for channels relative to channel {} for {pattern}",
+                main_channel + 1
+            )
+            .as_str(),
         ))
         .y_axis(Axis::new().title(Title::new("Count rate, Hz")))
         .height(1000);
