@@ -4,12 +4,12 @@
 use {
     chrono::DateTime,
     chrono::NaiveDateTime,
-    eframe::egui::{self, mutex::Mutex, Ui},
+    eframe::egui::{self, Ui, mutex::Mutex},
     egui_plot::{Legend, Line, Plot, Points},
     numass_processing::numass::{self, ExternalMeta, NumassMeta, Reply},
-    numass_processing::storage::load_meta,
     numass_processing::storage::FSRepr,
     numass_processing::storage::LoadState,
+    numass_processing::storage::load_meta,
     serde::{Deserialize, Serialize},
     std::collections::BTreeMap,
     std::io::BufRead,
@@ -197,17 +197,18 @@ impl FaradeyViewerApp {
     ///
     fn files_reload_button(&mut self, ui: &mut Ui, root: &Option<FSRepr>) {
         let path = root.clone().map(|root| root.to_filename());
-        if path.is_some() && ui.button("reload").clicked() {
-            if let Some(mut root) = root.clone() {
-                let root_out = Arc::clone(&self.root);
+        if path.is_some()
+            && ui.button("reload").clicked()
+            && let Some(mut root) = root.clone()
+        {
+            let root_out = Arc::clone(&self.root);
 
-                spawn(async move {
-                    root.update_reccurently().await;
-                    if let Ok(mut out) = root_out.try_lock() {
-                        out.replace(root);
-                    }
-                });
-            }
+            spawn(async move {
+                root.update_reccurently().await;
+                if let Ok(mut out) = root_out.try_lock() {
+                    out.replace(root);
+                }
+            });
         }
     }
 

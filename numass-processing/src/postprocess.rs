@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     constants::DETECTOR_BORDERS,
-    preprocess::{Preprocess, CUTOFF_BIN_SIZE},
+    preprocess::{CUTOFF_BIN_SIZE, Preprocess},
     types::{FrameEvent, NumassEvent, NumassEvents},
 };
 
@@ -21,8 +21,7 @@ use {
     std::collections::HashSet,
 };
 
-#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
-#[derive(Default)]
+#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize, Hash, Default)]
 pub struct ChannelIgnore {
     pub ch1: bool,
     pub ch2: bool,
@@ -30,19 +29,13 @@ pub struct ChannelIgnore {
     pub ch4: bool,
     pub ch5: bool,
     pub ch6: bool,
-    pub ch7: bool
+    pub ch7: bool,
 }
 
 impl From<ChannelIgnore> for [bool; 7] {
     fn from(value: ChannelIgnore) -> Self {
         [
-            value.ch1,
-            value.ch2,
-            value.ch3,
-            value.ch4,
-            value.ch5,
-            value.ch6,
-            value.ch7
+            value.ch1, value.ch2, value.ch3, value.ch4, value.ch5, value.ch6, value.ch7,
         ]
     }
 }
@@ -56,7 +49,7 @@ impl From<[bool; 7]> for ChannelIgnore {
             ch4: value[3],
             ch5: value[4],
             ch6: value[5],
-            ch7: value[6]
+            ch7: value[6],
         }
     }
 }
@@ -122,23 +115,27 @@ fn merge_close_frames(
                     .into_iter()
                     .map(|(offset, event)| (offset + frame_offset as u16, event)),
             );
-            
+
             to_remove.push(idx);
         }
         idx -= 1;
     }
 
-    amplitudes.iter().enumerate().filter_map(|(idx, (offset, frame))| {
-        if to_remove.contains(&idx) {
-            None
-        } else {
-            Some((**offset, frame.to_vec()))
-        }
-    }).collect::<NumassEvents>()
+    amplitudes
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, (offset, frame))| {
+            if to_remove.contains(&idx) {
+                None
+            } else {
+                Some((**offset, frame.to_vec()))
+            }
+        })
+        .collect::<NumassEvents>()
 }
 
 /// Built-in postprocessing algorithm.
-/// > [!NOTE]  
+/// > [!NOTE]
 /// > For now cut_bad_blocks works only with `merge_close_events` set to true.
 /// > TODO: fix it.
 pub fn post_process(
@@ -302,10 +299,14 @@ fn merge_splits(
         for (idx, (channel2, pos2, amplitude2)) in merges {
             if let (pos1, FrameEvent::Event { amplitude, .. }) = events[idx] {
                 ui.line(
-                    Line::new("".to_owned(), vec![ // TODO: check first arg
-                        [pos1 as f64 / 8.0, amplitude as f64],
-                        [pos2 as f64 / 8.0, amplitude2 as f64],
-                    ])
+                    Line::new(
+                        "".to_owned(),
+                        vec![
+                            // TODO: check first arg
+                            [pos1 as f64 / 8.0, amplitude as f64],
+                            [pos2 as f64 / 8.0, amplitude2 as f64],
+                        ],
+                    )
                     .color(color_for_index(channel2 as usize))
                     .style(LineStyle::dotted_loose()),
                 );
@@ -365,14 +366,13 @@ pub fn post_process_frame(
                         ..
                     },
                 ) = events[idx_next]
+                    && (params.ignore_borders || is_neighbour(channel, channel_next))
                 {
-                    if params.ignore_borders || is_neighbour(channel, channel_next) {
-                        #[cfg(feature = "egui")]
-                        merges.push((idx, (channel_next, _pos2, amplitude_next)));
+                    #[cfg(feature = "egui")]
+                    merges.push((idx, (channel_next, _pos2, amplitude_next)));
 
-                        amplitude += amplitude_next;
-                        events.remove(idx_next);
-                    }
+                    amplitude += amplitude_next;
+                    events.remove(idx_next);
                 }
                 idx_next -= 1;
             }
@@ -406,7 +406,7 @@ pub fn post_process_frame(
                         .color(color_for_index(channel as usize))
                         .shape(MarkerShape::Circle)
                         .filled(false)
-                        .radius(10.0_f32)
+                        .radius(10.0_f32),
                 );
             }
         }
@@ -414,10 +414,14 @@ pub fn post_process_frame(
         for (idx, (channel2, pos2, amplitude2)) in merges {
             if let (pos1, FrameEvent::Event { amplitude, .. }) = events[idx] {
                 ui.line(
-                    Line::new(String::new(), vec![ // TODO: add name
-                        [pos1 as f64 / 8.0, amplitude as f64],
-                        [pos2 as f64 / 8.0, amplitude2 as f64],
-                    ])
+                    Line::new(
+                        String::new(),
+                        vec![
+                            // TODO: add name
+                            [pos1 as f64 / 8.0, amplitude as f64],
+                            [pos2 as f64 / 8.0, amplitude2 as f64],
+                        ],
+                    )
                     .color(color_for_index(channel2 as usize))
                     .style(LineStyle::dotted_loose()),
                 );

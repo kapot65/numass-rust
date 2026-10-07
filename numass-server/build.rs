@@ -108,10 +108,10 @@ fn workspace_root(manifest_dir: &Path) -> PathBuf {
     let mut dir = manifest_dir.to_path_buf();
     loop {
         let manifest = dir.join("Cargo.toml");
-        if let Ok(text) = std::fs::read_to_string(&manifest) {
-            if text.lines().any(|line| line.trim() == "[workspace]") {
-                return dir;
-            }
+        if let Ok(text) = std::fs::read_to_string(&manifest)
+            && text.lines().any(|line| line.trim() == "[workspace]")
+        {
+            return dir;
         }
         if !dir.pop() {
             panic!(

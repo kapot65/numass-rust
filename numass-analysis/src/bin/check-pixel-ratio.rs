@@ -97,10 +97,9 @@ async fn main() {
                         if let FrameEvent::Event {
                             amplitude, channel, ..
                         } = event
+                            && singles_range.contains(amplitude)
                         {
-                            if singles_range.contains(amplitude) {
-                                *counts.entry(*channel).or_insert(0) += 1;
-                            }
+                            *counts.entry(*channel).or_insert(0) += 1;
                         }
                     });
                 });

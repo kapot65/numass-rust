@@ -4,12 +4,12 @@ use egui::{Color32, Visuals};
 use egui_plot::{Legend, MarkerShape, PlotUi, Points, VLine};
 
 use numass_processing::{
-    postprocess::{post_process_frame, PostProcessParams},
-    preprocess::{extract_waveforms, Preprocess},
-    process::{convert_to_kev, frame_to_events, ProcessParams},
+    postprocess::{PostProcessParams, post_process_frame},
+    preprocess::{Preprocess, extract_waveforms},
+    process::{ProcessParams, convert_to_kev, frame_to_events},
     storage::{load_meta, load_point},
     types::{FrameEvent, NumassFrameFast, NumassWaveformsFast, ProcessedWaveform},
-    utils::{color_for_index, EguiLine},
+    utils::{EguiLine, color_for_index},
 };
 
 use numass_processing::widgets::UserInput;
@@ -201,10 +201,10 @@ impl<'a> FilteredViewer<'a> {
     }
 
     fn inc(&mut self) {
-        if let Some(len) = self.indexes.as_mut().map(|indexes| indexes.len()) {
-            if self.current < len - 1 {
-                self.current += 1
-            }
+        if let Some(len) = self.indexes.as_mut().map(|indexes| indexes.len())
+            && self.current < len - 1
+        {
+            self.current += 1
         }
     }
 

@@ -1,10 +1,13 @@
 //! This module contains egui widgets for processing configurations
 
 use crate::{
-    histogram::HistogramParams, postprocess::PostProcessParams, preprocess::{CHECK_BIN_SIZE, CHECK_HV_THRESHOLD, CUTOFF_BIN_SIZE}, process::{
-        Algorithm, HWResetParams, ProcessParams, FIRSTPEAK_DEFAULT, LIKHOVID_DEFAULT,
-        LONGDIFF_DEFAULT, TRAPEZOID_DEFAULT,
-    }
+    histogram::HistogramParams,
+    postprocess::PostProcessParams,
+    preprocess::{CHECK_BIN_SIZE, CHECK_HV_THRESHOLD, CUTOFF_BIN_SIZE},
+    process::{
+        Algorithm, FIRSTPEAK_DEFAULT, HWResetParams, LIKHOVID_DEFAULT, LONGDIFF_DEFAULT,
+        ProcessParams, TRAPEZOID_DEFAULT,
+    },
 };
 
 pub trait UserInput {
@@ -246,12 +249,12 @@ impl UserInput for PostProcessParams {
             ui.horizontal(|ui| {
                 let mut merge_frames_checked = merge_frames.is_some();
                 if ui.checkbox(&mut merge_frames_checked, "merge frames").on_hover_text(
-                    format!("
+                    "
                     Merge events between close frames into one.
                     Loop goes from end to start merging any frame to previous one
                     if the distance between them is less than treshold.
                     This operation applies before any other postprocessing.
-                    ")
+                    ".to_string()
                 ).clicked(){
                     if merge_frames_checked {
                         merge_frames = Some(5000);
@@ -263,8 +266,6 @@ impl UserInput for PostProcessParams {
                 if merge_frames_checked {
                     let mut merge_frames_value = merge_frames.unwrap();
                     if ui.add(egui::Slider::new(&mut merge_frames_value, 1000..=65535).text("ns")).changed() {
-                        merge_frames = Some(merge_frames_value);
-                    } else {
                         merge_frames = Some(merge_frames_value);
                     }
                 }
@@ -313,7 +314,7 @@ impl UserInput for PostProcessParams {
                     ui.horizontal(|ui| {
                         chunk.iter_mut().for_each(|(idx, ignored)| {
                             let idx_readable = idx.to_owned() + 1;
-                            ui.checkbox(ignored, &format!("{idx_readable}"));
+                            ui.checkbox(ignored, format!("{idx_readable}"));
                         });
                     });
                 });

@@ -11,8 +11,8 @@ use {
 
 #[cfg(feature = "plotly")]
 use plotly::{
-    common::{Line as PlotlyLine, LineShape, Mode},
     Plot, Scatter,
+    common::{Line as PlotlyLine, LineShape, Mode},
 };
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
@@ -250,7 +250,7 @@ impl PointHistogram {
 
         let events_in_window = self.events(Some(left_border..right_border));
         self.channels.iter().for_each(|(ch_num, channel)| {
-            let events_in_window = events_in_window.get(&ch_num).unwrap_or(&0);
+            let events_in_window = events_in_window.get(ch_num).unwrap_or(&0);
 
             let mut line = Line::new(
                 format!("ch #{}\t({events_in_window})", ch_num + 1),

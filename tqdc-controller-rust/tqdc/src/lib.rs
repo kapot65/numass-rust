@@ -10,11 +10,11 @@ use std::vec;
 use eyre::{Context, ContextCompat, Report, Result};
 
 use tokio::net::UdpSocket;
-use tokio::time::{self, sleep, Duration};
+use tokio::time::{self, Duration, sleep};
 
 use mlink::{CtrlReg, MlinkMessage};
-use mstream::{MStreamTriggerAndUserData, MStreamADCBlocks, MStreamFragment};
-use regs::{as_run_state, Register16, Register32, RunMode, RunState, RunLogicControl};
+use mstream::{MStreamADCBlocks, MStreamFragment, MStreamTriggerAndUserData};
+use regs::{Register16, Register32, RunLogicControl, RunMode, RunState, as_run_state};
 
 pub const MTU_SIZE: usize = 1536;
 const PREALLOCATE_SIZE: usize = 16_000_000_000 / MTU_SIZE; // 16 GB
@@ -30,65 +30,59 @@ pub struct TQDC {
 }
 
 impl TQDC {
-
     pub fn new<A: Into<IpAddr> + Copy>(tqdc_addr: A) -> Self {
         let tqdc_control_addr = SocketAddr::new(tqdc_addr.into(), TQDC_CONTROL_PORT);
         let tqdc_stream_addr = SocketAddr::new(tqdc_addr.into(), TQDC_STREAM_PORT);
-        TQDC { 
-            tqdc_control_addr, 
-            tqdc_stream_addr
+        TQDC {
+            tqdc_control_addr,
+            tqdc_stream_addr,
         }
     }
 
-    async fn start_acquisition(&self, millis: u32, control: &UdpSocket) -> Result<()>  {
-        control.send_to(
-            &MlinkMessage::to_datagram(&MlinkMessage::new_ctrl_req(
-                0x0000,
-                0x0001,
-                0xFEFE,
-                vec![
-                    
-                CtrlReg::Write16 {
-                    address: Register16::RunLogicControl,
-                    value: RunLogicControl::SoftClear as u16,
-                }, 
-                CtrlReg::Write16 {
-                    address: Register16::RunLogicControl,
-                    value: RunLogicControl::Stop as u16,
-                }, 
-                
-                CtrlReg::Write16 {
-                    address: Register16::RunLogicRunMode,
-                    value: RunMode::Time as u16,
-                },
-                CtrlReg::Write32 {
-                    address: Register32::RunTimeLimit,
-                    value: millis,
-                },
-                
-                
-                CtrlReg::Write16 {
-                    address: Register16::RunLogicControl,
-                    value: RunLogicControl::SoftClear as u16,
-                }, 
-                CtrlReg::Write16 {
-                    address: Register16::RunLogicControl,
-                    value: RunLogicControl::Stop as u16,
-                },
-                
-                
-                CtrlReg::Write16 {
-                    address: Register16::RunLogicControl,
-                    value: RunLogicControl::Run as u16,
-                },
-                ],
-            )),
-            self.tqdc_control_addr,
-        )
-        .await?;
-    
+    async fn start_acquisition(&self, millis: u32, control: &UdpSocket) -> Result<()> {
+        control
+            .send_to(
+                &MlinkMessage::to_datagram(&MlinkMessage::new_ctrl_req(
+                    0x0000,
+                    0x0001,
+                    0xFEFE,
+                    vec![
+                        CtrlReg::Write16 {
+                            address: Register16::RunLogicControl,
+                            value: RunLogicControl::SoftClear as u16,
+                        },
+                        CtrlReg::Write16 {
+                            address: Register16::RunLogicControl,
+                            value: RunLogicControl::Stop as u16,
+                        },
+                        CtrlReg::Write16 {
+                            address: Register16::RunLogicRunMode,
+                            value: RunMode::Time as u16,
+                        },
+                        CtrlReg::Write32 {
+                            address: Register32::RunTimeLimit,
+                            value: millis,
+                        },
+                        CtrlReg::Write16 {
+                            address: Register16::RunLogicControl,
+                            value: RunLogicControl::SoftClear as u16,
+                        },
+                        CtrlReg::Write16 {
+                            address: Register16::RunLogicControl,
+                            value: RunLogicControl::Stop as u16,
+                        },
+                        CtrlReg::Write16 {
+                            address: Register16::RunLogicControl,
+                            value: RunLogicControl::Run as u16,
+                        },
+                    ],
+                )),
+                self.tqdc_control_addr,
+            )
+            .await?;
+
         let mut buf = [0; MTU_SIZE];
-    
+
         match time::timeout(Duration::from_millis(100), control.recv_from(&mut buf)).await {
             Ok(res) => match res {
                 Ok((_, _)) => Ok(()),
@@ -98,52 +92,53 @@ impl TQDC {
         }
     }
 
-    async fn check_run_state(
-        &self,
-        control: &UdpSocket,
-    ) -> Result<RunState> {
-        control.send_to(
-            &MlinkMessage::to_datagram(&MlinkMessage::new_ctrl_req(
-                0x0000,
-                0x0001,
-                0xFEFE,
-                vec![CtrlReg::Read16 {
-                    address: Register16::RunLogicRunState,
-                    value: 0x0000,
-                }],
-            )),
-            self.tqdc_control_addr,
-        )
-        .await?;
-    
+    async fn check_run_state(&self, control: &UdpSocket) -> Result<RunState> {
+        control
+            .send_to(
+                &MlinkMessage::to_datagram(&MlinkMessage::new_ctrl_req(
+                    0x0000,
+                    0x0001,
+                    0xFEFE,
+                    vec![CtrlReg::Read16 {
+                        address: Register16::RunLogicRunState,
+                        value: 0x0000,
+                    }],
+                )),
+                self.tqdc_control_addr,
+            )
+            .await?;
+
         let mut buf = [0; MTU_SIZE * 10];
-    
+
         match time::timeout(Duration::from_millis(100), control.recv_from(&mut buf)).await {
             Ok(res) => match res {
                 Ok((len, _)) => {
                     let acq = MlinkMessage::from_datagram(&buf[..len]);
                     match acq {
-                            MlinkMessage::CtrlAck { header: _, regs } => {
-                                if regs.len() != 1 {
-                                    Err(Report::msg(format!(
-                                        "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {regs:?}")))
-                                } else {
-                                    match &regs[0] {
-                                        CtrlReg::Read16 { address, value } => {
-                                            match address {
-                                                Register16::RunLogicRunState => Ok(as_run_state(*value).wrap_err_with(|| {"as_run_state failed"})?),
-                                                _ => Err(Report::msg(format!(
-                                                    "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {address:?}")))
-                                            }
-                                        }
-                                        other => Err(Report::msg(format!(
-                                            "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {other:?}")))
-                                    }
+                        MlinkMessage::CtrlAck { header: _, regs } => {
+                            if regs.len() != 1 {
+                                Err(Report::msg(format!(
+                                    "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {regs:?}"
+                                )))
+                            } else {
+                                match &regs[0] {
+                                    CtrlReg::Read16 { address, value } => match address {
+                                        Register16::RunLogicRunState => Ok(as_run_state(*value)
+                                            .wrap_err_with(|| "as_run_state failed")?),
+                                        _ => Err(Report::msg(format!(
+                                            "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {address:?}"
+                                        ))),
+                                    },
+                                    other => Err(Report::msg(format!(
+                                        "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {other:?}"
+                                    ))),
                                 }
                             }
-                            other => Err(Report::msg(format!(
-                                "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {other:?}")))
                         }
+                        other => Err(Report::msg(format!(
+                            "(check_run_state) - excepted CtrlAck message with single Read16(RunState) command, found: {other:?}"
+                        ))),
+                    }
                 }
                 Err(err) => Err(err.into()),
             },
@@ -151,25 +146,22 @@ impl TQDC {
         }
     }
 
+    async fn stop_acquisition(&self, control: &UdpSocket) -> Result<()> {
+        control
+            .send_to(
+                &MlinkMessage::to_datagram(&MlinkMessage::new_ctrl_req(
+                    0x0000,
+                    0x0001,
+                    0xFEFE,
+                    vec![CtrlReg::Write16 {
+                        address: Register16::RunLogicControl,
+                        value: RunLogicControl::Stop as u16,
+                    }],
+                )),
+                self.tqdc_control_addr,
+            )
+            .await?;
 
-    async fn stop_acquisition(
-        &self,
-        control: &UdpSocket,
-    ) -> Result<()> {
-        control.send_to(
-            &MlinkMessage::to_datagram(&MlinkMessage::new_ctrl_req(
-                0x0000,
-                0x0001,
-                0xFEFE,
-                vec![CtrlReg::Write16 {
-                    address: Register16::RunLogicControl,
-                    value: RunLogicControl::Stop as u16,
-                }],
-            )),
-            self.tqdc_control_addr,
-        )
-        .await?;
-    
         let mut buf = [0; 4096 * 10];
         match time::timeout(Duration::from_millis(100), control.recv_from(&mut buf)).await {
             Ok(res) => match res {
@@ -186,7 +178,7 @@ impl TQDC {
         stream: Arc<UdpSocket>,
     ) -> Result<Vec<[u8; MTU_SIZE]>> {
         let mut frames = Vec::with_capacity(PREALLOCATE_SIZE);
-    
+
         stream
             .send_to(
                 &MlinkMessage::to_datagram(&MlinkMessage::new_stream_acq(
@@ -195,41 +187,38 @@ impl TQDC {
                 self.tqdc_stream_addr,
             )
             .await?;
-    
+
         loop {
             let mut buf = [0; MTU_SIZE];
-    
-            match tokio::time::timeout(
-                Duration::from_millis(500),
-                stream.recv_from(&mut buf),
-            ).await
+
+            match tokio::time::timeout(Duration::from_millis(500), stream.recv_from(&mut buf)).await
             {
                 Ok(received) => {
                     let message = MlinkMessage::from_datagram(&buf[..received?.0]);
-                    
+
                     if let MlinkMessage::StreamReq { header, fragment } = message {
                         // let frame = frames.first().unwrap();
                         stream
-                        .send_to(
-                            // &stream_to_acq_fast(&buf)
-                            &MlinkMessage::to_datagram(&MlinkMessage::new_stream_acq(
+                            .send_to(
+                                // &stream_to_acq_fast(&buf)
+                                &MlinkMessage::to_datagram(&MlinkMessage::new_stream_acq(
                                     header.seq,
                                     0x0001,
                                     0xfefe,
                                     fragment.header.fragment_offset,
                                     fragment.header.fragment_id,
-                            ))
-                            , 
-                            self.tqdc_stream_addr)
-                        .await?;
+                                )),
+                                self.tqdc_stream_addr,
+                            )
+                            .await?;
                     }
                     frames.push(buf);
                 }
                 Err(_) => {
                     let state = self.check_run_state(&control).await?;
-    
+
                     println!("state: {state:?}"); // TODO: remove
-                    
+
                     match state {
                         RunState::Finished => break,
                         RunState::InRun => {}
@@ -243,23 +232,20 @@ impl TQDC {
 
     pub async fn acquire_frames(&self, secs: u32) -> Result<Vec<[u8; MTU_SIZE]>> {
         let control = Arc::new(UdpSocket::bind("0.0.0.0:0").await?); // TODO: remove unwrap
-        let stream = Arc::new(UdpSocket::bind("0.0.0.0:0").await?); 
+        let stream = Arc::new(UdpSocket::bind("0.0.0.0:0").await?);
 
         let millis = secs * 1000;
- 
+
         let gather_loop = {
             let control = control.clone();
             let stream = stream.clone();
             let clone = *self;
             tokio::spawn(TQDC::gather_frames(clone, control, stream))
         };
-    
+
         sleep(Duration::from_millis(100)).await;
-        self.start_acquisition(
-            millis,
-            &control,
-        ).await?;
-    
+        self.start_acquisition(millis, &control).await?;
+
         let frames = (gather_loop.await.with_context(|| "gather_loop ")?)?;
 
         self.stop_acquisition(&control).await?;
@@ -273,48 +259,52 @@ impl TQDC {
     }
 
     pub fn frames_to_events(frames: Vec<[u8; MTU_SIZE]>) -> Result<Vec<MStreamADCBlocks>> {
-
         let mut blocks = vec![];
 
         let mut fragments = BTreeMap::<u16, (usize, BTreeMap<u16, MStreamFragment>)>::new();
-    
+
         for (idx, frame) in frames.into_iter().enumerate() {
             if let MlinkMessage::StreamReq { fragment, .. } = MlinkMessage::from_datagram(&frame) {
-
                 let id = fragment.header.fragment_id;
                 let offset = fragment.header.fragment_offset;
 
-                if let Some((first_entry_idx, _)) = fragments.get(&id) {
-                    if first_entry_idx.abs_diff(idx) > MAX_FRAGMENTS_DISTANCE {
-                        blocks.push(fragments.remove(&id).unwrap());
-                    }
+                if let Some((first_entry_idx, _)) = fragments.get(&id)
+                    && first_entry_idx.abs_diff(idx) > MAX_FRAGMENTS_DISTANCE
+                {
+                    blocks.push(fragments.remove(&id).unwrap());
                 }
-                fragments.entry(id).or_insert((idx, BTreeMap::new())).1.insert(
-                    offset, fragment);
-
+                fragments
+                    .entry(id)
+                    .or_insert((idx, BTreeMap::new()))
+                    .1
+                    .insert(offset, fragment);
             } else {
                 Err(Report::msg(
                     "(gather_frames) - incoming packet is not STREAM type",
                 ))?
             }
-        };
-    
-        Ok(blocks.iter().chain(fragments.values()).map(|fragments| {
-            
-            let merged = MStreamTriggerAndUserData::try_from(
-                fragments.1.values().collect::<Vec<_>>().as_slice()
-            ).unwrap(); // TODO: handle error
-            let adc_blocks = merged.extract_data_blocks();
-    
-            MStreamADCBlocks {
-                device_serial: merged.device_serial,
-                event_number: merged.event_number,
-                user_defined_bits: merged.user_defined_bits,
-                tai_sec: merged.tai_sec,
-                tai_nano_sec: merged.tai_nano_sec,
-                adc_blocks,
-            }
-        }).collect::<Vec<_>>())
+        }
+
+        Ok(blocks
+            .iter()
+            .chain(fragments.values())
+            .map(|fragments| {
+                let merged = MStreamTriggerAndUserData::try_from(
+                    fragments.1.values().collect::<Vec<_>>().as_slice(),
+                )
+                .unwrap(); // TODO: handle error
+                let adc_blocks = merged.extract_data_blocks();
+
+                MStreamADCBlocks {
+                    device_serial: merged.device_serial,
+                    event_number: merged.event_number,
+                    user_defined_bits: merged.user_defined_bits,
+                    tai_sec: merged.tai_sec,
+                    tai_nano_sec: merged.tai_nano_sec,
+                    adc_blocks,
+                }
+            })
+            .collect::<Vec<_>>())
     }
 }
 

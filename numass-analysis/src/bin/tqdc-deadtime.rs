@@ -8,12 +8,12 @@ use std::{
     sync::Arc,
 };
 
-use plotly::{common::Title, layout::Axis, Layout, Plot};
+use plotly::{Layout, Plot, common::Title, layout::Axis};
 
 use numass_processing::{
     histogram::PointHistogram,
-    preprocess::{extract_waveforms, Preprocess},
-    process::{frame_to_events, TRAPEZOID_DEFAULT},
+    preprocess::{Preprocess, extract_waveforms},
+    process::{TRAPEZOID_DEFAULT, frame_to_events},
     storage::{load_meta, load_point},
     types::FrameEvent,
 };
@@ -77,12 +77,11 @@ async fn main() {
                         for idx in 1..times.len() {
                             deltas[idx - 1] = times[idx] - times[idx - 1]
                         }
-                        let deltas = deltas
+                        deltas
                             .iter()
                             .filter(|delta| **delta != 0)
                             .copied()
-                            .collect::<Vec<_>>();
-                        deltas
+                            .collect::<Vec<_>>()
                     };
 
                     hist.lock()

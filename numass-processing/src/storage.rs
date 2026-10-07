@@ -13,7 +13,8 @@ use protobuf::Message;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    numass::protos::rsb_event, postprocess::PostProcessParams, preprocess::Preprocess, process::ProcessParams, types::NumassEvents
+    numass::protos::rsb_event, postprocess::PostProcessParams, preprocess::Preprocess,
+    process::ProcessParams, types::NumassEvents,
 };
 
 /// Process point from the storage.
@@ -32,15 +33,15 @@ pub async fn process_point(
             let point = load_point(filepath).await;
 
             let events = if let Some(postprocess) = postprocess {
-                crate::postprocess::post_process(crate::process::extract_events(meta.clone(), point, process), postprocess)
+                crate::postprocess::post_process(
+                    crate::process::extract_events(meta.clone(), point, process),
+                    postprocess,
+                )
             } else {
                 crate::process::extract_events(meta.clone(), point, process)
             };
 
-            Some((
-                meta.clone().unwrap(),
-                Some(events),
-            ))
+            Some((meta.clone().unwrap(), Some(events)))
         }
 
         #[cfg(target_arch = "wasm32")]
@@ -109,11 +110,7 @@ pub async fn load_meta(filepath: &Path) -> Option<NumassMeta> {
 
 pub async fn load_modified_time(filepath: PathBuf) -> Option<SystemTime> {
     if let Ok(metadata) = fs::metadata(filepath) {
-        if let Ok(modified) = metadata.modified() {
-            Some(modified)
-        } else {
-            None
-        }
+        metadata.modified().ok()
     } else {
         None
     }
@@ -124,7 +121,8 @@ pub async fn load_modified_time(filepath: PathBuf) -> Option<SystemTime> {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn load_point_sync(filepath: &Path) -> rsb_event::Point {
     if let Ok(mut point_file) = std::fs::File::open(filepath) {
-        let message = dataforge::read_df_message_sync::<numass::NumassMeta>(&mut point_file).unwrap();
+        let message =
+            dataforge::read_df_message_sync::<numass::NumassMeta>(&mut point_file).unwrap();
         rsb_event::Point::parse_from_bytes(&message.data.unwrap_or_default()[..]).unwrap()
     } else {
         panic!("{filepath:?} open failed")
@@ -166,17 +164,12 @@ pub async fn load_point(filepath: &Path) -> rsb_event::Point {
 
 /// Temporal numass file storage representation.
 /// TODO: switch to real numass storage service when it will be implemented.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum LoadState {
+    #[default]
     NotLoaded,
     NeedLoad,
     Loaded,
-}
-
-impl Default for LoadState {
-    fn default() -> Self {
-        Self::NotLoaded
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -368,17 +361,15 @@ impl FSRepr {
                                 children_new.iter_mut().for_each(|child_new| {
                                     if let Some(child) = children.iter().find(|child| {
                                         child.to_filename() == child_new.to_filename()
-                                    }) {
-                                        if let (
-                                            FSRepr::Directory {
-                                                load_state: LoadState::Loaded,
-                                                ..
-                                            },
-                                            FSRepr::Directory { load_state, .. },
-                                        ) = (child, child_new)
-                                        {
-                                            *load_state = LoadState::Loaded;
-                                        }
+                                    }) && let (
+                                        FSRepr::Directory {
+                                            load_state: LoadState::Loaded,
+                                            ..
+                                        },
+                                        FSRepr::Directory { load_state, .. },
+                                    ) = (child, child_new)
+                                    {
+                                        *load_state = LoadState::Loaded;
                                     }
                                 });
                                 children_new.sort_by(|v1, v2| {

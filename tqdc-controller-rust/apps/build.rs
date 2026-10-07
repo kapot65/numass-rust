@@ -2,7 +2,7 @@ use std::process::Command;
 
 fn main() {
     let output = Command::new("git")
-        .args(&["describe", "--tags", "--always", "--dirty"])
+        .args(["describe", "--tags", "--always", "--dirty"])
         .output()
         .expect("Failed to execute git describe");
 
@@ -19,3 +19,4 @@ fn main() {
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-changed=.git/refs");
 }
+

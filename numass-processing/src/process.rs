@@ -291,7 +291,7 @@ pub fn frame_to_events(
                 let right = *right as usize;
 
                 let amplitude = {
-                    let left = if x >= left { x - left } else { 0 };
+                    let left = x.saturating_sub(left);
                     let right = std::cmp::min(waveform.len(), x + right);
                     let crop = &waveform[left..right];
                     crop.iter().sum::<i16>() as f32 / crop.len() as f32 // TODO: does i16 enough for sum?
@@ -313,7 +313,7 @@ pub fn frame_to_events(
                 .iter()
                 .filter_map(|(ch_id, waveform)| {
                     find_first_peak(waveform, *threshold).map(|pos| {
-                        let left = if pos < left { 0 } else { pos - left };
+                        let left = pos.saturating_sub(left);
                         // let length = (waveform.0.len() - pos) as f32;
                         let amplitude = waveform[left..waveform.len()].iter().sum::<i16>();
                         (
@@ -347,56 +347,54 @@ pub fn frame_to_events(
 
             #[cfg(feature = "egui")]
             if let Some(ui) = ui {
-                ui.hline(HLine::new(format!("TRIGGER"), *treshold as f64).color(Color32::WHITE));
+                ui.hline(HLine::new("TRIGGER".to_string(), *treshold as f64).color(Color32::WHITE));
             }
 
-            let mut events = frame
+            let mut events: Vec<(u16, FrameEvent)> = frame
                 .iter()
                 .flat_map(|(ch_id, waveform)| {
                     let mut events = vec![];
 
-                    if ch_id == &1 {
-                        if let Some((idx, _)) =
+                    if ch_id == &1
+                        && let Some((idx, _)) =
                             waveform.iter().enumerate().find(|(_, val)| **val == 8189)
-                        {
-                            let end = if let Some((reset_start, _)) = reset {
-                                reset_start
-                            } else {
-                                waveform.len()
-                            };
+                    {
+                        let end = if let Some((reset_start, _)) = reset {
+                            reset_start
+                        } else {
+                            waveform.len()
+                        };
 
-                            bad_frame = true;
+                        bad_frame = true;
 
-                            events.push((
-                                idx as u16 * 8,
-                                FrameEvent::Overflow {
-                                    channel: *ch_id,
-                                    size: end.abs_diff(idx) as u16,
-                                },
-                            ));
-                        }
+                        events.push((
+                            idx as u16 * 8,
+                            FrameEvent::Overflow {
+                                channel: *ch_id,
+                                size: end.abs_diff(idx) as u16,
+                            },
+                        ));
                     }
 
-                    if ch_id == &5 {
-                        if let Some((idx, _)) =
+                    if ch_id == &5
+                        && let Some((idx, _)) =
                             waveform.iter().enumerate().find(|(_, val)| **val == 8081)
-                        {
-                            let end = if let Some((reset_start, _)) = reset {
-                                reset_start
-                            } else {
-                                waveform.len()
-                            };
+                    {
+                        let end = if let Some((reset_start, _)) = reset {
+                            reset_start
+                        } else {
+                            waveform.len()
+                        };
 
-                            bad_frame = true;
+                        bad_frame = true;
 
-                            events.push((
-                                idx as u16 * 8,
-                                FrameEvent::Overflow {
-                                    channel: *ch_id,
-                                    size: end.abs_diff(idx) as u16,
-                                },
-                            ));
-                        }
+                        events.push((
+                            idx as u16 * 8,
+                            FrameEvent::Overflow {
+                                channel: *ch_id,
+                                size: end.abs_diff(idx) as u16,
+                            },
+                        ));
                     }
 
                     let offset = left + center + right;
@@ -426,11 +424,11 @@ pub fn frame_to_events(
 
                     let mut i = 0;
                     while i < filtered.len() {
-                        if let Some((reset_start, reset_end)) = reset {
-                            if i == reset_start - offset {
-                                i = reset_end - offset;
-                                continue;
-                            }
+                        if let Some((reset_start, reset_end)) = reset
+                            && i == reset_start - offset
+                        {
+                            i = reset_end - offset;
+                            continue;
                         }
 
                         if (i == 0 || filtered[i - 1] < *treshold as f32)
@@ -445,10 +443,10 @@ pub fn frame_to_events(
                                 energy += filtered[event_end];
                                 event_end += 1;
 
-                                if let Some((reset_start, _)) = reset {
-                                    if event_end == reset_start - offset {
-                                        break;
-                                    }
+                                if let Some((reset_start, _)) = reset
+                                    && event_end == reset_start - offset
+                                {
+                                    break;
                                 }
                             }
 
@@ -472,7 +470,7 @@ pub fn frame_to_events(
 
                     events
                 })
-                .collect::<Vec<_>>();
+                .collect();
 
             if let Some((reset_start, reset_end)) = reset {
                 events.push((

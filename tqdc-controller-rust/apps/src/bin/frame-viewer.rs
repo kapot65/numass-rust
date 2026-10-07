@@ -9,9 +9,9 @@ use egui::mutex::Mutex;
 use egui_plot::{Legend, Plot};
 
 use numass_processing::histogram::PointHistogram;
-use numass_processing::process::{frame_to_events, Algorithm, ProcessParams};
+use numass_processing::process::{Algorithm, ProcessParams, frame_to_events};
 use numass_processing::types::{FrameEvent, NumassFrame, NumassFrameFast, ProcessedWaveform};
-use numass_processing::utils::{color_for_index, EguiLine};
+use numass_processing::utils::{EguiLine, color_for_index};
 use numass_processing::widgets::UserInput;
 use numass_tqdc::mlink::MlinkMessage;
 use numass_tqdc::mstream::{ADCDataBlock, MStreamTriggerAndUserData};
@@ -362,15 +362,15 @@ impl eframe::App for MyEguiApp {
                             );
                         });
 
-                        if self.draw_algorithm {
-                            if let Some(frame) = self.raw_frame.lock().clone() {
-                                let frame_fast: NumassFrameFast = frame
-                                    .iter()
-                                    .map(|(ch_num, waveform)| (*ch_num, waveform.as_slice()))
-                                    .collect();
-                                let algorithm = self.process_params.lock().algorithm.clone();
-                                frame_to_events(&frame_fast, &algorithm, None, &mut Some(plot_ui));
-                            }
+                        if self.draw_algorithm
+                            && let Some(frame) = self.raw_frame.lock().clone()
+                        {
+                            let frame_fast: NumassFrameFast = frame
+                                .iter()
+                                .map(|(ch_num, waveform)| (*ch_num, waveform.as_slice()))
+                                .collect();
+                            let algorithm = self.process_params.lock().algorithm.clone();
+                            frame_to_events(&frame_fast, &algorithm, None, &mut Some(plot_ui));
                         }
                     });
             });

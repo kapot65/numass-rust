@@ -121,10 +121,10 @@ async fn main() {
             for point in files {
                 let point_name = point.file_name().unwrap().to_str().unwrap().to_owned();
 
-                if let Some(exclude) = &set.exclude {
-                    if exclude.iter().any(|ex| point_name.contains(ex)) {
-                        continue;
-                    }
+                if let Some(exclude) = &set.exclude
+                    && exclude.iter().any(|ex| point_name.contains(ex))
+                {
+                    continue;
                 }
 
                 let u_sp = {
@@ -257,14 +257,13 @@ async fn main() {
         handle.await.unwrap();
     }
 
-    let mut table_data =
-        format!(
-            "u_sp\tunders(4.0..U_sp-4.0)\tsingles({:?})\tdoubles({:?})\ttripples({:?})\tquadriples({:?})\ttriggers\tbad\ttime\n",
-            Ranges::Singles.values(),
-            Ranges::Doubles.values(),
-            Ranges::Tripples.values(),
-            Ranges::Quadriples.values()
-        );
+    let mut table_data = format!(
+        "u_sp\tunders(4.0..U_sp-4.0)\tsingles({:?})\tdoubles({:?})\ttripples({:?})\tquadriples({:?})\ttriggers\tbad\ttime\n",
+        Ranges::Singles.values(),
+        Ranges::Doubles.values(),
+        Ranges::Tripples.values(),
+        Ranges::Quadriples.values()
+    );
     table
         .try_lock()
         .unwrap()

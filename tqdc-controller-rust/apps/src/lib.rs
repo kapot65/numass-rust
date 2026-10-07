@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use tokio::io::AsyncWriteExt;
 
-use numass_processing::numass::{protos::rsb_event, ZeroSuppressionParams};
+use numass_processing::numass::{ZeroSuppressionParams, protos::rsb_event};
 use numass_tqdc::mstream::MStreamADCBlocks;
 
 pub async fn events_to_point(
@@ -48,22 +48,15 @@ pub async fn events_to_point(
                         waveform
                     };
 
-                    let threshold = if channel.ch_num == 0 && params.th_1.is_some() {
-                        params.th_1.unwrap()
-                    } else if channel.ch_num == 1 && params.th_2.is_some() {
-                        params.th_2.unwrap()
-                    } else if channel.ch_num == 2 && params.th_3.is_some() {
-                        params.th_3.unwrap()
-                    } else if channel.ch_num == 3 && params.th_4.is_some() {
-                        params.th_4.unwrap()
-                    } else if channel.ch_num == 4 && params.th_5.is_some() {
-                        params.th_5.unwrap()
-                    } else if channel.ch_num == 5 && params.th_6.is_some() {
-                        params.th_6.unwrap()
-                    } else if channel.ch_num == 6 && params.th_7.is_some() {
-                        params.th_7.unwrap()
-                    } else {
-                        params.threshold
+                    let threshold = match channel.ch_num {
+                        0 => params.th_1.unwrap_or(params.threshold),
+                        1 => params.th_2.unwrap_or(params.threshold),
+                        2 => params.th_3.unwrap_or(params.threshold),
+                        3 => params.th_4.unwrap_or(params.threshold),
+                        4 => params.th_5.unwrap_or(params.threshold),
+                        5 => params.th_6.unwrap_or(params.threshold),
+                        6 => params.th_7.unwrap_or(params.threshold),
+                        _ => params.threshold,
                     };
 
                     let baseline = params

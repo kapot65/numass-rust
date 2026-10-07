@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::{collections::BTreeMap, path::Path};
 
 use eframe::{
-    egui::{self, mutex::Mutex, Ui},
+    egui::{self, Ui, mutex::Mutex},
     epaint::Color32,
 };
 use egui::Visuals;
@@ -14,7 +14,7 @@ use numass_processing::{
     preprocess::Preprocess,
     storage::LoadState,
     utils::construct_filename,
-    viewer::{ViewerState, EMPTY_POINT},
+    viewer::{EMPTY_POINT, ViewerState},
     widgets::UserInput,
 };
 
@@ -33,10 +33,10 @@ use {
     eframe::web_sys::window,
     gloo::{
         net::http::Request,
-        worker::{oneshot::OneshotBridge, Spawnable},
+        worker::{Spawnable, oneshot::OneshotBridge},
     },
     numass_processing::{
-        storage::{api_url, FSRepr},
+        storage::{FSRepr, api_url},
         viewer::{PointState, ToROOTOptions, ViewerMode},
     },
     wasm_bindgen::prelude::*,
@@ -146,17 +146,18 @@ impl DataViewerApp {
     ///
     fn files_reload_button(&mut self, ui: &mut Ui, root: &Option<FSRepr>) {
         let path = root.clone().map(|root| root.to_filename());
-        if path.is_some() && ui.button("reload").clicked() {
-            if let Some(mut root) = root.clone() {
-                let root_out = Arc::clone(&self.root);
+        if path.is_some()
+            && ui.button("reload").clicked()
+            && let Some(mut root) = root.clone()
+        {
+            let root_out = Arc::clone(&self.root);
 
-                spawn(async move {
-                    root.update_reccurently().await;
-                    if let Ok(mut out) = root_out.try_lock() {
-                        out.replace(root);
-                    }
-                });
-            }
+            spawn(async move {
+                root.update_reccurently().await;
+                if let Ok(mut out) = root_out.try_lock() {
+                    out.replace(root);
+                }
+            });
         }
     }
 
@@ -712,11 +713,11 @@ impl DataViewerApp {
                         modified: Some(modified_2),
                         ..
                     }) = conf.get(&filepath)
+                        && !changed
+                        && modified <= modified_2
                     {
-                        if !changed && modified <= modified_2 {
-                            crate::inc_status(status);
-                            return;
-                        }
+                        crate::inc_status(status);
+                        return;
                     }
                 }
 
@@ -941,23 +942,21 @@ impl eframe::App for DataViewerApp {
 
                         plot_ui.points(Points::new("PPV", points).radius(3.0_f32));
 
-                        if plot_ui.response().clicked() {
-                            if let Some(pos) = plot_ui.pointer_coordinate() {
-                                let clicked_file = opened_files
-                                    .iter()
-                                    .filter_map(|(path, cache)| {
-                                        if let PointState {
-                                            counts: Some(counts),
-                                            preprocess: Some(preprocess),
-                                            ..
-                                        } = cache
-                                        {
-                                            // TODO: deduplicate this code
-                                            let point_pos = if self
-                                                .processing_params
-                                                .post_process
-                                                .cut_bad_blocks
-                                            {
+                        if plot_ui.response().clicked()
+                            && let Some(pos) = plot_ui.pointer_coordinate()
+                        {
+                            let clicked_file = opened_files
+                                .iter()
+                                .filter_map(|(path, cache)| {
+                                    if let PointState {
+                                        counts: Some(counts),
+                                        preprocess: Some(preprocess),
+                                        ..
+                                    } = cache
+                                    {
+                                        // TODO: deduplicate this code
+                                        let point_pos =
+                                            if self.processing_params.post_process.cut_bad_blocks {
                                                 PlotPoint::new(
                                                     preprocess.hv,
                                                     *counts as f64
@@ -973,38 +972,31 @@ impl eframe::App for DataViewerApp {
                                                 )
                                             };
 
-                                            let distance =
-                                                point_pos.to_pos2().distance(pos.to_pos2());
-                                            if distance < 1e5 {
-                                                return Some((path, distance));
-                                            }
-                                            None
-                                        } else {
-                                            None
+                                        let distance = point_pos.to_pos2().distance(pos.to_pos2());
+                                        if distance < 1e5 {
+                                            return Some((path, distance));
                                         }
-                                    })
-                                    .min_by_key(|(_, distance)| (distance * 1000.0) as i64);
+                                        None
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .min_by_key(|(_, distance)| (distance * 1000.0) as i64);
 
-                                if let Some((path, _)) = clicked_file {
-                                    let path = (**path).clone();
-                                    self.current_path =
-                                        if let Some(p) = self.current_path.to_owned() {
-                                            if p != path {
-                                                Some(path)
-                                            } else {
-                                                None
-                                            }
-                                        } else {
-                                            Some(path)
-                                        };
+                            if let Some((path, _)) = clicked_file {
+                                let path = (**path).clone();
+                                self.current_path = if let Some(p) = self.current_path.to_owned() {
+                                    if p != path { Some(path) } else { None }
                                 } else {
-                                    self.current_path = None;
-                                }
+                                    Some(path)
+                                };
+                            } else {
+                                self.current_path = None;
                             }
                         }
 
-                        if let Some(current) = &self.current_path {
-                            if let PointState {
+                        if let Some(current) = &self.current_path
+                            && let PointState {
                                 counts: Some(counts),
                                 preprocess:
                                     Some(Preprocess {
@@ -1014,16 +1006,15 @@ impl eframe::App for DataViewerApp {
                                     }),
                                 ..
                             } = state[current]
-                            {
-                                plot_ui.hline(
-                                    HLine::new(
-                                        "selection",
-                                        counts as f64 / (acquisition_time as f64 * 1e-9),
-                                    )
-                                    .color(Color32::WHITE),
-                                );
-                                plot_ui.vline(VLine::new("selection", hv).color(Color32::WHITE));
-                            }
+                        {
+                            plot_ui.hline(
+                                HLine::new(
+                                    "selection",
+                                    counts as f64 / (acquisition_time as f64 * 1e-9),
+                                )
+                                .color(Color32::WHITE),
+                            );
+                            plot_ui.vline(VLine::new("selection", hv).color(Color32::WHITE));
                         }
                     });
                 }
