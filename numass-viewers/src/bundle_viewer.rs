@@ -1,11 +1,11 @@
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
-use egui::{mutex::Mutex, Visuals};
+use egui::{Visuals, mutex::Mutex};
 use egui_plot::{Legend, Points};
 use numass_processing::{
-    numass::{protos::rsb_event, NumassMeta},
-    postprocess::{post_process, PostProcessParams},
-    process::{extract_events, ProcessParams},
+    numass::{NumassMeta, protos::rsb_event},
+    postprocess::{PostProcessParams, post_process},
+    process::{ProcessParams, extract_events},
     storage::{load_meta, load_point},
     types::FrameEvent,
     utils::color_for_index,

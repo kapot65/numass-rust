@@ -6,8 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::NaiveDateTime;
 use numass::{
-    protos::rsb_event::{self, point::channel::block::Frame},
     ExternalMeta, NumassMeta, Reply,
+    protos::rsb_event::{self, point::channel::block::Frame},
 };
 use serde::{Deserialize, Serialize};
 

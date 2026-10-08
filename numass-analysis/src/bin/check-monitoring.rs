@@ -1,19 +1,19 @@
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
-use numass_analysis::{get_points_by_pattern, CorrectionCoeffs};
+use numass_analysis::{CorrectionCoeffs, get_points_by_pattern};
 
 use dataforge::read_df_header_and_meta_sync;
 
 use plotly::{
+    Layout, Plot, Scatter,
     common::{Mode, Title},
     layout::Axis,
-    Layout, Plot, Scatter,
 };
 
 use numass_processing::{
     numass::{NumassMeta, Reply},
-    postprocess::{post_process, PostProcessParams},
-    process::{extract_events, ProcessParams, TRAPEZOID_DEFAULT},
+    postprocess::{PostProcessParams, post_process},
+    process::{ProcessParams, TRAPEZOID_DEFAULT, extract_events},
     storage::load_point,
     types::FrameEvent,
 };

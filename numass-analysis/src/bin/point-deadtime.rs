@@ -42,5 +42,7 @@ async fn main() {
         }
     });
 
-    println!("total deadtime: {total_deadtime} ns ({close_count} close, {normal_count} normal, {triple_close_count} triple)");
+    println!(
+        "total deadtime: {total_deadtime} ns ({close_count} close, {normal_count} normal, {triple_close_count} triple)"
+    );
 }

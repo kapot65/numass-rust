@@ -1,12 +1,12 @@
 use std::{path::PathBuf, sync::Arc};
 
-use egui::{mutex::Mutex, Visuals};
+use egui::{Visuals, mutex::Mutex};
 use egui_plot::{GridMark, Legend};
 use numass_processing::{
     numass::protos::rsb_event,
     storage::load_point,
     types::{ProcessedWaveform, RawWaveform},
-    utils::{color_for_index, correct_frame_time, EguiLine},
+    utils::{EguiLine, color_for_index, correct_frame_time},
 };
 
 #[cfg(not(target_arch = "wasm32"))]

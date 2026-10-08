@@ -2,8 +2,8 @@ use std::convert::TryFrom;
 
 use arrayref::array_ref;
 
-use crate::regs::{is_reg16, is_reg32, Register16, Register32};
 use crate::mstream::MStreamFragment;
+use crate::regs::{Register16, Register32, is_reg16, is_reg32};
 
 #[derive(Debug)]
 pub enum MlinkMessage {
@@ -91,7 +91,6 @@ impl MlinkMessage {
 
         match header.type_ {
             MessageType::Stream => {
-
                 let fragment = MStreamFragment::from(data);
                 MlinkMessage::StreamReq { header, fragment }
             }
@@ -322,10 +321,8 @@ impl MLinkHeader {
     pub fn from_bytes(bytes: &[u8]) -> MLinkHeader {
         assert!(bytes.len() >= 12); // TODO: remove duplicate check?
 
-        let type_ =
-            MessageType::try_from(u16::from_le_bytes(*array_ref![bytes, 0, 2])).unwrap();
-        let sync =
-            MessageSync::try_from(u16::from_le_bytes(*array_ref![bytes, 2, 2])).unwrap();
+        let type_ = MessageType::try_from(u16::from_le_bytes(*array_ref![bytes, 0, 2])).unwrap();
+        let sync = MessageSync::try_from(u16::from_le_bytes(*array_ref![bytes, 2, 2])).unwrap();
 
         MLinkHeader {
             type_,

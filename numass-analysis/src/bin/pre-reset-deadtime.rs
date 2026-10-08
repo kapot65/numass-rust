@@ -4,7 +4,7 @@
 //!
 use std::path::PathBuf;
 
-use plotly::{common::Title, layout::Axis, Layout, Plot};
+use plotly::{Layout, Plot, common::Title, layout::Axis};
 
 use numass_processing::{
     histogram::PointHistogram,

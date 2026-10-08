@@ -2,7 +2,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use numass_processing::{
     histogram::HistogramParams,
-    process::{extract_events, ProcessParams, TRAPEZOID_DEFAULT},
+    process::{ProcessParams, TRAPEZOID_DEFAULT, extract_events},
     storage::{load_meta, load_point},
     utils::events_to_histogram,
 };

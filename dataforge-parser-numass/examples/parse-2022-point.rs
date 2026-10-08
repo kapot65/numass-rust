@@ -4,10 +4,7 @@ use dataforge::read_df_message_sync;
 use numass::{NumassMeta, protos::rsb_event::Point};
 
 fn main() {
-
-    let mut file = std::fs::File::open(
-        "./resources/test/2022-point.df"
-    ).unwrap();
+    let mut file = std::fs::File::open("./resources/test/2022-point.df").unwrap();
 
     let msg = read_df_message_sync::<NumassMeta>(&mut file).unwrap();
 

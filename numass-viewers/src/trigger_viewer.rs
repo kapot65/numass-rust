@@ -1,11 +1,11 @@
 use std::{path::PathBuf, sync::Arc};
 
-use egui::{mutex::Mutex, Color32, Visuals};
+use egui::{Color32, Visuals, mutex::Mutex};
 use egui_plot::{GridMark, Legend, VLine};
 use numass_processing::{
     histogram::PointHistogram,
-    numass::{protos::rsb_event, NumassMeta, Reply},
-    preprocess::{Preprocess, CUTOFF_BIN_SIZE},
+    numass::{NumassMeta, Reply, protos::rsb_event},
+    preprocess::{CUTOFF_BIN_SIZE, Preprocess},
     process::TRAPEZOID_DEFAULT,
     storage::{load_meta, load_point},
     utils::correct_frame_time,

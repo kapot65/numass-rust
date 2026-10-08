@@ -7,13 +7,13 @@ use std::{
 use dataforge::DFMessage;
 use numass_processing::{
     numass::{self, protos::rsb_event::Point},
-    preprocess::{emulate_fir, frame_to_waveform, Preprocess},
+    preprocess::{Preprocess, emulate_fir, frame_to_waveform},
     process::{Algorithm, TRAPEZOID_DEFAULT},
     storage::load_meta,
 };
 use plotly::{
-    common::{ErrorData, ErrorType},
     Plot, Scatter,
+    common::{ErrorData, ErrorType},
 };
 use protobuf::Message;
 
