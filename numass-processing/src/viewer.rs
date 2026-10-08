@@ -5,7 +5,7 @@
 use crate::{
     histogram::{HistogramParams, PointHistogram},
     postprocess::PostProcessParams,
-    preprocess::Preprocess,
+    preprocess::{Preprocess, PreprocessParams},
     process::{ProcessParams, TRAPEZOID_DEFAULT},
 };
 use serde::{Deserialize, Serialize};
@@ -13,6 +13,8 @@ use std::{ops::Range, path::PathBuf, time::SystemTime};
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct ViewerState {
+    #[serde(default)]
+    pub preprocess: PreprocessParams,
     pub process: ProcessParams,
     pub post_process: PostProcessParams,
     pub histogram: HistogramParams,
@@ -22,6 +24,7 @@ pub struct ViewerState {
 impl Default for ViewerState {
     fn default() -> Self {
         Self {
+            preprocess: PreprocessParams::default(),
             process: ProcessParams {
                 algorithm: TRAPEZOID_DEFAULT,
                 convert_to_kev: true,
@@ -48,6 +51,8 @@ pub enum ViewerMode {
     FilteredEvents {
         filepath: PathBuf,
         range: Range<f32>,
+        #[serde(default)]
+        preprocess: PreprocessParams,
         process: ProcessParams,
         postprocess: PostProcessParams,
     },
@@ -56,6 +61,8 @@ pub enum ViewerMode {
     },
     Bundles {
         filepath: PathBuf,
+        #[serde(default)]
+        preprocess: PreprocessParams,
         process: ProcessParams,
         postprocess: PostProcessParams,
     },

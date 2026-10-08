@@ -13,14 +13,18 @@ use protobuf::Message;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    numass::protos::rsb_event, postprocess::PostProcessParams, preprocess::Preprocess,
-    process::ProcessParams, types::NumassEvents,
+    numass::protos::rsb_event,
+    postprocess::PostProcessParams,
+    preprocess::{Preprocess, PreprocessParams},
+    process::ProcessParams,
+    types::NumassEvents,
 };
 
 /// Process point from the storage.
 /// This function will load point from storage (both local and remote) and executes [extract_events](crate::process::extract_events).
 pub async fn process_point(
     filepath: &Path,
+    preprocess: &PreprocessParams,
     process: &ProcessParams,
     postprocess: Option<&PostProcessParams>,
 ) -> Option<(NumassMeta, Option<(NumassEvents, Preprocess)>)> {
@@ -34,11 +38,11 @@ pub async fn process_point(
 
             let events = if let Some(postprocess) = postprocess {
                 crate::postprocess::post_process(
-                    crate::process::extract_events(meta.clone(), point, process),
+                    crate::process::extract_events(meta.clone(), point, preprocess, process),
                     postprocess,
                 )
             } else {
-                crate::process::extract_events(meta.clone(), point, process)
+                crate::process::extract_events(meta.clone(), point, preprocess, process)
             };
 
             Some((meta.clone().unwrap(), Some(events)))
@@ -47,7 +51,7 @@ pub async fn process_point(
         #[cfg(target_arch = "wasm32")]
         {
             let amplitudes_raw = gloo::net::http::Request::post(&api_url("api/process", filepath))
-                .json(&(process, postprocess))
+                .json(&(preprocess, process, postprocess))
                 .unwrap()
                 .send()
                 .await

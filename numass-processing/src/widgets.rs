@@ -3,7 +3,11 @@
 use crate::{
     histogram::HistogramParams,
     postprocess::PostProcessParams,
-    preprocess::{CHECK_BIN_SIZE, CHECK_HV_THRESHOLD, CUTOFF_BIN_SIZE},
+    preprocess::{
+        Baseline, CHECK_BIN_SIZE, CHECK_HV_THRESHOLD, CUTOFF_BIN_SIZE, FIR_CENTER, FIR_LEFT,
+        FIR_RIGHT, HEAD_BINS, POINT_BASELINE_MAX, POINT_BASELINE_MIN, POINT_BASELINE_STEP,
+        PreprocessParams, PreprocessStep,
+    },
     process::{
         Algorithm, FIRSTPEAK_DEFAULT, HWResetParams, LIKHOVID_DEFAULT, LONGDIFF_DEFAULT,
         ProcessParams, TRAPEZOID_DEFAULT,
@@ -19,9 +23,9 @@ impl UserInput for HistogramParams {
     fn input(&self, ui: &mut egui::Ui, _: &egui::Context) -> Self {
         ui.label("Histogram params");
         let mut min = self.range.start;
-        ui.add(egui::Slider::new(&mut min, -10.0..=800.0).text("left"));
+        ui.add(egui::Slider::new(&mut min, -200.0..=800.0).text("left"));
         let mut max = self.range.end;
-        ui.add(egui::Slider::new(&mut max, -10.0..=800.0).text("right"));
+        ui.add(egui::Slider::new(&mut max, -200.0..=800.0).text("right"));
         let mut bins = self.bins;
         ui.add(egui::Slider::new(&mut bins, 10..=2000).text("bins"));
 
@@ -29,6 +33,90 @@ impl UserInput for HistogramParams {
             range: min..max,
             bins,
         }
+    }
+}
+
+impl UserInput for PreprocessParams {
+    fn input(&self, ui: &mut egui::Ui, _: &egui::Context) -> Self {
+        ui.label("Preprocess");
+        let mut steps = self.steps.clone();
+        let mut remove = None;
+
+        for (idx, step) in steps.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                if ui.button("x").clicked() {
+                    remove = Some(idx);
+                }
+                ui.label(match &*step {
+                    PreprocessStep::Fir { .. } => "FIR",
+                    PreprocessStep::Baseline(Baseline::Constant(_)) => "baseline const",
+                    PreprocessStep::Baseline(Baseline::Head { .. }) => "baseline head",
+                    PreprocessStep::Baseline(Baseline::Point { .. }) => "baseline point",
+                    PreprocessStep::Invert => "invert",
+                });
+            });
+            match step {
+                PreprocessStep::Fir {
+                    left,
+                    center,
+                    right,
+                } => {
+                    ui.add(egui::Slider::new(left, 0..=32).text("left"));
+                    ui.add(egui::Slider::new(center, 0..=32).text("center"));
+                    ui.add(egui::Slider::new(right, 0..=32).text("right"));
+                }
+                PreprocessStep::Baseline(Baseline::Constant(values)) => {
+                    for (channel, value) in values.iter_mut().enumerate() {
+                        ui.add(
+                            egui::Slider::new(value, -500.0..=2000.0)
+                                .text(format!("ch{}", channel + 1)),
+                        );
+                    }
+                }
+                PreprocessStep::Baseline(Baseline::Head { bins }) => {
+                    ui.add(egui::Slider::new(bins, 1..=200).text("bins"));
+                }
+                PreprocessStep::Baseline(Baseline::Point { min, max, step }) => {
+                    ui.add(egui::Slider::new(min, -200.0..=800.0).text("min"));
+                    ui.add(egui::Slider::new(max, -200.0..=800.0).text("max"));
+                    ui.add(egui::Slider::new(step, 0.05..=20.0).text("step"));
+                }
+                PreprocessStep::Invert => {}
+            }
+            ui.separator();
+        }
+
+        if let Some(idx) = remove {
+            steps.remove(idx);
+        }
+
+        ui.horizontal(|ui| {
+            if ui.button("+ FIR").clicked() {
+                steps.push(PreprocessStep::Fir {
+                    left: FIR_LEFT,
+                    center: FIR_CENTER,
+                    right: FIR_RIGHT,
+                });
+            }
+            if ui.button("+ head").clicked() {
+                steps.push(PreprocessStep::Baseline(Baseline::Head { bins: HEAD_BINS }));
+            }
+            if ui.button("+ point").clicked() {
+                steps.push(PreprocessStep::Baseline(Baseline::Point {
+                    min: POINT_BASELINE_MIN,
+                    max: POINT_BASELINE_MAX,
+                    step: POINT_BASELINE_STEP,
+                }));
+            }
+            if ui.button("+ const").clicked() {
+                steps.push(PreprocessStep::Baseline(Baseline::Constant([0.0; 7])));
+            }
+            if ui.button("+ invert").clicked() {
+                steps.push(PreprocessStep::Invert);
+            }
+        });
+
+        PreprocessParams { steps }
     }
 }
 
@@ -117,9 +205,6 @@ impl UserInput for ProcessParams {
                 Algorithm::FirstPeak { threshold, left }
             }
             Algorithm::Trapezoid {
-                left,
-                center,
-                right,
                 treshold,
                 min_length,
                 skip,
@@ -130,17 +215,6 @@ impl UserInput for ProcessParams {
                         size: r_size,
                     },
             } => {
-                ui.label("sliding window");
-
-                let mut left = left;
-                ui.add(egui::Slider::new(&mut left, 0..=32).text("left"));
-
-                let mut center = center;
-                ui.add(egui::Slider::new(&mut center, 0..=32).text("center"));
-
-                let mut right = right;
-                ui.add(egui::Slider::new(&mut right, 0..=32).text("right"));
-
                 ui.label("extraction");
 
                 let mut treshold = treshold;
@@ -169,9 +243,6 @@ impl UserInput for ProcessParams {
                 });
 
                 Algorithm::Trapezoid {
-                    left,
-                    center,
-                    right,
                     treshold,
                     min_length,
                     skip,

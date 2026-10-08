@@ -1,5 +1,5 @@
 //! # Processing
-//! This module contains preprocessing calclulations per point.
+//! This module contains preprocessing calculations per point.
 //!
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -13,9 +13,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     histogram::PointHistogram,
-    process::Algorithm,
-    types::{NumassWaveforms, NumassWaveformsFast},
+    types::{NumassFrameFast, NumassWaveforms, NumassWaveformsFast},
     utils::correct_frame_time,
+};
+
+#[cfg(feature = "egui")]
+use {
+    crate::{types::ProcessedWaveform, utils::color_for_index},
+    egui_plot::{Line, LineStyle, PlotUi},
 };
 
 /// Размер блока, который будет вырезан, если в нем обнаружены проблемы (в нс)
@@ -27,12 +32,18 @@ pub const CHECK_BIN_SIZE: u64 = 10_000_000;
 /// Порог по HV для проверки точки (точки с HV выше не будут проверяться)
 pub const CHECK_HV_THRESHOLD: f32 = 16e3;
 
-/// Неизменяемые параметры, необходимые для обработки кадра
-/// могут либо задаваться статично, либо на каждую точку
+pub const FIR_LEFT: u16 = 6;
+pub const FIR_CENTER: u16 = 15;
+pub const FIR_RIGHT: u16 = 6;
+pub const HEAD_BINS: u16 = 30;
+pub const POINT_BASELINE_MIN: f32 = 2.0;
+pub const POINT_BASELINE_MAX: f32 = 120.0;
+pub const POINT_BASELINE_STEP: f32 = 0.5;
+
+/// Неизменяемые параметры точки. Считаются один раз и пробрасываются дальше.
+/// Базовая линия сюда не входит: она шаг предобработки кадра.
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Preprocess {
-    pub baseline: Option<[f32; 7]>, // TODO: make more versatile
-
     /// предполагаемая HV точки
     pub hv: f32,
 
@@ -51,11 +62,8 @@ pub struct Preprocess {
 }
 
 impl Preprocess {
-    pub fn from_point(
-        meta: Option<NumassMeta>,
-        point: &rsb_event::Point,
-        algo: &Algorithm,
-    ) -> Self {
+    /// Извлекает параметры точки из метаданных и кадра.
+    pub fn from_point(meta: Option<NumassMeta>, point: &rsb_event::Point) -> Self {
         let (acquisition_time, start_time) = if let Some(NumassMeta::Reply(Reply::AcquirePoint {
             acquisition_time,
             start_time,
@@ -125,17 +133,7 @@ impl Preprocess {
             / 2)
             * 8) as u64;
 
-        let baseline = match &algo {
-            Algorithm::Trapezoid { .. } => Some(baseline_from_point(point, algo)),
-            Algorithm::Max => None,
-            Algorithm::FirstPeak { .. } => None,
-            Algorithm::Likhovid { .. } => None,
-            Algorithm::LongDiff { .. } => None,
-            Algorithm::Average => None,
-        };
-
         Self {
-            baseline,
             acquisition_time,
             start_time,
             frame_len,
@@ -143,6 +141,7 @@ impl Preprocess {
             bad_blocks,
         }
     }
+
     /// calculate effective time of acquisition after removing bad blocks (in nanoseconds)
     /// `acquisition_time - bad_blocks_count as u64 * CUTOFF_BIN_SIZE`
     pub fn effective_time(&self) -> u64 {
@@ -151,46 +150,250 @@ impl Preprocess {
     }
 }
 
-pub fn emulate_fir(waveform: &[i16], right: usize, center: usize, left: usize) -> Vec<f32> {
-    waveform
-        .windows(left + center + right)
-        .map(|window| {
-            (window[left + center..]
-                .iter()
-                .map(|val| *val as i32)
-                .sum::<i32>()
-                - window[..left].iter().map(|val| *val as i32).sum::<i32>()) as f32
-                / (left + right) as f32
-        })
-        .collect::<Vec<_>>()
+/// Оценка базовой линии, которую вычитают из кадра.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum Baseline {
+    /// Константа на канал, задаёт пользователь. Индекс — номер канала.
+    Constant([f32; 7]),
+    /// Среднее первых `bins` отсчётов этого кадра. Короткий кадр берётся целиком.
+    Head { bins: u16 },
+    /// Пик гистограммы по всем отсчётам канала на уже обработанных кадрах точки.
+    Point { min: f32, max: f32, step: f32 },
 }
 
-/// convert point to amplitudes histogram
-/// used in [baseline_from_point]
-/// extracted into single function for easier testing
-pub fn point_to_amp_hist(point: &rsb_event::Point, algo: &Algorithm) -> PointHistogram {
-    let (left, center, right) = match algo {
-        Algorithm::Trapezoid {
-            left,
-            center,
-            right,
-            ..
-        } => (*left as usize, *center as usize, *right as usize),
-        _ => panic!("not implemented"),
-    };
+/// Один шаг предобработки. Список выполняется по порядку, каждый шаг — один проход.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum PreprocessStep {
+    Fir { left: u16, center: u16, right: u16 },
+    Baseline(Baseline),
+    Invert,
+}
 
-    let waveforms = extract_waveforms(point);
+/// Упорядоченный список шагов waveform → waveform.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PreprocessParams {
+    pub steps: Vec<PreprocessStep>,
+}
 
-    let mut amps = PointHistogram::new_step(2.0..120.0, 0.5);
+impl Default for PreprocessParams {
+    /// Цепочка новой версии. От алгоритма process не зависит.
+    fn default() -> Self {
+        Self::trapezoid()
+    }
+}
 
-    for (_, frames) in waveforms {
-        for (channel, waveform) in frames {
-            let filtered = emulate_fir(waveform, right, center, left);
-            amps.add_batch(channel, filtered);
+impl PreprocessParams {
+    pub fn empty() -> Self {
+        Self { steps: Vec::new() }
+    }
+
+    /// FIR + пик по точке. Сохраняет числа прежнего Trapezoid.
+    pub fn trapezoid() -> Self {
+        Self {
+            steps: vec![Self::fir_step(), Self::point_step()],
         }
     }
 
-    amps
+    /// Только FIR, без пика по точке. Для одного живого кадра.
+    pub fn trapezoid_fir() -> Self {
+        Self {
+            steps: vec![Self::fir_step()],
+        }
+    }
+
+    /// Голова кадра + инверсия. Сохраняет числа прежнего Average.
+    pub fn average() -> Self {
+        Self {
+            steps: vec![
+                PreprocessStep::Baseline(Baseline::Head { bins: HEAD_BINS }),
+                PreprocessStep::Invert,
+            ],
+        }
+    }
+
+    fn fir_step() -> PreprocessStep {
+        PreprocessStep::Fir {
+            left: FIR_LEFT,
+            center: FIR_CENTER,
+            right: FIR_RIGHT,
+        }
+    }
+
+    fn point_step() -> PreprocessStep {
+        PreprocessStep::Baseline(Baseline::Point {
+            min: POINT_BASELINE_MIN,
+            max: POINT_BASELINE_MAX,
+            step: POINT_BASELINE_STEP,
+        })
+    }
+}
+
+/// Канал после предобработки.
+///
+/// `delay` — сдвиг индекса относительно сырого кадра. FIR записывает сюда
+/// `left + center + right`, как прежний `offset`.
+#[derive(Clone, Debug)]
+pub struct ChannelSamples {
+    pub samples: Vec<f32>,
+    pub delay: usize,
+}
+
+pub type ProcessedFrame = BTreeMap<u8, ChannelSamples>;
+pub type ProcessedPoint = BTreeMap<u64, ProcessedFrame>;
+
+/// Материализует сырые кадры в `f32` и проводит каждый шаг ровно один раз.
+pub fn apply_waveforms(
+    waveforms: &NumassWaveformsFast<'_>,
+    steps: &[PreprocessStep],
+) -> ProcessedPoint {
+    let mut buffers = waveforms
+        .iter()
+        .map(|(time, frame)| (*time, materialize(frame)))
+        .collect::<ProcessedPoint>();
+    apply_steps(&mut buffers, steps);
+    buffers
+}
+
+/// Та же цепочка на одном кадре. `Baseline::Point` видит только этот кадр.
+pub fn apply_frame(frame: &NumassFrameFast<'_>, steps: &[PreprocessStep]) -> ProcessedFrame {
+    let mut buffers = BTreeMap::from([(0, materialize(frame))]);
+    apply_steps(&mut buffers, steps);
+    buffers.remove(&0).unwrap()
+}
+
+fn materialize(frame: &NumassFrameFast<'_>) -> ProcessedFrame {
+    frame
+        .iter()
+        .map(|(channel, waveform)| {
+            (
+                *channel,
+                ChannelSamples {
+                    samples: waveform.iter().map(|sample| *sample as f32).collect(),
+                    delay: 0,
+                },
+            )
+        })
+        .collect()
+}
+
+fn apply_steps(buffers: &mut ProcessedPoint, steps: &[PreprocessStep]) {
+    for step in steps {
+        apply_step(buffers, step);
+    }
+}
+
+fn apply_step(buffers: &mut ProcessedPoint, step: &PreprocessStep) {
+    match step {
+        PreprocessStep::Fir {
+            left,
+            center,
+            right,
+        } => {
+            for frame in buffers.values_mut() {
+                for channel in frame.values_mut() {
+                    apply_fir(channel, *left as usize, *center as usize, *right as usize);
+                }
+            }
+        }
+        PreprocessStep::Baseline(Baseline::Constant(values)) => {
+            for frame in buffers.values_mut() {
+                for (channel, samples) in frame {
+                    let baseline = values.get(*channel as usize).copied().unwrap_or(0.0);
+                    for sample in &mut samples.samples {
+                        *sample -= baseline;
+                    }
+                }
+            }
+        }
+        PreprocessStep::Baseline(Baseline::Head { bins }) => {
+            let bins = *bins as usize;
+            for frame in buffers.values_mut() {
+                for channel in frame.values_mut() {
+                    let count = bins.min(channel.samples.len());
+                    if count == 0 {
+                        continue;
+                    }
+                    let mean = channel.samples[..count].iter().sum::<f32>() / count as f32;
+                    for sample in &mut channel.samples {
+                        *sample -= mean;
+                    }
+                }
+            }
+        }
+        PreprocessStep::Baseline(Baseline::Point { min, max, step }) => {
+            let peaks = histogram_peaks(&samples_histogram(buffers, *min, *max, *step));
+            for frame in buffers.values_mut() {
+                for (channel, samples) in frame {
+                    let baseline = peaks.get(*channel as usize).copied().unwrap_or(0.0);
+                    for sample in &mut samples.samples {
+                        *sample -= baseline;
+                    }
+                }
+            }
+        }
+        PreprocessStep::Invert => {
+            for frame in buffers.values_mut() {
+                for channel in frame.values_mut() {
+                    for sample in &mut channel.samples {
+                        *sample = -*sample;
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn apply_fir(channel: &mut ChannelSamples, left: usize, center: usize, right: usize) {
+    let width = left + center + right;
+    if width == 0 {
+        return;
+    }
+    channel.samples = emulate_fir(&channel.samples, right, center, left);
+    channel.delay += width;
+}
+
+pub fn emulate_fir(waveform: &[f32], right: usize, center: usize, left: usize) -> Vec<f32> {
+    let width = left + center + right;
+    if width == 0 {
+        return Vec::new();
+    }
+    waveform
+        .windows(width)
+        .map(|window| {
+            let right_sum: f32 = window[left + center..].iter().copied().sum();
+            let left_sum: f32 = window[..left].iter().copied().sum();
+            (right_sum - left_sum) / (left + right) as f32
+        })
+        .collect()
+}
+
+/// Гистограмма всех отсчётов уже материализованных кадров.
+pub fn samples_histogram(frames: &ProcessedPoint, min: f32, max: f32, step: f32) -> PointHistogram {
+    let mut histogram = PointHistogram::new_step(min..max, step);
+    for frame in frames.values() {
+        for (channel, samples) in frame {
+            histogram.add_batch(*channel, samples.samples.clone());
+        }
+    }
+    histogram
+}
+
+/// Пик гистограммы по каналам 0..6. Пустой канал остаётся 0.
+pub fn histogram_peaks(histogram: &PointHistogram) -> [f32; 7] {
+    let mut peaks = [0.0; 7];
+    for (channel, counts) in &histogram.channels {
+        if *channel >= 7 {
+            continue;
+        }
+        let mut max_idx = 0;
+        for (idx, count) in counts.iter().enumerate() {
+            if *count > counts[max_idx] {
+                max_idx = idx;
+            }
+        }
+        peaks[*channel as usize] = histogram.x[max_idx];
+    }
+    peaks
 }
 
 pub fn frame_to_waveform(frame: &Frame) -> &[i16] {
@@ -229,24 +432,132 @@ pub fn waveforms_fast_copy(waveforms: NumassWaveformsFast) -> NumassWaveforms {
         .collect::<BTreeMap<_, _>>()
 }
 
-/// extact baseline for channels from point
-/// each channel is converted to amplitude histogramm
-/// and then baseline is calculated as histogramm peak
-fn baseline_from_point(point: &rsb_event::Point, algo: &Algorithm) -> [f32; 7] {
-    let mut baselines = [0.0; 7];
+#[cfg(feature = "egui")]
+pub fn draw_raw_frame(frame: &NumassFrameFast<'_>, ui: &mut PlotUi) {
+    use crate::utils::EguiLine;
 
-    let amps = point_to_amp_hist(point, algo);
+    for (channel, waveform) in frame {
+        ProcessedWaveform::from(*waveform).draw_egui(
+            ui,
+            Some(&format!("ch# {}", channel + 1)),
+            Some(color_for_index(*channel as usize)),
+            Some(1.0),
+            Some(0),
+        );
+    }
+}
 
-    for (ch, hist) in amps.channels {
-        let mut max_idx = 0;
-        for (idx, amp) in hist.iter().enumerate() {
-            if *amp > hist[max_idx] {
-                max_idx = idx;
-            }
-        }
+#[cfg(feature = "egui")]
+pub fn draw_processed_frame(frame: &ProcessedFrame, ui: &mut PlotUi) {
+    for (channel, samples) in frame {
+        let points = samples
+            .samples
+            .iter()
+            .enumerate()
+            .map(|(idx, amplitude)| [(idx + samples.delay) as f64, *amplitude as f64])
+            .collect::<Vec<_>>();
+        ui.line(
+            Line::new(format!("pre ch# {}", channel + 1), points)
+                .color(color_for_index(*channel as usize))
+                .style(LineStyle::Dashed { length: 10.0 }),
+        );
+    }
+}
 
-        baselines[ch as usize] = amps.x[max_idx];
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn one_frame(waveform: &[i16]) -> (NumassWaveformsFast<'_>, ProcessedFrame) {
+        let frame = BTreeMap::from([(0u8, waveform)]);
+        let waveforms = BTreeMap::from([(0u64, frame.clone())]);
+        let processed = apply_waveforms(&waveforms, &PreprocessParams::average().steps);
+        (waveforms, processed.into_iter().next().unwrap().1)
     }
 
-    baselines
+    #[test]
+    fn head_then_invert_compensates_negative_pulse() {
+        let mut waveform = vec![100i16; 30];
+        waveform.extend([80i16; 10]);
+        let (_, processed) = one_frame(&waveform);
+        let samples = &processed[&0].samples;
+
+        assert!(samples[..30].iter().all(|value| value.abs() < 1e-4));
+        assert!(
+            samples[30..]
+                .iter()
+                .all(|value| (*value - 20.0).abs() < 1e-4)
+        );
+        assert_eq!(samples.iter().sum::<f32>() / samples.len() as f32, 5.0);
+    }
+
+    #[test]
+    fn short_frame_head_uses_every_bin() {
+        let waveform = [2i16, 4, 6, 8];
+        let (_, processed) = one_frame(&waveform);
+        let mean = processed[&0].samples.iter().sum::<f32>() / 4.0;
+        assert!(mean.abs() < 1e-4);
+    }
+
+    #[test]
+    fn point_peak_does_not_need_an_algorithm() {
+        let waveform = vec![10i16; 20];
+        let frame = BTreeMap::from([(0u8, waveform.as_slice())]);
+        let waveforms = BTreeMap::from([(0u64, frame)]);
+        let steps = [PreprocessStep::Baseline(Baseline::Point {
+            min: POINT_BASELINE_MIN,
+            max: POINT_BASELINE_MAX,
+            step: POINT_BASELINE_STEP,
+        })];
+        let processed = apply_waveforms(&waveforms, &steps);
+        // бин (10 - 2) / 0.5 = 16, центр бина 10.25
+        let expected = 10.0 - 10.25;
+        assert!(
+            processed[&0][&0]
+                .samples
+                .iter()
+                .all(|value| (*value - expected).abs() < 1e-3)
+        );
+    }
+
+    #[test]
+    fn fir_runs_once_and_point_sees_filtered_samples() {
+        let waveform: Vec<i16> = (0..30).map(|idx| (idx * 40) as i16).collect();
+        let frame = BTreeMap::from([(0u8, waveform.as_slice())]);
+        let waveforms = BTreeMap::from([(1u64, frame)]);
+        let steps = [
+            PreprocessStep::Fir {
+                left: 1,
+                center: 0,
+                right: 1,
+            },
+            PreprocessStep::Baseline(Baseline::Point {
+                min: POINT_BASELINE_MIN,
+                max: POINT_BASELINE_MAX,
+                step: POINT_BASELINE_STEP,
+            }),
+        ];
+
+        let processed = apply_waveforms(&waveforms, &steps);
+        let channel = &processed[&1][&0];
+        let once = emulate_fir(
+            &waveform
+                .iter()
+                .map(|value| *value as f32)
+                .collect::<Vec<_>>(),
+            1,
+            0,
+            1,
+        );
+
+        assert_eq!(channel.delay, 2);
+        assert_eq!(channel.samples.len(), once.len());
+        assert!(once.iter().all(|value| (*value - 20.0).abs() < 1e-4));
+        assert!(
+            channel
+                .samples
+                .iter()
+                .all(|value| (*value - (20.0 - 20.25)).abs() < 1e-3)
+        );
+    }
 }

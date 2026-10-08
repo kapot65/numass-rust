@@ -4,8 +4,6 @@
 //! see [params](crate::postprocess::PostProcessParams) for details.
 //!
 
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -58,7 +56,7 @@ impl From<[bool; 7]> for ChannelIgnore {
 /// Postprocessing params.
 #[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub struct PostProcessParams {
-    /// remove events inside [bad_blocks](crate::preprocess::PreprocessParams::bad_blocks) timestamps
+    /// remove events inside [bad_blocks](crate::preprocess::Preprocess::bad_blocks) timestamps
     pub cut_bad_blocks: bool,
     pub merge_frames: Option<u16>,
     pub merge_splits_first: bool,
@@ -135,9 +133,6 @@ fn merge_close_frames(
 }
 
 /// Built-in postprocessing algorithm.
-/// > [!NOTE]
-/// > For now cut_bad_blocks works only with `merge_close_events` set to true.
-/// > TODO: fix it.
 pub fn post_process(
     process_result: (NumassEvents, Preprocess),
     params: &PostProcessParams,
@@ -148,44 +143,29 @@ pub fn post_process(
         amplitudes = merge_close_frames(amplitudes, frame_len, &preprocess_params);
     }
 
-    if !params.merge_close_events {
-        let mut amplitudes = amplitudes;
-        ignore_channels(&params.ignore_channels.into(), &mut amplitudes);
-        return (amplitudes, preprocess_params);
+    if params.cut_bad_blocks {
+        amplitudes.retain(|timestamp, _| {
+            let curr_block = (*timestamp / CUTOFF_BIN_SIZE) as usize;
+            !preprocess_params.bad_blocks.contains(&curr_block)
+        });
     }
 
-    // TODO: think about code deduplication
-    let mut amplitudes = if params.cut_bad_blocks {
-        amplitudes
-            .into_iter()
-            .filter(|(timestamp, _)| {
-                let curr_block = (timestamp / CUTOFF_BIN_SIZE) as usize;
-                !preprocess_params.bad_blocks.contains(&curr_block)
-            })
-            .map(|(time, events)| {
-                let events_postprocessed = post_process_frame(
-                    events,
-                    params,
-                    #[cfg(feature = "egui")]
-                    None,
-                );
-                (time, events_postprocessed)
-            })
-            .collect::<BTreeMap<_, _>>()
-    } else {
-        amplitudes
+    if params.merge_close_events {
+        amplitudes = amplitudes
             .into_iter()
             .map(|(time, events)| {
-                let events_postprocessed = post_process_frame(
-                    events,
-                    params,
-                    #[cfg(feature = "egui")]
-                    None,
-                );
-                (time, events_postprocessed)
+                (
+                    time,
+                    post_process_frame(
+                        events,
+                        params,
+                        #[cfg(feature = "egui")]
+                        None,
+                    ),
+                )
             })
-            .collect::<BTreeMap<_, _>>()
-    };
+            .collect();
+    }
 
     ignore_channels(&params.ignore_channels.into(), &mut amplitudes);
 
@@ -331,6 +311,8 @@ pub fn post_process_frame(
     #[cfg(feature = "egui")] mut ui: Option<&mut PlotUi>,
 ) -> Vec<NumassEvent> {
     if !params.merge_close_events {
+        #[cfg(feature = "egui")]
+        draw_postprocess_events(&events, &mut ui);
         return events;
     }
 
@@ -389,7 +371,7 @@ pub fn post_process_frame(
     }
 
     #[cfg(feature = "egui")]
-    if let Some(ui) = ui {
+    if let Some(ui) = ui.as_mut() {
         // draw merged points first
         let merged_idxs = merges.iter().map(|(idx, _)| *idx).collect::<HashSet<_>>();
         for idx in merged_idxs {
@@ -429,5 +411,32 @@ pub fn post_process_frame(
         }
     }
 
+    #[cfg(feature = "egui")]
+    draw_postprocess_events(&events, &mut ui);
+
     events
+}
+
+#[cfg(feature = "egui")]
+fn draw_postprocess_events(events: &[NumassEvent], ui: &mut Option<&mut PlotUi>) {
+    let Some(ui) = ui.as_mut() else {
+        return;
+    };
+    for (idx, (pos, event)) in events.iter().enumerate() {
+        if let FrameEvent::Event {
+            channel, amplitude, ..
+        } = event
+        {
+            ui.points(
+                Points::new(
+                    format!("post#{idx} ch# {}", channel + 1),
+                    vec![[*pos as f64 / 8.0, *amplitude as f64]],
+                )
+                .color(color_for_index(*channel as usize))
+                .shape(MarkerShape::Square)
+                .filled(true)
+                .radius(6.0_f32),
+            );
+        }
+    }
 }
