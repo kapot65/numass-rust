@@ -16,6 +16,37 @@ pub mod filtered_viewer;
 pub mod point_viewer;
 pub mod trigger_viewer;
 
+/// Program version, taken from the crate metadata at build time.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// `true` when the program was built from a working tree that had uncommitted
+/// changes to tracked files.
+pub fn is_dirty() -> bool {
+    matches!(option_env!("GIT_DIRTY"), Some("1"))
+}
+
+/// Draws a small, left-aligned label with the program version under a plot.
+/// When the build came from a dirty working tree, an additional marker is
+/// shown; hovering the version reveals the exact commit (`git describe`).
+pub fn version_label(ui: &mut egui::Ui) {
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(format!("v{VERSION}")).small().weak())
+            .on_hover_text(format!(
+                "git: {}",
+                option_env!("GIT_DESCRIBE").unwrap_or("unknown")
+            ));
+
+        if is_dirty() {
+            ui.label(
+                egui::RichText::new("uncommitted changes")
+                    .small()
+                    .color(egui::Color32::from_rgb(220, 160, 0)),
+            )
+            .on_hover_text("the working tree had uncommitted changes when this version was built");
+        }
+    });
+}
+
 /// Increment processed files counter and reset it if it is finished.
 pub fn inc_status(status: Arc<Mutex<ProcessingStatus>>) {
     let mut status = status.lock();

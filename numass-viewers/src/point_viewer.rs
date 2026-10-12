@@ -107,6 +107,10 @@ impl eframe::App for PointViewer {
                         }
                     });
 
+                    egui::TopBottomPanel::bottom("version").show(ctx, |ui| {
+                        crate::version_label(ui);
+                    });
+
                     egui::CentralPanel::default().show(ctx, |ui| {
                         #[cfg(not(target_arch = "wasm32"))]
                         let width = {

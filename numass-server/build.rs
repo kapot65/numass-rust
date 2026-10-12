@@ -125,6 +125,7 @@ fn workspace_root(manifest_dir: &Path) -> PathBuf {
 fn declare_reruns(paths: &Paths) {
     let watch = [
         paths.viewers_dir.join("src"),
+        paths.viewers_dir.join("build.rs"),
         paths.viewers_dir.join("index.html"),
         paths.viewers_dir.join("Trunk.toml"),
         paths.viewers_dir.join("Cargo.toml"),
@@ -142,7 +143,32 @@ fn declare_reruns(paths: &Paths) {
     for path in &watch {
         println!("cargo:rerun-if-changed={}", path.display());
     }
+    // Состояние git меняет метку версии во wasm (`GIT_DIRTY`), но не трогает
+    // исходники. Без этого trunk не перезапускается, и вшитый wasm остаётся
+    // со старым dirty после коммита.
+    watch_git_state();
     println!("cargo:rerun-if-env-changed=NUMASS_SKIP_VIEWER_BUILD");
+}
+
+fn watch_git_state() {
+    let Ok(output) = Command::new("git")
+        .args(["rev-parse", "--absolute-git-dir"])
+        .output()
+    else {
+        return;
+    };
+    if !output.status.success() {
+        return;
+    }
+    let Ok(git_dir) = String::from_utf8(output.stdout) else {
+        return;
+    };
+    let git_dir = git_dir.trim();
+    if git_dir.is_empty() {
+        return;
+    }
+    println!("cargo:rerun-if-changed={git_dir}/HEAD");
+    println!("cargo:rerun-if-changed={git_dir}/index");
 }
 
 enum TrunkRun {

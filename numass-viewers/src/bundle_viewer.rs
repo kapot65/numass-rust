@@ -163,6 +163,10 @@ impl eframe::App for BundleViewer {
         }
 
         eframe::egui::SidePanel::left("parameters").show(ctx, |ui| {
+            eframe::egui::TopBottomPanel::bottom("version").show_inside(ui, |ui| {
+                crate::version_label(ui);
+            });
+
             self.preprocess = self.preprocess.input(ui, ctx);
 
             ui.separator();

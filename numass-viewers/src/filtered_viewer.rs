@@ -172,6 +172,10 @@ impl eframe::App for FilteredViewer<'_> {
         });
 
         eframe::egui::SidePanel::left("parameters").show(ctx, |ui| {
+            eframe::egui::TopBottomPanel::bottom("version").show_inside(ui, |ui| {
+                crate::version_label(ui);
+            });
+
             self.preprocess_params = self.preprocess_params.input(ui, ctx);
 
             ui.separator();

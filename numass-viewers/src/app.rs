@@ -800,6 +800,10 @@ impl eframe::App for DataViewerApp {
         ctx.request_repaint_after(std::time::Duration::from_secs(1));
 
         egui::SidePanel::left("left").show(ctx, |ui| {
+            egui::TopBottomPanel::bottom("version").show_inside(ui, |ui| {
+                crate::version_label(ui);
+            });
+
             self.params_editor(ui, ctx);
 
             ui.separator();

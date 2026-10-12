@@ -444,6 +444,10 @@ impl eframe::App for FaradeyViewerApp {
         ctx.request_repaint_after(std::time::Duration::from_secs(1));
 
         egui::SidePanel::left("left").show(ctx, |ui| {
+            egui::TopBottomPanel::bottom("version").show_inside(ui, |ui| {
+                numass_viewers::version_label(ui);
+            });
+
             ui.separator();
 
             self.files_editor(ui);

@@ -112,6 +112,10 @@ impl eframe::App for TriggerViewer {
         ctx.set_visuals(Visuals::dark());
 
         egui::SidePanel::left("left").show(ctx, |ui| {
+            egui::TopBottomPanel::bottom("version").show_inside(ui, |ui| {
+                crate::version_label(ui);
+            });
+
             ui.add(egui::Slider::new(&mut self.bin_size, 1..=1_000).text("bin size (ms)"));
             ui.checkbox(&mut self.per_channel, "show each channel");
             if ui.button("apply").clicked() {
