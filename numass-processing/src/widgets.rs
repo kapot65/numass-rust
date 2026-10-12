@@ -19,101 +19,159 @@ pub trait UserInput {
     fn input(&self, ui: &mut egui::Ui, ctx: &egui::Context) -> Self;
 }
 
+/// Collapsible section.
+///
+/// `body` runs only while the section is open, including the opening animation.
+/// Widgets that edit state belong in `body`: a closed section leaves that state unchanged.
+/// `header_extra` is always visible, on the same row as the title.
+fn collapsing<R>(
+    ui: &mut egui::Ui,
+    id: impl std::hash::Hash,
+    title: &str,
+    default_open: bool,
+    header_extra: impl FnOnce(&mut egui::Ui) -> R,
+    body: impl FnOnce(&mut egui::Ui),
+) -> R {
+    let id = ui.make_persistent_id(id);
+    let mut toggle_label = false;
+    let mut header = egui::collapsing_header::CollapsingState::load_with_default_open(
+        ui.ctx(),
+        id,
+        default_open,
+    )
+    .show_header(ui, |ui| {
+        let extra = header_extra(ui);
+        if ui
+            .add(egui::Label::new(title).sense(egui::Sense::click()))
+            .clicked()
+        {
+            toggle_label = true;
+        }
+        extra
+    });
+    if toggle_label {
+        header.toggle();
+    }
+    let (_, extra, _) = header.body(body);
+    extra.inner
+}
+
+fn block(ui: &mut egui::Ui, title: &str, body: impl FnOnce(&mut egui::Ui)) {
+    collapsing(ui, title, title, true, |_| {}, body);
+}
+
+fn block_closed(ui: &mut egui::Ui, title: &str, body: impl FnOnce(&mut egui::Ui)) {
+    collapsing(ui, title, title, false, |_| {}, body);
+}
+
+fn step_title(step: &PreprocessStep) -> &'static str {
+    match step {
+        PreprocessStep::Fir { .. } => "FIR",
+        PreprocessStep::Baseline(Baseline::Constant(_)) => "baseline const",
+        PreprocessStep::Baseline(Baseline::Head { .. }) => "baseline head",
+        PreprocessStep::Baseline(Baseline::Point { .. }) => "baseline point",
+        PreprocessStep::Invert => "invert",
+    }
+}
+
+fn hw_reset_block(ui: &mut egui::Ui, reset: &mut HWResetParams) {
+    block(ui, "hw reset detection", |ui| {
+        ui.add(egui::Slider::new(&mut reset.window, 0..=100).text("diff window"));
+        ui.add(egui::Slider::new(&mut reset.treshold, 0..=2000).text("diff treshold"));
+        ui.add(egui::Slider::new(&mut reset.size, 0..=500).text("reset size"));
+    });
+}
+
 impl UserInput for HistogramParams {
     fn input(&self, ui: &mut egui::Ui, _: &egui::Context) -> Self {
-        ui.label("Histogram params");
-        let mut min = self.range.start;
-        ui.add(egui::Slider::new(&mut min, -200.0..=800.0).text("left"));
-        let mut max = self.range.end;
-        ui.add(egui::Slider::new(&mut max, -200.0..=800.0).text("right"));
-        let mut bins = self.bins;
-        ui.add(egui::Slider::new(&mut bins, 10..=2000).text("bins"));
-
-        HistogramParams {
-            range: min..max,
-            bins,
-        }
+        let mut params = self.clone();
+        block(ui, "Histogram params", |ui| {
+            ui.add(egui::Slider::new(&mut params.range.start, -200.0..=800.0).text("left"));
+            ui.add(egui::Slider::new(&mut params.range.end, -200.0..=800.0).text("right"));
+            ui.add(egui::Slider::new(&mut params.bins, 10..=2000).text("bins"));
+        });
+        params
     }
 }
 
 impl UserInput for PreprocessParams {
     fn input(&self, ui: &mut egui::Ui, _: &egui::Context) -> Self {
-        ui.label("Preprocess");
         let mut steps = self.steps.clone();
-        let mut remove = None;
 
-        for (idx, step) in steps.iter_mut().enumerate() {
-            ui.horizontal(|ui| {
-                if ui.button("x").clicked() {
+        block(ui, "Preprocess", |ui| {
+            let mut remove = None;
+
+            for (idx, step) in steps.iter_mut().enumerate() {
+                let title = step_title(step);
+                let removed = collapsing(
+                    ui,
+                    ("preprocess-step", idx),
+                    title,
+                    true,
+                    |ui| ui.button("x").clicked(),
+                    |ui| match step {
+                        PreprocessStep::Fir {
+                            left,
+                            center,
+                            right,
+                        } => {
+                            ui.add(egui::Slider::new(left, 0..=32).text("left"));
+                            ui.add(egui::Slider::new(center, 0..=32).text("center"));
+                            ui.add(egui::Slider::new(right, 0..=32).text("right"));
+                        }
+                        PreprocessStep::Baseline(Baseline::Constant(values)) => {
+                            for (channel, value) in values.iter_mut().enumerate() {
+                                ui.add(
+                                    egui::Slider::new(value, -500.0..=2000.0)
+                                        .text(format!("ch{}", channel + 1)),
+                                );
+                            }
+                        }
+                        PreprocessStep::Baseline(Baseline::Head { bins }) => {
+                            ui.add(egui::Slider::new(bins, 1..=200).text("bins"));
+                        }
+                        PreprocessStep::Baseline(Baseline::Point { min, max, step }) => {
+                            ui.add(egui::Slider::new(min, -200.0..=800.0).text("min"));
+                            ui.add(egui::Slider::new(max, -200.0..=800.0).text("max"));
+                            ui.add(egui::Slider::new(step, 0.05..=20.0).text("step"));
+                        }
+                        PreprocessStep::Invert => {}
+                    },
+                );
+                if removed {
                     remove = Some(idx);
                 }
-                ui.label(match &*step {
-                    PreprocessStep::Fir { .. } => "FIR",
-                    PreprocessStep::Baseline(Baseline::Constant(_)) => "baseline const",
-                    PreprocessStep::Baseline(Baseline::Head { .. }) => "baseline head",
-                    PreprocessStep::Baseline(Baseline::Point { .. }) => "baseline point",
-                    PreprocessStep::Invert => "invert",
-                });
+            }
+
+            if let Some(idx) = remove {
+                steps.remove(idx);
+            }
+
+            ui.horizontal(|ui| {
+                if ui.button("+ FIR").clicked() {
+                    steps.push(PreprocessStep::Fir {
+                        left: FIR_LEFT,
+                        center: FIR_CENTER,
+                        right: FIR_RIGHT,
+                    });
+                }
+                if ui.button("+ head").clicked() {
+                    steps.push(PreprocessStep::Baseline(Baseline::Head { bins: HEAD_BINS }));
+                }
+                if ui.button("+ point").clicked() {
+                    steps.push(PreprocessStep::Baseline(Baseline::Point {
+                        min: POINT_BASELINE_MIN,
+                        max: POINT_BASELINE_MAX,
+                        step: POINT_BASELINE_STEP,
+                    }));
+                }
+                if ui.button("+ const").clicked() {
+                    steps.push(PreprocessStep::Baseline(Baseline::Constant([0.0; 7])));
+                }
+                if ui.button("+ invert").clicked() {
+                    steps.push(PreprocessStep::Invert);
+                }
             });
-            match step {
-                PreprocessStep::Fir {
-                    left,
-                    center,
-                    right,
-                } => {
-                    ui.add(egui::Slider::new(left, 0..=32).text("left"));
-                    ui.add(egui::Slider::new(center, 0..=32).text("center"));
-                    ui.add(egui::Slider::new(right, 0..=32).text("right"));
-                }
-                PreprocessStep::Baseline(Baseline::Constant(values)) => {
-                    for (channel, value) in values.iter_mut().enumerate() {
-                        ui.add(
-                            egui::Slider::new(value, -500.0..=2000.0)
-                                .text(format!("ch{}", channel + 1)),
-                        );
-                    }
-                }
-                PreprocessStep::Baseline(Baseline::Head { bins }) => {
-                    ui.add(egui::Slider::new(bins, 1..=200).text("bins"));
-                }
-                PreprocessStep::Baseline(Baseline::Point { min, max, step }) => {
-                    ui.add(egui::Slider::new(min, -200.0..=800.0).text("min"));
-                    ui.add(egui::Slider::new(max, -200.0..=800.0).text("max"));
-                    ui.add(egui::Slider::new(step, 0.05..=20.0).text("step"));
-                }
-                PreprocessStep::Invert => {}
-            }
-            ui.separator();
-        }
-
-        if let Some(idx) = remove {
-            steps.remove(idx);
-        }
-
-        ui.horizontal(|ui| {
-            if ui.button("+ FIR").clicked() {
-                steps.push(PreprocessStep::Fir {
-                    left: FIR_LEFT,
-                    center: FIR_CENTER,
-                    right: FIR_RIGHT,
-                });
-            }
-            if ui.button("+ head").clicked() {
-                steps.push(PreprocessStep::Baseline(Baseline::Head { bins: HEAD_BINS }));
-            }
-            if ui.button("+ point").clicked() {
-                steps.push(PreprocessStep::Baseline(Baseline::Point {
-                    min: POINT_BASELINE_MIN,
-                    max: POINT_BASELINE_MAX,
-                    step: POINT_BASELINE_STEP,
-                }));
-            }
-            if ui.button("+ const").clicked() {
-                steps.push(PreprocessStep::Baseline(Baseline::Constant([0.0; 7])));
-            }
-            if ui.button("+ invert").clicked() {
-                steps.push(PreprocessStep::Invert);
-            }
         });
 
         PreprocessParams { steps }
@@ -123,167 +181,103 @@ impl UserInput for PreprocessParams {
 impl UserInput for ProcessParams {
     fn input(&self, ui: &mut egui::Ui, _: &egui::Context) -> Self {
         let mut algorithm = self.algorithm.to_owned();
+        let mut convert_to_kev = self.convert_to_kev;
 
-        ui.label("Processing params");
+        block(ui, "Processing params", |ui| {
+            ui.horizontal(|ui| {
+                if ui
+                    .add(egui::RadioButton::new(algorithm == Algorithm::Max, "Max"))
+                    .clicked()
+                {
+                    algorithm = Algorithm::Max
+                }
 
-        ui.horizontal(|ui| {
-            if ui
-                .add(egui::RadioButton::new(algorithm == Algorithm::Max, "Max"))
-                .clicked()
-            {
-                algorithm = Algorithm::Max
-            }
+                if ui
+                    .add(egui::RadioButton::new(
+                        matches!(algorithm, Algorithm::Likhovid { .. }),
+                        "Likhovid",
+                    ))
+                    .clicked()
+                {
+                    algorithm = LIKHOVID_DEFAULT
+                }
 
-            if ui
-                .add(egui::RadioButton::new(
-                    matches!(algorithm, Algorithm::Likhovid { .. }),
-                    "Likhovid",
-                ))
-                .clicked()
-            {
-                algorithm = LIKHOVID_DEFAULT
-            }
+                if ui
+                    .add(egui::RadioButton::new(
+                        matches!(algorithm, Algorithm::FirstPeak { .. }),
+                        "FirstPeak",
+                    ))
+                    .clicked()
+                {
+                    algorithm = FIRSTPEAK_DEFAULT
+                }
+            });
 
-            if ui
-                .add(egui::RadioButton::new(
-                    matches!(algorithm, Algorithm::FirstPeak { .. }),
-                    "FirstPeak",
-                ))
-                .clicked()
-            {
-                algorithm = FIRSTPEAK_DEFAULT
-            }
-        });
+            ui.horizontal(|ui| {
+                if ui
+                    .add(egui::RadioButton::new(
+                        matches!(algorithm, Algorithm::Trapezoid { .. }),
+                        "Trapezoid",
+                    ))
+                    .clicked()
+                {
+                    algorithm = TRAPEZOID_DEFAULT
+                }
+                if ui
+                    .add(egui::RadioButton::new(
+                        matches!(algorithm, Algorithm::LongDiff { .. }),
+                        "LongDiff",
+                    ))
+                    .clicked()
+                {
+                    algorithm = LONGDIFF_DEFAULT
+                }
+                if ui
+                    .add(egui::RadioButton::new(
+                        matches!(algorithm, Algorithm::Average),
+                        "Average",
+                    ))
+                    .clicked()
+                {
+                    algorithm = Algorithm::Average
+                }
+            });
 
-        ui.horizontal(|ui| {
-            if ui
-                .add(egui::RadioButton::new(
-                    matches!(algorithm, Algorithm::Trapezoid { .. }),
-                    "Trapezoid",
-                ))
-                .clicked()
-            {
-                algorithm = TRAPEZOID_DEFAULT
-            }
-            if ui
-                .add(egui::RadioButton::new(
-                    matches!(algorithm, Algorithm::LongDiff { .. }),
-                    "LongDiff",
-                ))
-                .clicked()
-            {
-                algorithm = LONGDIFF_DEFAULT
-            }
-            if ui
-                .add(egui::RadioButton::new(
-                    matches!(algorithm, Algorithm::Average),
-                    "Average",
-                ))
-                .clicked()
-            {
-                algorithm = Algorithm::Average
-            }
-        });
-
-        let algorithm = match algorithm {
-            Algorithm::Max => algorithm,
-            Algorithm::Average => algorithm,
-            Algorithm::Likhovid { left, right } => {
-                let mut left = left;
-                ui.add(egui::Slider::new(&mut left, 0..=30).text("left"));
-                let mut right = right;
-                ui.add(egui::Slider::new(&mut right, 0..=40).text("right"));
-
-                Algorithm::Likhovid { left, right }
-            }
-            Algorithm::FirstPeak { threshold, left } => {
-                let mut left = left;
-                ui.add(egui::Slider::new(&mut left, 0..=30).text("left"));
-
-                let mut threshold = threshold;
-                ui.add(egui::Slider::new(&mut threshold, 0..=400).text("threshold"));
-                Algorithm::FirstPeak { threshold, left }
-            }
-            Algorithm::Trapezoid {
-                treshold,
-                min_length,
-                skip,
-                reset_detection:
-                    HWResetParams {
-                        window: r_window,
-                        treshold: r_treshold,
-                        size: r_size,
-                    },
-            } => {
-                ui.label("extraction");
-
-                let mut treshold = treshold;
-                ui.add(egui::Slider::new(&mut treshold, 0..=100).text("treshold"));
-
-                let mut min_length = min_length;
-                ui.add(egui::Slider::new(&mut min_length, 0..=100).text("min length"));
-
-                ui.label("hw reset detection");
-
-                let mut r_window = r_window;
-                ui.add(egui::Slider::new(&mut r_window, 0..=100).text("diff window"));
-
-                let mut r_treshold = r_treshold;
-                ui.add(egui::Slider::new(&mut r_treshold, 0..=2000).text("diff treshold"));
-
-                let mut r_size = r_size;
-                ui.add(egui::Slider::new(&mut r_size, 0..=500).text("reset size"));
-
-                let mut skip = skip;
-                ui.horizontal(|ui| {
-                    ui.label("skip:");
-                    ui.radio_value(&mut skip, crate::process::SkipOption::None, "none");
-                    ui.radio_value(&mut skip, crate::process::SkipOption::Bad, "bad");
-                    ui.radio_value(&mut skip, crate::process::SkipOption::Good, "good");
-                });
-
+            match &mut algorithm {
+                Algorithm::Max | Algorithm::Average => {}
+                Algorithm::Likhovid { left, right } => {
+                    ui.add(egui::Slider::new(left, 0..=30).text("left"));
+                    ui.add(egui::Slider::new(right, 0..=40).text("right"));
+                }
+                Algorithm::FirstPeak { threshold, left } => {
+                    ui.add(egui::Slider::new(left, 0..=30).text("left"));
+                    ui.add(egui::Slider::new(threshold, 0..=400).text("threshold"));
+                }
                 Algorithm::Trapezoid {
                     treshold,
                     min_length,
                     skip,
-                    reset_detection: HWResetParams {
-                        window: r_window,
-                        treshold: r_treshold,
-                        size: r_size,
-                    },
+                    reset_detection,
+                } => {
+                    block(ui, "extraction", |ui| {
+                        ui.add(egui::Slider::new(treshold, 0..=100).text("treshold"));
+                        ui.add(egui::Slider::new(min_length, 0..=100).text("min length"));
+                    });
+                    hw_reset_block(ui, reset_detection);
+                    ui.horizontal(|ui| {
+                        ui.label("skip:");
+                        ui.radio_value(skip, crate::process::SkipOption::None, "none");
+                        ui.radio_value(skip, crate::process::SkipOption::Bad, "bad");
+                        ui.radio_value(skip, crate::process::SkipOption::Good, "good");
+                    });
+                }
+                Algorithm::LongDiff { reset_detection } => {
+                    hw_reset_block(ui, reset_detection);
                 }
             }
-            Algorithm::LongDiff {
-                reset_detection:
-                    HWResetParams {
-                        window,
-                        treshold,
-                        size,
-                    },
-            } => {
-                ui.label("hw reset detection");
 
-                let mut window = window;
-                ui.add(egui::Slider::new(&mut window, 0..=100).text("diff window"));
-
-                let mut treshold = treshold;
-                ui.add(egui::Slider::new(&mut treshold, 0..=2000).text("diff treshold"));
-
-                let mut size = size;
-                ui.add(egui::Slider::new(&mut size, 0..=500).text("reset size"));
-
-                Algorithm::LongDiff {
-                    reset_detection: HWResetParams {
-                        window,
-                        treshold,
-                        size,
-                    },
-                }
-            }
-        };
-
-        let mut convert_to_kev = self.convert_to_kev;
-        ui.checkbox(&mut convert_to_kev, "convert to keV");
+            ui.checkbox(&mut convert_to_kev, "convert to keV");
+        });
 
         ProcessParams {
             algorithm,
@@ -301,32 +295,35 @@ impl UserInput for PostProcessParams {
         let mut ignore_borders = self.ignore_borders;
         let mut ignore_channels: [bool; 7] = self.ignore_channels.to_owned().into();
 
-        ui.add_enabled_ui(true, |ui| {
-            ui.label("Postprocessing params");
-
-            ui.checkbox(&mut cut_bad_blocks, "cut_bad_blocks").on_hover_text(
-                format!("
+        block(ui, "Postprocessing params", |ui| {
+            ui.checkbox(&mut cut_bad_blocks, "cut_bad_blocks")
+                .on_hover_text(format!(
+                    "
                 point is splitted into {} s length blocks
                 each block is also be splitted into {} s subblock
                 the block is considered bad if any of its subblocks contains 0 events
                 the cutting applies only on points with HV < {} keV
                 ",
-                    CUTOFF_BIN_SIZE  as f32 * 1e-9,
+                    CUTOFF_BIN_SIZE as f32 * 1e-9,
                     CHECK_BIN_SIZE as f32 * 1e-9,
                     CHECK_HV_THRESHOLD * 1e-3
-                )
-            );
+                ));
 
             ui.horizontal(|ui| {
                 let mut merge_frames_checked = merge_frames.is_some();
-                if ui.checkbox(&mut merge_frames_checked, "merge frames").on_hover_text(
-                    "
+                if ui
+                    .checkbox(&mut merge_frames_checked, "merge frames")
+                    .on_hover_text(
+                        "
                     Merge events between close frames into one.
                     Loop goes from end to start merging any frame to previous one
                     if the distance between them is less than treshold.
                     This operation applies before any other postprocessing.
-                    ".to_string()
-                ).clicked(){
+                    "
+                        .to_string(),
+                    )
+                    .clicked()
+                {
                     if merge_frames_checked {
                         merge_frames = Some(5000);
                     } else {
@@ -336,7 +333,10 @@ impl UserInput for PostProcessParams {
 
                 if merge_frames_checked {
                     let mut merge_frames_value = merge_frames.unwrap();
-                    if ui.add(egui::Slider::new(&mut merge_frames_value, 1000..=65535).text("ns")).changed() {
+                    if ui
+                        .add(egui::Slider::new(&mut merge_frames_value, 1000..=65535).text("ns"))
+                        .changed()
+                    {
                         merge_frames = Some(merge_frames_value);
                     }
                 }
@@ -349,7 +349,7 @@ impl UserInput for PostProcessParams {
                     splits will be merged into one event in random order
                     (based on which one is first)
                     this will be processed before main merging
-                    "
+                    ",
                 );
             ui.checkbox(&mut merge_close_events, "merge close events")
                 .on_hover_text(
@@ -361,12 +361,15 @@ impl UserInput for PostProcessParams {
                     if idx_1 and idx_2 are neigbors => idx_1.amp += idx_2.amp and idx_2 will be removed
                     "
                 );
-            ui.checkbox(&mut ignore_borders, "ignore borders").on_hover_text("
+            ui.checkbox(&mut ignore_borders, "ignore borders")
+                .on_hover_text(
+                    "
             do not check for neigboorhooding at merging step
             with this flag every event in frame will be merged into first one
-            ");
+            ",
+                );
 
-            ui.collapsing("merge mapping", |ui| {
+            block_closed(ui, "merge mapping", |ui| {
                 let image = if ctx.style().visuals.dark_mode {
                     egui::include_image!("../resources/detector_dark.svg")
                 } else {
@@ -375,20 +378,20 @@ impl UserInput for PostProcessParams {
                 ui.image(image);
             });
 
-            ui.collapsing("ignore channels", |ui| {
+            block_closed(ui, "ignore channels", |ui| {
                 ignore_channels
-                .iter_mut()
-                .enumerate()
-                .collect::<Vec<_>>()
-                .chunks_mut(3)
-                .for_each(|chunk| {
-                    ui.horizontal(|ui| {
-                        chunk.iter_mut().for_each(|(idx, ignored)| {
-                            let idx_readable = idx.to_owned() + 1;
-                            ui.checkbox(ignored, format!("{idx_readable}"));
+                    .iter_mut()
+                    .enumerate()
+                    .collect::<Vec<_>>()
+                    .chunks_mut(3)
+                    .for_each(|chunk| {
+                        ui.horizontal(|ui| {
+                            chunk.iter_mut().for_each(|(idx, ignored)| {
+                                let idx_readable = idx.to_owned() + 1;
+                                ui.checkbox(ignored, format!("{idx_readable}"));
+                            });
                         });
                     });
-                });
             });
         });
 

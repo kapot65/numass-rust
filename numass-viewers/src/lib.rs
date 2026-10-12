@@ -6,8 +6,8 @@ use egui::mutex::Mutex;
 use numass_processing::{utils::events_to_histogram, viewer::EMPTY_POINT};
 
 use numass_processing::{
-    histogram::HistogramParams, postprocess::PostProcessParams, process::ProcessParams,
-    viewer::PointState,
+    histogram::HistogramParams, postprocess::PostProcessParams, preprocess::PreprocessParams,
+    process::ProcessParams, viewer::PointState,
 };
 
 pub mod app;
@@ -35,22 +35,34 @@ use gloo::worker::oneshot::oneshot;
 #[cfg(target_arch = "wasm32")]
 #[oneshot]
 pub async fn PointProcessor(
-    args: (PathBuf, ProcessParams, PostProcessParams, HistogramParams),
+    args: (
+        PathBuf,
+        PreprocessParams,
+        ProcessParams,
+        PostProcessParams,
+        HistogramParams,
+    ),
 ) -> Option<PointState> {
-    let (filepath, process, post_process, histogram) = args;
-    process_point(filepath, process, post_process, histogram).await
+    let (filepath, preprocess, process, post_process, histogram) = args;
+    process_point(filepath, preprocess, process, post_process, histogram).await
 }
 
 pub async fn process_point(
     filepath: PathBuf,
+    preprocess: PreprocessParams,
     process: ProcessParams,
     post_process: PostProcessParams,
     histogram: HistogramParams,
 ) -> Option<PointState> {
     let modified = numass_processing::storage::load_modified_time(filepath.clone()).await; // TODO: remove clone
 
-    let events =
-        numass_processing::storage::process_point(&filepath, &process, Some(&post_process)).await;
+    let events = numass_processing::storage::process_point(
+        &filepath,
+        &preprocess,
+        &process,
+        Some(&post_process),
+    )
+    .await;
 
     events.map(|(_, events)| {
         if let Some((events, preprocess)) = events {

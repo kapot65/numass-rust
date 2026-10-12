@@ -98,6 +98,7 @@ fn main() {
         Some(ViewerMode::FilteredEvents {
             filepath,
             range,
+            preprocess,
             process,
             postprocess,
         }) => {
@@ -105,6 +106,7 @@ fn main() {
             spawn_local(async move {
                 let app = filtered_viewer::FilteredViewer::init_with_point(
                     filepath,
+                    preprocess,
                     process,
                     postprocess,
                     range,
@@ -147,12 +149,18 @@ fn main() {
 
         Some(ViewerMode::Bundles {
             filepath,
+            preprocess,
             process,
             postprocess,
         }) => {
             set_title(filepath.to_str().unwrap());
 
-            let app = bundle_viewer::BundleViewer::init_with_point(filepath, process, postprocess);
+            let app = bundle_viewer::BundleViewer::init_with_point(
+                filepath,
+                preprocess,
+                process,
+                postprocess,
+            );
 
             spawn_local(async move {
                 web_runner

@@ -9,7 +9,8 @@ use egui::mutex::Mutex;
 use egui_plot::{Legend, Plot};
 
 use numass_processing::histogram::PointHistogram;
-use numass_processing::process::{Algorithm, ProcessParams, frame_to_events};
+use numass_processing::preprocess::{PreprocessParams, apply_frame, draw_processed_frame};
+use numass_processing::process::{Algorithm, ProcessParams, extract_frame};
 use numass_processing::types::{FrameEvent, NumassFrame, NumassFrameFast, ProcessedWaveform};
 use numass_processing::utils::{EguiLine, color_for_index};
 use numass_processing::widgets::UserInput;
@@ -67,6 +68,9 @@ fn main() {
         convert_to_kev: false,
     }));
     let process_params_ui = Arc::clone(&process_params);
+    let preprocess_initial = PreprocessParams::default();
+    let preprocess_params = Arc::new(Mutex::new(preprocess_initial.clone()));
+    let preprocess_params_ui = Arc::clone(&preprocess_params);
 
     let histogram_bg = Arc::new(Mutex::new(PointHistogram::new(
         hist_min..hist_max,
@@ -150,6 +154,7 @@ fn main() {
 
                         let count_rate_bg = Arc::clone(&count_rate_bg);
                         let process_params = Arc::clone(&process_params);
+                        let preprocess_params = Arc::clone(&preprocess_params);
                         let raw_frame_bg = Arc::clone(&raw_frame_bg);
 
                         fragments_buf = {
@@ -158,6 +163,7 @@ fn main() {
                                 let mut histogram = histogram_bg.lock();
 
                                 let algorithm = process_params.lock().algorithm.clone();
+                                let steps = preprocess_params.lock().steps.clone();
 
                                 let mut channels = None;
                                 let mut raw_frame = None;
@@ -175,8 +181,10 @@ fn main() {
                                             })
                                             .collect::<BTreeMap<_, _>>();
 
-                                        let events =
-                                            frame_to_events(&frame, &algorithm, None, &mut None);
+                                        let processed = apply_frame(&frame, &steps);
+                                        let events = extract_frame(
+                                            &processed, &frame, &algorithm, &mut None,
+                                        );
 
                                         events.into_iter().for_each(|(_, event)| {
                                             if let FrameEvent::Event {
@@ -262,6 +270,8 @@ fn main() {
                     algorithm: algorithm.clone(),
                     convert_to_kev: false,
                 },
+                preprocess_params: preprocess_params_ui,
+                preprocess_edit: preprocess_initial,
                 draw_algorithm: false,
                 params_open: true,
             }))
@@ -278,6 +288,8 @@ struct MyEguiApp {
     packet_rate: Arc<Mutex<f64>>,
     process_params: Arc<Mutex<ProcessParams>>,
     process_params_edit: ProcessParams,
+    preprocess_params: Arc<Mutex<PreprocessParams>>,
+    preprocess_edit: PreprocessParams,
     draw_algorithm: bool,
     params_open: bool,
 }
@@ -303,13 +315,17 @@ impl eframe::App for MyEguiApp {
                     });
                     ui.separator();
 
-                    let new_params = self.process_params_edit.input(ui, ctx);
-                    self.process_params_edit = new_params;
+                    self.preprocess_edit = self.preprocess_edit.input(ui, ctx);
+
+                    ui.separator();
+
+                    self.process_params_edit = self.process_params_edit.input(ui, ctx);
 
                     ui.separator();
 
                     if ui.button("apply").clicked() {
                         *self.process_params.lock() = self.process_params_edit.clone();
+                        *self.preprocess_params.lock() = self.preprocess_edit.clone();
                         self.histogram.lock().clear();
                     }
 
@@ -370,7 +386,10 @@ impl eframe::App for MyEguiApp {
                                 .map(|(ch_num, waveform)| (*ch_num, waveform.as_slice()))
                                 .collect();
                             let algorithm = self.process_params.lock().algorithm.clone();
-                            frame_to_events(&frame_fast, &algorithm, None, &mut Some(plot_ui));
+                            let steps = self.preprocess_params.lock().steps.clone();
+                            let processed = apply_frame(&frame_fast, &steps);
+                            draw_processed_frame(&processed, plot_ui);
+                            extract_frame(&processed, &frame_fast, &algorithm, &mut Some(plot_ui));
                         }
                     });
             });

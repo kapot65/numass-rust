@@ -96,6 +96,10 @@ impl DataViewerApp {
     ///
     /// Updated values will be written to [processing_params](DataViewerApp::processing_params) immediately.
     fn params_editor(&mut self, ui: &mut Ui, ctx: &egui::Context) {
+        let preprocess = self.processing_params.preprocess.input(ui, ctx);
+
+        ui.separator();
+
         let process = self.processing_params.process.input(ui, ctx);
 
         ui.separator();
@@ -108,10 +112,12 @@ impl DataViewerApp {
 
         let changed = self.processing_params.changed
             || (process != self.processing_params.process
+                || preprocess != self.processing_params.preprocess
                 || post_process != self.processing_params.post_process
                 || histogram != self.processing_params.histogram);
 
         self.processing_params = ViewerState {
+            preprocess,
             process,
             post_process,
             histogram,
@@ -724,6 +730,7 @@ impl DataViewerApp {
                 #[cfg(not(target_arch = "wasm32"))]
                 let point_state = process_point(
                     filepath.clone().into(),
+                    processing.preprocess,
                     processing.process,
                     processing.post_process,
                     processing.histogram,
@@ -733,6 +740,7 @@ impl DataViewerApp {
                 let point_state = point_processor
                     .run((
                         filepath.clone().into(),
+                        processing.preprocess,
                         processing.process,
                         processing.post_process,
                         processing.histogram,
@@ -1057,6 +1065,8 @@ impl eframe::App for DataViewerApp {
 
                         command
                             .arg(filepath)
+                            .arg("--preprocess")
+                            .arg(serde_json::to_string(&self.processing_params.preprocess).unwrap())
                             .arg("--process")
                             .arg(serde_json::to_string(&self.processing_params.process).unwrap())
                             .arg("--postprocess")
@@ -1079,6 +1089,7 @@ impl eframe::App for DataViewerApp {
                     {
                         let search = serde_qs::to_string(&ViewerMode::FilteredEvents {
                             filepath: PathBuf::from(filepath),
+                            preprocess: self.processing_params.preprocess.clone(),
                             process: self.processing_params.process.clone(),
                             postprocess: self.processing_params.post_process,
                             range: left_border.max(0.0)..right_border.max(0.0), // TODO: fix
@@ -1198,6 +1209,8 @@ impl eframe::App for DataViewerApp {
                     {
                         tokio::process::Command::new("bundle-viewer")
                             .arg(filepath)
+                            .arg("--preprocess")
+                            .arg(serde_json::to_string(&self.processing_params.preprocess).unwrap())
                             .arg("--process")
                             .arg(serde_json::to_string(&self.processing_params.process).unwrap())
                             .arg("--postprocess")
@@ -1212,6 +1225,7 @@ impl eframe::App for DataViewerApp {
                     {
                         let search = serde_qs::to_string(&ViewerMode::Bundles {
                             filepath: PathBuf::from(filepath),
+                            preprocess: self.processing_params.preprocess.clone(),
                             process: self.processing_params.process.clone(),
                             postprocess: self.processing_params.post_process,
                         })

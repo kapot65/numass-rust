@@ -5,6 +5,7 @@ use egui_plot::{Legend, Points};
 use numass_processing::{
     numass::{NumassMeta, protos::rsb_event},
     postprocess::{PostProcessParams, post_process},
+    preprocess::PreprocessParams,
     process::{ProcessParams, extract_events},
     storage::{load_meta, load_point},
     types::FrameEvent,
@@ -24,6 +25,7 @@ pub struct BundleViewer {
     point: Arc<Mutex<Option<rsb_event::Point>>>, // TODO: redownload point instead of storing?
     meta: Arc<Mutex<Option<NumassMeta>>>,        // TODO: redownload meta instead of storing?
 
+    preprocess: PreprocessParams,
     process: ProcessParams,
     post_process: PostProcessParams,
     limit_ms: u64,
@@ -35,11 +37,15 @@ pub struct BundleViewer {
 fn point_to_chunks(
     meta: Option<NumassMeta>,
     point: rsb_event::Point,
+    preprocess: PreprocessParams,
     process: ProcessParams,
     postprocess: PostProcessParams,
     limit_ns: u64,
 ) -> Vec<Chunk> {
-    let (events, _) = post_process(extract_events(meta, point, &process), &postprocess);
+    let (events, _) = post_process(
+        extract_events(meta, point, &preprocess, &process),
+        &postprocess,
+    );
 
     let mut chunks = vec![];
     chunks.push(vec![]);
@@ -68,12 +74,14 @@ fn point_to_chunks(
 impl BundleViewer {
     pub fn init_with_point(
         filepath: PathBuf,
+        preprocess: PreprocessParams,
         process: ProcessParams,
         post_process: PostProcessParams,
     ) -> Self {
         let viewer = BundleViewer {
             point: Arc::new(Mutex::new(None)),
             meta: Arc::new(Mutex::new(None)),
+            preprocess,
             process,
             post_process,
             limit_ms: 100,
@@ -86,6 +94,7 @@ impl BundleViewer {
         let chunks = Arc::clone(&viewer.chunks);
         let limit_ns = viewer.limit_ms * 1_000_000;
         let process = viewer.process.to_owned();
+        let preprocess = viewer.preprocess.to_owned();
         let post_process = viewer.post_process.to_owned();
 
         spawn(async move {
@@ -95,7 +104,15 @@ impl BundleViewer {
             let meta_local = load_meta(&filepath).await;
             *meta.lock() = meta_local;
 
-            BundleViewer::recalculate_chunks(meta, point, chunks, process, post_process, limit_ns);
+            BundleViewer::recalculate_chunks(
+                meta,
+                point,
+                chunks,
+                preprocess,
+                process,
+                post_process,
+                limit_ns,
+            );
         });
 
         viewer
@@ -105,6 +122,7 @@ impl BundleViewer {
         meta: Arc<Mutex<Option<NumassMeta>>>,
         point: Arc<Mutex<Option<rsb_event::Point>>>,
         chunks: Arc<Mutex<Option<Vec<Chunk>>>>,
+        preprocess: PreprocessParams,
         process: ProcessParams,
         post_process: PostProcessParams,
         limit_ns: u64,
@@ -115,6 +133,7 @@ impl BundleViewer {
             let chunks_local = Some(point_to_chunks(
                 meta.lock().clone(),
                 point.clone(),
+                preprocess,
                 process,
                 post_process,
                 limit_ns,
@@ -144,6 +163,10 @@ impl eframe::App for BundleViewer {
         }
 
         eframe::egui::SidePanel::left("parameters").show(ctx, |ui| {
+            self.preprocess = self.preprocess.input(ui, ctx);
+
+            ui.separator();
+
             self.process = self.process.input(ui, ctx);
 
             ui.separator();
@@ -162,6 +185,7 @@ impl eframe::App for BundleViewer {
                 let chunks = Arc::clone(&self.chunks);
                 let limit_ns = self.limit_ms * 1_000_000;
                 let process = self.process.to_owned();
+                let preprocess = self.preprocess.to_owned();
                 let post_process = self.post_process.to_owned();
 
                 spawn(async move {
@@ -169,6 +193,7 @@ impl eframe::App for BundleViewer {
                         meta,
                         point,
                         chunks,
+                        preprocess,
                         process,
                         post_process,
                         limit_ns,

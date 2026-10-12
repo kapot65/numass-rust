@@ -26,7 +26,7 @@ use dataforge::{DFMessage, read_df_header_and_meta, read_df_message};
 use numass_processing::{
     numass::{self, protos::rsb_event},
     postprocess::{PostProcessParams, post_process},
-    preprocess::Preprocess,
+    preprocess::{Preprocess, PreprocessParams},
     process::{ProcessParams, extract_events},
     storage::FSRepr,
     types::NumassEvents,
@@ -101,7 +101,11 @@ async fn main() {
         }))
         .route("/api/process/*path", post(|
                 Path(filepath): Path<PathBuf>,
-                Json((process, postprocessing)): Json<(ProcessParams, Option<PostProcessParams>)>,
+                Json((preprocess, process, postprocessing)): Json<(
+                    PreprocessParams,
+                    ProcessParams,
+                    Option<PostProcessParams>,
+                )>,
             | async move {
 
             let mut point_file = tokio::fs::File::open(PathBuf::from("/").join(filepath)).await.unwrap();
@@ -113,13 +117,12 @@ async fn main() {
                     let point = rsb_event::Point::parse_from_bytes(&data.unwrap()).unwrap(); // TODO: return None for bad parsing
 
                     let out = if let Some(postprocessing) = postprocessing {
-                        Some(post_process(extract_events(Some(meta), point, &process), &postprocessing))
-                    } else {
-                        Some(extract_events(
-                            Some(meta),
-                            point,
-                            &process,
+                        Some(post_process(
+                            extract_events(Some(meta), point, &preprocess, &process),
+                            &postprocessing,
                         ))
+                    } else {
+                        Some(extract_events(Some(meta), point, &preprocess, &process))
                     };
                     rmp_serde::to_vec(&out).unwrap()
                 } else {

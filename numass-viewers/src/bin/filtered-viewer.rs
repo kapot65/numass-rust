@@ -28,6 +28,9 @@ async fn main() {
         /// maximal amplitude in range
         #[clap(long, default_value_t = 27.0)]
         max: f32,
+        /// preprocess params serialized to json
+        #[clap(long)]
+        preprocess: Option<String>,
         /// process params serialized to json
         #[clap(long)]
         process: Option<String>,
@@ -46,6 +49,12 @@ async fn main() {
         numass_processing::process::ProcessParams::default()
     };
 
+    let preprocess = if let Some(preprocess) = args.preprocess {
+        serde_json::from_str(&preprocess).expect("cant parse preprocess param")
+    } else {
+        numass_processing::preprocess::PreprocessParams::default()
+    };
+
     let postprocess = if let Some(postprocess) = args.postprocess {
         serde_json::from_str(&postprocess).expect("cant parse postprocess param")
     } else {
@@ -53,7 +62,8 @@ async fn main() {
     };
 
     let viewer =
-        FilteredViewer::init_with_point(filepath.clone(), process, postprocess, range).await;
+        FilteredViewer::init_with_point(filepath.clone(), preprocess, process, postprocess, range)
+            .await;
 
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(

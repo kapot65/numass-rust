@@ -6,7 +6,6 @@ use numass_processing::{
     histogram::PointHistogram,
     numass::{NumassMeta, Reply, protos::rsb_event},
     preprocess::{CUTOFF_BIN_SIZE, Preprocess},
-    process::TRAPEZOID_DEFAULT,
     storage::{load_meta, load_point},
     utils::correct_frame_time,
 };
@@ -53,8 +52,7 @@ impl TriggerViewer {
             let point_local = load_point(&filepath).await;
 
             // TODO: optimize to prevent double processing of point data
-            let static_params_local =
-                Preprocess::from_point(meta_local.clone(), &point_local, &TRAPEZOID_DEFAULT);
+            let static_params_local = Preprocess::from_point(meta_local.clone(), &point_local);
             *static_params.lock() = Some(static_params_local);
 
             *point.lock() = Some(point_local);
