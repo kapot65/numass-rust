@@ -3,7 +3,8 @@
         "rust-analyzer": {
             "initialization_options": {
                 "check": {
-                    "command": "clippy"
+                    "command": "clippy",
+                    "workspace": true
                 },
                 "diagnostics": {
                     "styleLints": {
@@ -15,6 +16,13 @@
         "clangd": {
             "binary": {
                 "arguments": ["--compile-commands-dir=numass-root/build"]
+            }
+        },
+        "yaml-language-server": {
+            "settings": {
+                "yaml": {
+                    "customTags": ["!Trapezoid mapping", "!FirstPeak mapping"]
+                }
             }
         }
     }

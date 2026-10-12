@@ -1,0 +1,27 @@
+{
+  "lsp": {
+    "rust-analyzer": {
+      "initialization_options": {
+        "cargo": {
+          "target": "wasm32-unknown-unknown",
+          "allTargets": false
+        },
+        "check": {
+          "command": "clippy",
+          "workspace": true,
+          "allTargets": false,
+          "targets": ["wasm32-unknown-unknown"]
+        },
+        "diagnostics": {
+          "styleLints": {
+            "enable": true
+          }
+        },
+        "linkedProjects": [
+          "./Cargo.toml",
+          "../numass-processing/Cargo.toml"
+        ]
+      }
+    }
+  }
+}
