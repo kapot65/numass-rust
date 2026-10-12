@@ -2,6 +2,7 @@
 .cache/
 .threadbridge/
 .memory-bank/
+AGENTS.md
 
 # --- Build artifacts ---
 target/
