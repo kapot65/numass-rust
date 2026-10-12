@@ -12,9 +12,9 @@ use plotly::{Layout, Plot, common::Title, layout::Axis};
 
 use numass_processing::{
     histogram::PointHistogram,
-    preprocess::{Preprocess, extract_waveforms},
-    process::{TRAPEZOID_DEFAULT, frame_to_events},
-    storage::{load_meta, load_point},
+    preprocess::{PreprocessParams, apply_waveforms, extract_waveforms},
+    process::{TRAPEZOID_DEFAULT, extract_frame},
+    storage::load_point,
     types::FrameEvent,
 };
 use tokio::sync::Mutex;
@@ -35,20 +35,18 @@ async fn main() {
                 let hist = Arc::clone(&hist);
                 let filepath = filepath.clone();
                 tokio::spawn(async move {
-                    let meta = load_meta(&filepath).await;
                     let point = load_point(&filepath).await;
 
-                    let preprocess = Preprocess::from_point(meta, &point, &TRAPEZOID_DEFAULT);
-
                     let frames = extract_waveforms(&point);
+                    let processed = apply_waveforms(&frames, &PreprocessParams::default().steps);
 
                     let times = frames
                         .into_iter()
                         .flat_map(|(time, frame)| {
-                            let mut frame_times = frame_to_events(
+                            let mut frame_times = extract_frame(
+                                &processed[&time],
                                 &frame,
                                 &TRAPEZOID_DEFAULT,
-                                Some(&preprocess),
                                 &mut None,
                             )
                             .into_iter()

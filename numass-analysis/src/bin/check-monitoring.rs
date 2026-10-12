@@ -13,6 +13,7 @@ use plotly::{
 use numass_processing::{
     numass::{NumassMeta, Reply},
     postprocess::{PostProcessParams, post_process},
+    preprocess::PreprocessParams,
     process::{ProcessParams, TRAPEZOID_DEFAULT, extract_events},
     storage::load_point,
     types::FrameEvent,
@@ -102,6 +103,7 @@ async fn main() {
                     extract_events(
                         Some(meta.clone()),
                         point,
+                        &PreprocessParams::default(),
                         &ProcessParams {
                             algorithm: TRAPEZOID_DEFAULT,
                             convert_to_kev: true,

@@ -2,6 +2,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use numass_processing::{
     histogram::HistogramParams,
+    preprocess::PreprocessParams,
     process::{ProcessParams, TRAPEZOID_DEFAULT, extract_events},
     storage::{load_meta, load_point},
     utils::events_to_histogram,
@@ -68,6 +69,7 @@ async fn main() {
                     let (events, _) = extract_events(
                         meta,
                         point,
+                        &PreprocessParams::default(),
                         &ProcessParams {
                             algorithm,
                             convert_to_kev: false,

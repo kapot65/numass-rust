@@ -8,6 +8,7 @@ use plotly::{Layout, Plot, common::Title, layout::Axis};
 
 use numass_processing::{
     histogram::PointHistogram,
+    preprocess::PreprocessParams,
     process::{ProcessParams, SkipOption, TRAPEZOID_DEFAULT},
     storage::process_point,
     types::FrameEvent,
@@ -28,9 +29,14 @@ async fn main() {
         _ => unreachable!(),
     }
 
-    let (_, events) = process_point(&PathBuf::from(point_path), &process, None)
-        .await
-        .expect("Failed to process point");
+    let (_, events) = process_point(
+        &PathBuf::from(point_path),
+        &PreprocessParams::default(),
+        &process,
+        None,
+    )
+    .await
+    .expect("Failed to process point");
 
     let (events, _) = events.expect("Failed to get events");
 

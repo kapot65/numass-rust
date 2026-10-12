@@ -16,8 +16,8 @@ use tokio::sync::Mutex;
 
 use numass_analysis::CorrectionCoeffs;
 use numass_processing::{
-    postprocess::PostProcessParams, process::ProcessParams, storage::process_point,
-    types::FrameEvent,
+    postprocess::PostProcessParams, preprocess::PreprocessParams, process::ProcessParams,
+    storage::process_point, types::FrameEvent,
 };
 
 #[cfg(target_family = "unix")]
@@ -197,12 +197,16 @@ async fn main() {
                         1.0 // Default to 1.0 if no coefficients are provided (needed for Background)
                     };
 
-                    let (frames, preprocess) =
-                        process_point(&filepath, &processing, Some(&post_processing))
-                            .await
-                            .unwrap()
-                            .1
-                            .unwrap();
+                    let (frames, preprocess) = process_point(
+                        &filepath,
+                        &PreprocessParams::default(),
+                        &processing,
+                        Some(&post_processing),
+                    )
+                    .await
+                    .unwrap()
+                    .1
+                    .unwrap();
 
                     out_point.triggers += frames.len();
 

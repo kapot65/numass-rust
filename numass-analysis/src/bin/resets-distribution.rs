@@ -5,6 +5,7 @@ use plotly::{Layout, Plot, common::Title, layout::Axis};
 
 use numass_processing::{
     histogram::PointHistogram,
+    preprocess::PreprocessParams,
     process::{ProcessParams, TRAPEZOID_DEFAULT},
     storage::{load_meta, load_point},
     types::FrameEvent,
@@ -28,6 +29,7 @@ async fn main() {
     let (frames, _) = numass_processing::process::extract_events(
         meta,
         point,
+        &PreprocessParams::default(),
         &ProcessParams {
             algorithm: TRAPEZOID_DEFAULT,
             convert_to_kev: true,

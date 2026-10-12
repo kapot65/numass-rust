@@ -7,9 +7,9 @@ use std::{
 use dataforge::DFMessage;
 use numass_processing::{
     numass::{self, protos::rsb_event::Point},
-    preprocess::{Preprocess, emulate_fir, frame_to_waveform},
-    process::{Algorithm, TRAPEZOID_DEFAULT},
-    storage::load_meta,
+    preprocess::{
+        PreprocessParams, apply_waveforms, extract_waveforms, histogram_peaks, samples_histogram,
+    },
 };
 use plotly::{
     Plot, Scatter,
@@ -47,35 +47,22 @@ async fn main() {
 
                     let point = Point::parse_from_bytes(&data).unwrap();
 
-                    let meta = load_meta(&file.path()).await;
-                    let preprocess = Preprocess::from_point(meta, &point, &TRAPEZOID_DEFAULT);
-                    let baseline = preprocess.baseline.unwrap();
+                    let waveforms = extract_waveforms(&point);
+                    let filtered =
+                        apply_waveforms(&waveforms, &PreprocessParams::trapezoid_fir().steps);
+                    let baseline = histogram_peaks(&samples_histogram(
+                        &filtered,
+                        numass_processing::preprocess::POINT_BASELINE_MIN,
+                        numass_processing::preprocess::POINT_BASELINE_MAX,
+                        numass_processing::preprocess::POINT_BASELINE_STEP,
+                    ));
                     println!("{baseline:?}");
 
                     point.channels.iter().for_each(|ch| {
-                        let baseline = ch
-                            .blocks
-                            .iter()
-                            .flat_map(|block| {
-                                block.frames.iter().flat_map(|frame| {
-                                    if let Algorithm::Trapezoid {
-                                        left,
-                                        center,
-                                        right,
-                                        ..
-                                    } = TRAPEZOID_DEFAULT
-                                    {
-                                        emulate_fir(
-                                            frame_to_waveform(frame),
-                                            right.into(),
-                                            center.into(),
-                                            left.into(),
-                                        )
-                                    } else {
-                                        panic!("Unsupported algorithm")
-                                    }
-                                })
-                            })
+                        let baseline = filtered
+                            .values()
+                            .filter_map(|frame| frame.get(&(ch.id as u8)))
+                            .flat_map(|channel| channel.samples.iter().copied())
                             .map(|val| (val - baseline[ch.id as usize]) as f64)
                             .collect::<Vec<_>>();
                         if !baseline.is_empty() {

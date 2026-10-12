@@ -4,7 +4,11 @@
 use std::path::PathBuf;
 
 use numass_processing::{
-    preprocess::point_to_amp_hist, process::TRAPEZOID_DEFAULT, storage::load_point,
+    preprocess::{
+        POINT_BASELINE_MAX, POINT_BASELINE_MIN, POINT_BASELINE_STEP, PreprocessParams,
+        apply_waveforms, extract_waveforms, samples_histogram,
+    },
+    storage::load_point,
 };
 use plotly::Plot;
 
@@ -13,8 +17,14 @@ async fn main() {
     // let path = "/data-fast/numass-server/2024_11/Tritium_3/set_2/p0(30s)(HV1=14000)";
     let path = "/data-fast/numass-server/2024_11/Tritium_3/set_1/p196(20s)(HV1=10000)";
     let point = load_point(&PathBuf::from(path)).await;
-
-    let amps = point_to_amp_hist(&point, &TRAPEZOID_DEFAULT);
+    let waveforms = extract_waveforms(&point);
+    let filtered = apply_waveforms(&waveforms, &PreprocessParams::trapezoid_fir().steps);
+    let amps = samples_histogram(
+        &filtered,
+        POINT_BASELINE_MIN,
+        POINT_BASELINE_MAX,
+        POINT_BASELINE_STEP,
+    );
 
     let mut plot = Plot::new();
 

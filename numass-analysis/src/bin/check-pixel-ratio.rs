@@ -19,6 +19,7 @@ use plotly::{
 use numass_processing::{
     numass::{NumassMeta, Reply},
     postprocess::{PostProcessParams, post_process},
+    preprocess::PreprocessParams,
     process::{ProcessParams, TRAPEZOID_DEFAULT, extract_events},
     storage::load_point,
     types::FrameEvent,
@@ -86,7 +87,12 @@ async fn main() {
                 let point = load_point(&filepath).await;
 
                 let (amps, _) = post_process(
-                    extract_events(Some(meta.clone()), point, &process_local),
+                    extract_events(
+                        Some(meta.clone()),
+                        point,
+                        &PreprocessParams::default(),
+                        &process_local,
+                    ),
                     &postprocess_local,
                 );
 

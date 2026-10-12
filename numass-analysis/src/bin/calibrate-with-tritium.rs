@@ -5,7 +5,8 @@ use numass_processing::{process::TRAPEZOID_DEFAULT, types::FrameEvent};
 
 use {
     numass_processing::{
-        histogram::PointHistogram, process::ProcessParams, storage::process_point,
+        histogram::PointHistogram, preprocess::PreprocessParams, process::ProcessParams,
+        storage::process_point,
     },
     std::sync::Arc,
     tokio::sync::Mutex,
@@ -61,9 +62,14 @@ async fn main() {
                 tokio::spawn(async move {
                     // load point manually because it must not be used from cache
                     // TODO: add cache expiration based on calibration parameters change
-                    let (_, events) = process_point(&filepath, &processing_params, None)
-                        .await
-                        .unwrap();
+                    let (_, events) = process_point(
+                        &filepath,
+                        &PreprocessParams::default(),
+                        &processing_params,
+                        None,
+                    )
+                    .await
+                    .unwrap();
                     let events = events.unwrap().0;
                     {
                         let mut histogram = histogram.lock().await;
