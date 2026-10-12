@@ -121,7 +121,7 @@ pub trait EguiLine: Into<Vec<[f64; 2]>> {
             points.iter_mut().for_each(|[x, _]| *x += offset as f64)
         }
 
-        let mut line = Line::new(format!("{name:?}"), points);
+        let mut line = Line::new(name.unwrap_or_default(), points);
         if let Some(color) = color {
             line = line.color(color)
         }

@@ -230,7 +230,7 @@ impl PointHistogram {
 
         let events_in_window = self.events_all(Some(left_border..right_border));
         let mut line = Line::new(
-            format!("{name:?} ({events_in_window})"),
+            format!("{} ({events_in_window})", name.unwrap_or_default()),
             self.build_egui_hist(&self.merge_channels()),
         );
         if let Some(color) = color {

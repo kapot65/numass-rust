@@ -33,6 +33,7 @@ pub struct FilteredViewer<'a> {
     range: Range<f32>,
     waveforms: NumassWaveformsFast<'a>,
     processed: ProcessedPoint,
+    raw_hidden_seeded: bool,
     indexes: Option<Vec<u64>>,
     current: usize,
 }
@@ -57,6 +58,7 @@ impl<'a> FilteredViewer<'a> {
             range,
             waveforms,
             processed,
+            raw_hidden_seeded: false,
             indexes: None,
             current: 0,
         };
@@ -241,8 +243,16 @@ impl eframe::App for FilteredViewer<'_> {
 
             eframe::egui::CentralPanel::default().show(ctx, |ui| {
                 if let Some(indexes) = self.indexes.as_ref() {
+                    let legend = if self.raw_hidden_seeded {
+                        Legend::default()
+                    } else {
+                        self.raw_hidden_seeded = true;
+                        Legend::default()
+                            .hidden_items((0..7).map(|ch| egui::Id::new(format!("ch# {}", ch + 1))))
+                    };
+
                     egui_plot::Plot::new("waveforms")
-                        .legend(Legend::default())
+                        .legend(legend)
                         .x_axis_formatter(|mark, _| {
                             format!("{:.3} μs", (mark.value * 8.0) / 1000.0)
                         })
