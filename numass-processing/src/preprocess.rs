@@ -178,7 +178,7 @@ pub struct PreprocessParams {
 impl Default for PreprocessParams {
     /// Цепочка новой версии. От алгоритма process не зависит.
     fn default() -> Self {
-        Self::trapezoid()
+        Self::average()
     }
 }
 

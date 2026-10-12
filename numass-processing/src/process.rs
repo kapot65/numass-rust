@@ -52,6 +52,7 @@ pub enum SkipOption {
 /// Built-in algorithms params for processing the data.
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
 #[cfg_attr(feature = "clap", derive(clap::Subcommand))]
+#[derive(Default)]
 pub enum Algorithm {
     Max,
     Likhovid {
@@ -80,6 +81,7 @@ pub enum Algorithm {
         #[cfg_attr(feature = "clap", command(flatten))]
         reset_detection: HWResetParams,
     },
+    #[default]
     Average,
 }
 
@@ -120,12 +122,6 @@ pub const LONGDIFF_DEFAULT: Algorithm = Algorithm::LongDiff {
         size: HW_RESET_SIZE,
     },
 };
-
-impl Default for Algorithm {
-    fn default() -> Self {
-        TRAPEZOID_DEFAULT
-    }
-}
 
 #[repr(C)]
 /// Built-in processing params.

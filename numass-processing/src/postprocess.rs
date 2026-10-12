@@ -54,7 +54,7 @@ impl From<[bool; 7]> for ChannelIgnore {
 
 #[repr(C)]
 /// Postprocessing params.
-#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
+#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize, Hash, Default)]
 pub struct PostProcessParams {
     /// remove events inside [bad_blocks](crate::preprocess::Preprocess::bad_blocks) timestamps
     pub cut_bad_blocks: bool,
@@ -65,19 +65,6 @@ pub struct PostProcessParams {
 
     /// ignore channels with index in this array set to true. Default is false for all channels.
     pub ignore_channels: ChannelIgnore,
-}
-
-impl Default for PostProcessParams {
-    fn default() -> Self {
-        Self {
-            cut_bad_blocks: true,
-            merge_frames: None,
-            merge_splits_first: false,
-            merge_close_events: true,
-            ignore_borders: false,
-            ignore_channels: ChannelIgnore::default(),
-        }
-    }
 }
 
 fn ignore_channels(ignore_channels: &[bool; 7], amplitudes: &mut NumassEvents) {

@@ -6,7 +6,7 @@ use crate::{
     histogram::{HistogramParams, PointHistogram},
     postprocess::PostProcessParams,
     preprocess::{Preprocess, PreprocessParams},
-    process::{ProcessParams, TRAPEZOID_DEFAULT},
+    process::ProcessParams,
 };
 use serde::{Deserialize, Serialize};
 use std::{ops::Range, path::PathBuf, time::SystemTime};
@@ -25,14 +25,11 @@ impl Default for ViewerState {
     fn default() -> Self {
         Self {
             preprocess: PreprocessParams::default(),
-            process: ProcessParams {
-                algorithm: TRAPEZOID_DEFAULT,
-                convert_to_kev: true,
-            },
+            process: ProcessParams::default(),
             post_process: PostProcessParams::default(),
             histogram: HistogramParams {
-                range: 0.0..40.0,
-                bins: 400,
+                range: -50.0..100.0,
+                bins: 300,
             },
             changed: false,
         }
