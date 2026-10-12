@@ -11,7 +11,7 @@
 | [`numass-processing`](numass-processing/README.md) | Общие алгоритмы обработки numass-точек |
 | [`numass-analysis`](numass-analysis/README.md) | Скрипты обработки данных numass |
 | [`numass-processing-py`](numass-processing-py/README.md) | Python-биндинги (`numass-processing`) |
-| [`numass-root`](numass-root/README.md) | C++-биндинги к CERN ROOT + утилита `convert-to-root` |
+| [`numass-root`](numass-root/README.md) | C++-биндинги к CERN ROOT + утилита `convert-to-root`. Временно вне workspace |
 | [`numass-server`](numass-server/README.md) | Сервер (кросс-компиляция) |
 | [`numass-viewers`](numass-viewers/README.md) | Визуализация (wasm) |
 | [`tqdc-controller-rust`](tqdc-controller-rust/README.md) | Контроллер TQDC (`frame-viewer`) |
@@ -25,6 +25,8 @@
 - Rust (cargo)
 
 ### `numass-root` (дополнительно)
+
+Крейт временно исключён из workspace: `cargo build --workspace` его не собирает. Каталог `numass-root/` на месте. Чтобы снова собрать, верните его в `members` в корневом `Cargo.toml`.
 
 Для сборки `numass-root` — C++-биндингов к CERN ROOT — дополнительно нужны:
 
