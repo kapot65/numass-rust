@@ -1344,7 +1344,7 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
 name = "dataforge"
-version = "0.2.0"
+version = "1.0.0"
 dependencies = [
  "arrayref",
  "byteorder",
@@ -3566,7 +3566,7 @@ dependencies = [
 
 [[package]]
 name = "numass"
-version = "0.2.0"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "dataforge",
@@ -3581,7 +3581,7 @@ dependencies = [
 
 [[package]]
 name = "numass-analysis"
-version = "0.2.0"
+version = "1.0.0"
 dependencies = [
  "async-trait",
  "bincode",
@@ -3616,7 +3616,7 @@ dependencies = [
 
 [[package]]
 name = "numass-processing"
-version = "0.2.0"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "clap",
@@ -3640,7 +3640,7 @@ dependencies = [
 
 [[package]]
 name = "numass-server"
-version = "0.2.0"
+version = "1.0.0"
 dependencies = [
  "axum",
  "cacache 11.7.1",
@@ -3658,7 +3658,7 @@ dependencies = [
 
 [[package]]
 name = "numass-tqdc"
-version = "0.2.0"
+version = "1.0.0"
 dependencies = [
  "arrayref",
  "eyre",
@@ -3673,7 +3673,7 @@ dependencies = [
 
 [[package]]
 name = "numass-tqdc-apps"
-version = "0.2.0"
+version = "1.0.0"
 dependencies = [
  "battery",
  "chrono",
@@ -3697,7 +3697,7 @@ dependencies = [
 
 [[package]]
 name = "numass-viewers"
-version = "0.2.0"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "clap",
