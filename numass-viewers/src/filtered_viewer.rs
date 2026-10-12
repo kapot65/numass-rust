@@ -12,6 +12,7 @@ use numass_processing::{
     process::{ProcessParams, convert_to_kev, extract_frame},
     storage::load_point,
     types::{FrameEvent, NumassWaveformsFast},
+    widgets::{HISTOGRAM_MAX, HISTOGRAM_MIN},
 };
 
 use numass_processing::widgets::UserInput;
@@ -137,8 +138,9 @@ impl<'a> FilteredViewer<'a> {
     }
 
     fn inc(&mut self) {
-        if let Some(len) = self.indexes.as_mut().map(|indexes| indexes.len())
-            && self.current < len - 1
+        if let Some(len) = self.indexes.as_ref().map(|indexes| indexes.len())
+            && len > 0
+            && self.current + 1 < len
         {
             self.current += 1
         }
@@ -180,9 +182,9 @@ impl eframe::App for FilteredViewer<'_> {
 
             ui.separator();
             let mut min = self.range.start;
-            ui.add(egui::Slider::new(&mut min, -10.0..=400.0).text("left"));
+            ui.add(egui::Slider::new(&mut min, HISTOGRAM_MIN..=HISTOGRAM_MAX).text("left"));
             let mut max = self.range.end;
-            ui.add(egui::Slider::new(&mut max, -10.0..=400.0).text("right"));
+            ui.add(egui::Slider::new(&mut max, HISTOGRAM_MIN..=HISTOGRAM_MAX).text("right"));
             self.range = min..max;
 
             if ui.button("apply").clicked() {
@@ -190,56 +192,72 @@ impl eframe::App for FilteredViewer<'_> {
             }
         });
 
-        eframe::egui::TopBottomPanel::top("position").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                #[cfg(not(target_arch = "wasm32"))]
-                let width = {
-                    let mut x = 0.0;
-                    ctx.input(|i| x = i.screen_rect().width());
-                    x
-                };
-                #[cfg(target_arch = "wasm32")]
-                let width = eframe::web_sys::window()
-                    .unwrap()
-                    .inner_width()
-                    .unwrap()
-                    .as_f64()
-                    .unwrap() as f32;
+        if self
+            .indexes
+            .as_ref()
+            .is_none_or(|indexes| indexes.is_empty())
+        {
+            eframe::egui::CentralPanel::default().show(ctx, |ui| {
+                ui.centered_and_justified(|ui| {
+                    ui.label("No data to display");
+                });
+            });
+        } else {
+            eframe::egui::TopBottomPanel::top("position").show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let width = {
+                        let mut x = 0.0;
+                        ctx.input(|i| x = i.screen_rect().width());
+                        x
+                    };
+                    #[cfg(target_arch = "wasm32")]
+                    let width = eframe::web_sys::window()
+                        .unwrap()
+                        .inner_width()
+                        .unwrap()
+                        .as_f64()
+                        .unwrap() as f32;
 
-                ui.style_mut().spacing.slider_width = width - 450.0;
+                    ui.style_mut().spacing.slider_width = width - 450.0;
 
-                if let Some(len) = indexes_len {
-                    ui.add(eframe::egui::Slider::new(&mut self.current, 0..=len - 1).step_by(1.0));
-                    if ui.button("<").clicked() {
-                        self.dec();
-                    }
-                    if ui.button(">").clicked() {
-                        self.inc();
-                    }
-                }
-
-                if let Some(indexes) = self.indexes.as_ref() {
-                    ui.label(format!("{:.3} ms", indexes[self.current] as f64 / 1e6));
-                }
-            })
-        });
-
-        eframe::egui::CentralPanel::default().show(ctx, |ui| {
-            if let Some(indexes) = self.indexes.as_ref() {
-                egui_plot::Plot::new("waveforms")
-                    .legend(Legend::default())
-                    .x_axis_formatter(|mark, _| format!("{:.3} μs", (mark.value * 8.0) / 1000.0))
-                    .show(ui, |plot_ui| {
-                        if indexes.is_empty() {
-                            return;
+                    if let Some(len) = indexes_len {
+                        ui.add(
+                            eframe::egui::Slider::new(&mut self.current, 0..=len - 1).step_by(1.0),
+                        );
+                        if ui.button("<").clicked() {
+                            self.dec();
                         }
+                        if ui.button(">").clicked() {
+                            self.inc();
+                        }
+                    }
 
-                        let position = indexes[self.current];
-                        self.plot_processed_frame(plot_ui, position);
-                    });
-            } else {
-                ui.spinner();
-            }
-        });
+                    if let Some(indexes) = self.indexes.as_ref() {
+                        ui.label(format!("{:.3} ms", indexes[self.current] as f64 / 1e6));
+                    }
+                })
+            });
+
+            eframe::egui::CentralPanel::default().show(ctx, |ui| {
+                if let Some(indexes) = self.indexes.as_ref() {
+                    egui_plot::Plot::new("waveforms")
+                        .legend(Legend::default())
+                        .x_axis_formatter(|mark, _| {
+                            format!("{:.3} μs", (mark.value * 8.0) / 1000.0)
+                        })
+                        .show(ui, |plot_ui| {
+                            if indexes.is_empty() {
+                                return;
+                            }
+
+                            let position = indexes[self.current];
+                            self.plot_processed_frame(plot_ui, position);
+                        });
+                } else {
+                    ui.spinner();
+                }
+            });
+        }
     }
 }

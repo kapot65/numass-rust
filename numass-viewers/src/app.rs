@@ -1077,10 +1077,8 @@ impl eframe::App for DataViewerApp {
 
                         if self.plot_mode == PlotMode::Histogram {
                             command
-                                .arg("--min")
-                                .arg(left_border.max(0.0).to_string())
-                                .arg("--max")
-                                .arg(right_border.max(0.0).to_string());
+                                .arg(format!("--min={}", left_border))
+                                .arg(format!("--max={}", right_border));
                         };
 
                         command.spawn().unwrap();
@@ -1092,7 +1090,7 @@ impl eframe::App for DataViewerApp {
                             preprocess: self.processing_params.preprocess.clone(),
                             process: self.processing_params.process.clone(),
                             postprocess: self.processing_params.post_process,
-                            range: left_border.max(0.0)..right_border.max(0.0), // TODO: fix
+                            range: left_border..right_border,
                         })
                         .unwrap();
                         window()

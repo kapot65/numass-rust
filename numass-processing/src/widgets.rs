@@ -14,6 +14,9 @@ use crate::{
     },
 };
 
+pub const HISTOGRAM_MIN: f32 = -200.0;
+pub const HISTOGRAM_MAX: f32 = 800.0;
+
 pub trait UserInput {
     // draw input form and read changes from it
     fn input(&self, ui: &mut egui::Ui, ctx: &egui::Context) -> Self;
@@ -86,8 +89,14 @@ impl UserInput for HistogramParams {
     fn input(&self, ui: &mut egui::Ui, _: &egui::Context) -> Self {
         let mut params = self.clone();
         block(ui, "Histogram params", |ui| {
-            ui.add(egui::Slider::new(&mut params.range.start, -200.0..=800.0).text("left"));
-            ui.add(egui::Slider::new(&mut params.range.end, -200.0..=800.0).text("right"));
+            ui.add(
+                egui::Slider::new(&mut params.range.start, HISTOGRAM_MIN..=HISTOGRAM_MAX)
+                    .text("left"),
+            );
+            ui.add(
+                egui::Slider::new(&mut params.range.end, HISTOGRAM_MIN..=HISTOGRAM_MAX)
+                    .text("right"),
+            );
             ui.add(egui::Slider::new(&mut params.bins, 10..=2000).text("bins"));
         });
         params
