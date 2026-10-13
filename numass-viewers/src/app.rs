@@ -453,22 +453,27 @@ impl DataViewerApp {
                 load_state,
                 ..
             } => {
-                let header =
-                    egui::CollapsingHeader::new(path.file_name().unwrap().to_str().unwrap())
-                        .id_salt(path.to_str().unwrap())
-                        .show(ui, |ui| {
-                            for child in children {
-                                DataViewerApp::file_tree_entry(
-                                    ui,
-                                    child,
-                                    select_single,
-                                    name_contains,
-                                    needs_to_be_marked,
-                                    opened_files,
-                                    state_after,
-                                )
-                            }
-                        });
+                // The storage root has an empty path and thus no file name;
+                // display it as "/".
+                let name = path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("/");
+                let header = egui::CollapsingHeader::new(name)
+                    .id_salt(path.to_str().unwrap())
+                    .show(ui, |ui| {
+                        for child in children {
+                            DataViewerApp::file_tree_entry(
+                                ui,
+                                child,
+                                select_single,
+                                name_contains,
+                                needs_to_be_marked,
+                                opened_files,
+                                state_after,
+                            )
+                        }
+                    });
 
                 if header.fully_open() && load_state == &LoadState::NotLoaded {
                     *load_state = LoadState::NeedLoad;

@@ -36,6 +36,32 @@ use numass_server::Opt;
 use protobuf::Message;
 use tower_http::services::ServeDir;
 
+/// Rewrite all paths in the listing to be relative to the storage root, so
+/// that absolute server paths never leak into API responses.
+/// Paths outside of the root are left as is.
+fn make_relative(listing: &mut FSRepr, root: &std::path::Path) {
+    let path = match listing {
+        FSRepr::File { path, .. } => path,
+        FSRepr::Directory { path, .. } => path,
+    };
+    if let Ok(relative) = path.strip_prefix(root) {
+        *path = relative.to_path_buf();
+    }
+    if let FSRepr::Directory { children, .. } = listing {
+        for child in children {
+            make_relative(child, root);
+        }
+    }
+}
+
+/// List `filepath` (relative to the storage root), keeping all paths in the
+/// response relative to the root as well.
+async fn ls_listing(args: Opt, filepath: PathBuf) -> Json<FSRepr> {
+    let mut listing = FSRepr::ls(args.directory.join(filepath)).await;
+    make_relative(&mut listing, &args.directory);
+    Json(listing)
+}
+
 #[tokio::main]
 async fn main() {
     let args = <numass_server::Opt as clap::Parser>::parse();
@@ -43,24 +69,27 @@ async fn main() {
 
     println!("Starting server at {}", address);
 
+    // Storage root listing; shared by /api/root and /api/ls with an empty path.
+    let root_listing =
+        |State(args): State<Opt>| async move { ls_listing(args, PathBuf::new()).await };
+
     // build our application with a single route
     let app = Router::new()
-        .route("/api/meta/*path", get(|Path(filepath): Path<PathBuf>| async move {
-            let mut point_file = tokio::fs::File::open(PathBuf::from("/").join(filepath)).await.unwrap();
+        .route("/api/meta/*path", get(|State(args): State<Opt>, Path(filepath): Path<PathBuf>| async move {
+            let mut point_file = tokio::fs::File::open(args.directory.join(filepath)).await.unwrap();
             axum::response::Json(read_df_header_and_meta::<serde_json::Value>(&mut point_file).await.ok().map(|(_, meta)| meta))
         }))
-        .route("/api/ls/*path", get(|Path(filepath): Path<PathBuf>| async move {
-            let filepath = PathBuf::from("/").join(filepath);
-            axum::response::Json(FSRepr::ls(filepath).await)
+        .route("/api/ls", get(root_listing))
+        .route("/api/ls/*path", get(|State(args): State<Opt>, Path(filepath): Path<PathBuf>| async move {
+            ls_listing(args, filepath).await
         }))
-        .route("/api/root", get(|State(args): State<Opt>| async move {
-            Json(FSRepr::ls(args.directory).await)
-        }))
-        .route("/api/modified/*path", get(|Path(filepath): Path<PathBuf>| async move {
-            let metadata = tokio::fs::metadata(PathBuf::from("/").join(filepath)).await.unwrap();
+        .route("/api/root", get(root_listing))
+        .route("/api/modified/*path", get(|State(args): State<Opt>, Path(filepath): Path<PathBuf>| async move {
+            let metadata = tokio::fs::metadata(args.directory.join(filepath)).await.unwrap();
             axum::response::Json(metadata.modified().unwrap())
         }))
         .route("/api/to-root", get(|
+            State(args): State<Opt>,
             RawQuery(to_root_options): RawQuery, // TODO: change to valid for TFile::Open(url)
             | async move {
 
@@ -76,7 +105,7 @@ async fn main() {
 
                 let mut command = tokio::process::Command::new("convert-to-root");
                 command
-                    .arg(&root_options.filepath)
+                    .arg(args.directory.join(&root_options.filepath))
                     .arg("--process")
                     .arg(serde_json::to_string(&root_options.process).unwrap())
                     .arg("--postprocess")
@@ -100,6 +129,7 @@ async fn main() {
                     .unwrap()
         }))
         .route("/api/process/*path", post(|
+                State(args): State<Opt>,
                 Path(filepath): Path<PathBuf>,
                 Json((preprocess, process, postprocessing)): Json<(
                     PreprocessParams,
@@ -108,7 +138,7 @@ async fn main() {
                 )>,
             | async move {
 
-            let mut point_file = tokio::fs::File::open(PathBuf::from("/").join(filepath)).await.unwrap();
+            let mut point_file = tokio::fs::File::open(args.directory.join(filepath)).await.unwrap();
             let amplitudes = if let Ok(DFMessage {
                 meta,
                 data,
@@ -138,7 +168,7 @@ async fn main() {
                 .body(Body::from(amplitudes))
                 .unwrap()
         }))
-        .nest_service(&format!("/files{}", args.directory.to_str().unwrap()), ServeDir::new(args.directory.clone()))
+        .nest_service("/files", ServeDir::new(args.directory.clone()))
         .with_state(args);
 
     #[cfg(not(debug_assertions))]

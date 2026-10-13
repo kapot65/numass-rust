@@ -71,7 +71,8 @@ pub async fn process_point(
 }
 
 #[cfg(target_arch = "wasm32")]
-/// Construct API url for the file.
+/// Construct API url for the path relative to the storage root.
+/// The empty path addresses the storage root itself.
 /// This function is needed to work inside web worker.
 pub fn api_url(prefix: &str, filepath: &Path) -> String {
     // TODO: change to gloo function when it comes out
@@ -79,7 +80,12 @@ pub fn api_url(prefix: &str, filepath: &Path) -> String {
         .unwrap()
         .as_string()
         .unwrap();
-    format!("{base_url}/{prefix}{}", filepath.to_str().unwrap())
+    let path = filepath.to_str().unwrap();
+    if path.is_empty() {
+        format!("{base_url}/{prefix}")
+    } else {
+        format!("{base_url}/{prefix}/{path}")
+    }
 }
 
 /// Load point metadata only from the storage.
