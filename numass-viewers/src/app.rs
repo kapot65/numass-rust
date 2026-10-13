@@ -31,10 +31,7 @@ use {
 use {
     crate::PointProcessor,
     eframe::web_sys::window,
-    gloo::{
-        net::http::Request,
-        worker::{Spawnable, oneshot::OneshotBridge},
-    },
+    gloo::worker::{Spawnable, oneshot::OneshotBridge},
     numass_processing::{
         storage::{FSRepr, api_url},
         viewer::{PointState, ToROOTOptions, ViewerMode},
@@ -137,8 +134,7 @@ impl DataViewerApp {
                 }
                 #[cfg(target_arch = "wasm32")]
                 {
-                    let resp = Request::get("/api/root").send().await.unwrap();
-                    let root_local = resp.json::<FSRepr>().await.unwrap();
+                    let root_local = FSRepr::ls(PathBuf::new()).await;
                     root.lock().unwrap().replace(root_local);
                 }
             });
@@ -421,7 +417,7 @@ impl DataViewerApp {
                         ui.label(filename);
                         #[cfg(target_arch = "wasm32")]
                         {
-                            ui.hyperlink_to(filename, api_url("api/meta", path));
+                            ui.hyperlink_to(filename, api_url("files", path));
                         }
                     });
 

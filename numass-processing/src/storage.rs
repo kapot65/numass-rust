@@ -3,7 +3,6 @@
 //! Should work with both local and remote storage.
 //! If possible, use functions from this module instead of [process](crate::process) and [postprocess](crate::postprocess) directly.
 use std::{
-    fs,
     path::{Path, PathBuf},
     time::SystemTime,
 };
@@ -88,41 +87,113 @@ pub fn api_url(prefix: &str, filepath: &Path) -> String {
     }
 }
 
-/// Load point metadata only from the storage.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn load_meta_sync(filepath: &Path) -> Option<NumassMeta> {
-    let mut point_file = std::fs::File::open(filepath).unwrap();
-    dataforge::read_df_header_and_meta_sync::<numass::NumassMeta>(&mut point_file)
-        .map_or(None, |(_, meta)| Some(meta))
+/// DF01 header length. Known to the client; the file server does not parse it.
+const DF_HEADER_LEN: usize = 30;
+
+fn read_df_header(header_bytes: &[u8]) -> Option<dataforge::DFBinaryHeader> {
+    let mut cursor = std::io::Cursor::new(header_bytes);
+    dataforge::read_binary_header_sync(&mut cursor).ok()
 }
 
-/// Load point metadata only from the storage.
-pub async fn load_meta(filepath: &Path) -> Option<NumassMeta> {
-    #[cfg(target_arch = "wasm32")]
-    {
-        gloo::net::http::Request::get(&api_url("api/meta", filepath))
-            .send()
-            .await
-            .unwrap()
-            .json::<Option<NumassMeta>>()
-            .await
-            .unwrap()
+fn region_lengths(header: &dataforge::DFBinaryHeader) -> (usize, usize) {
+    match header {
+        dataforge::DFBinaryHeader::DF01 {
+            meta_len, data_len, ..
+        } => (*meta_len, *data_len),
+    }
+}
+
+fn meta_from_parts(header_bytes: &[u8], meta_bytes: Vec<u8>) -> Option<NumassMeta> {
+    let header = read_df_header(header_bytes)?;
+    dataforge::parse_meta(&header, meta_bytes).ok()
+}
+
+fn point_from_data(data: &[u8]) -> rsb_event::Point {
+    rsb_event::Point::parse_from_bytes(data).unwrap()
+}
+
+/// Read `len` bytes at `start`. Native code seeks in the local file.
+/// Wasm requests the same byte range over HTTP.
+async fn read_range(filepath: &Path, start: u64, len: usize) -> Vec<u8> {
+    if len == 0 {
+        return Vec::new();
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let mut point_file = tokio::fs::File::open(&filepath).await.unwrap();
-        dataforge::read_df_header_and_meta::<numass::NumassMeta>(&mut point_file)
+        use tokio::io::{AsyncReadExt, AsyncSeekExt};
+        let mut file = tokio::fs::File::open(filepath).await.unwrap();
+        file.seek(std::io::SeekFrom::Start(start)).await.unwrap();
+        let mut buf = vec![0u8; len];
+        file.read_exact(&mut buf).await.unwrap();
+        buf
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let end = start + u64::try_from(len).unwrap() - 1;
+        let response = gloo::net::http::Request::get(&api_url("files", filepath))
+            .header("Range", &format!("bytes={start}-{end}"))
+            .send()
             .await
-            .map_or(None, |(_, meta)| Some(meta))
+            .unwrap();
+        let status = response.status();
+        let bytes = response.binary().await.unwrap();
+        if status != 206 || bytes.len() != len {
+            panic!(
+                "range bytes={start}-{end} for {filepath:?}: status {status}, {} bytes",
+                bytes.len()
+            );
+        }
+        bytes
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn read_range_sync(filepath: &Path, start: u64, len: usize) -> Vec<u8> {
+    use std::io::{Read, Seek, SeekFrom};
+    if len == 0 {
+        return Vec::new();
+    }
+    let mut file = std::fs::File::open(filepath).unwrap();
+    file.seek(SeekFrom::Start(start)).unwrap();
+    let mut buf = vec![0u8; len];
+    file.read_exact(&mut buf).unwrap();
+    buf
+}
+
+/// Load point metadata only from the storage.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn load_meta_sync(filepath: &Path) -> Option<NumassMeta> {
+    let header_bytes = read_range_sync(filepath, 0, DF_HEADER_LEN);
+    let header = read_df_header(&header_bytes)?;
+    let (meta_len, _) = region_lengths(&header);
+    let meta_bytes = read_range_sync(filepath, DF_HEADER_LEN as u64, meta_len);
+    meta_from_parts(&header_bytes, meta_bytes)
+}
+
+/// Load point metadata only from the storage.
+pub async fn load_meta(filepath: &Path) -> Option<NumassMeta> {
+    let header_bytes = read_range(filepath, 0, DF_HEADER_LEN).await;
+    let header = read_df_header(&header_bytes)?;
+    let (meta_len, _) = region_lengths(&header);
+    let meta_bytes = read_range(filepath, DF_HEADER_LEN as u64, meta_len).await;
+    meta_from_parts(&header_bytes, meta_bytes)
+}
+
 pub async fn load_modified_time(filepath: PathBuf) -> Option<SystemTime> {
-    if let Ok(metadata) = fs::metadata(filepath) {
-        metadata.modified().ok()
-    } else {
-        None
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::fs::metadata(filepath)
+            .ok()
+            .and_then(|metadata| metadata.modified().ok())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        propfind(&filepath, "0")
+            .await
+            .and_then(|entries| entries.into_iter().find_map(|entry| entry.modified))
     }
 }
 
@@ -130,46 +201,30 @@ pub async fn load_modified_time(filepath: PathBuf) -> Option<SystemTime> {
 /// Do not use this function directly without reason.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn load_point_sync(filepath: &Path) -> rsb_event::Point {
-    if let Ok(mut point_file) = std::fs::File::open(filepath) {
-        let message =
-            dataforge::read_df_message_sync::<numass::NumassMeta>(&mut point_file).unwrap();
-        rsb_event::Point::parse_from_bytes(&message.data.unwrap_or_default()[..]).unwrap()
-    } else {
-        panic!("{filepath:?} open failed")
-    }
+    let header_bytes = read_range_sync(filepath, 0, DF_HEADER_LEN);
+    let header = read_df_header(&header_bytes).unwrap();
+    let (meta_len, data_len) = region_lengths(&header);
+    let data = read_range_sync(
+        filepath,
+        DF_HEADER_LEN as u64 + u64::try_from(meta_len).unwrap(),
+        data_len,
+    );
+    point_from_data(&data)
 }
 
 /// Load and parse point binary data from the storage.
 /// Do not use this function directly without reason.
 pub async fn load_point(filepath: &Path) -> rsb_event::Point {
-    #[cfg(target_arch = "wasm32")]
-    {
-        let point_data = gloo::net::http::Request::get(&api_url("files", filepath))
-            .send()
-            .await
-            .unwrap()
-            .binary()
-            .await
-            .unwrap();
-
-        let mut buf = std::io::Cursor::new(point_data);
-        let message: dataforge::DFMessage<NumassMeta> =
-            dataforge::read_df_message_sync::<NumassMeta>(&mut buf).unwrap();
-
-        rsb_event::Point::parse_from_bytes(&message.data.unwrap()[..]).unwrap()
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        if let Ok(mut point_file) = tokio::fs::File::open(&filepath).await {
-            let message = dataforge::read_df_message::<numass::NumassMeta>(&mut point_file)
-                .await
-                .unwrap();
-            rsb_event::Point::parse_from_bytes(&message.data.unwrap_or(vec![])[..]).unwrap()
-        } else {
-            panic!("{filepath:?} open failed")
-        }
-    }
+    let header_bytes = read_range(filepath, 0, DF_HEADER_LEN).await;
+    let header = read_df_header(&header_bytes).unwrap();
+    let (meta_len, data_len) = region_lengths(&header);
+    let data = read_range(
+        filepath,
+        DF_HEADER_LEN as u64 + u64::try_from(meta_len).unwrap(),
+        data_len,
+    )
+    .await;
+    point_from_data(&data)
 }
 
 /// Temporal numass file storage representation.
@@ -264,14 +319,44 @@ impl FSRepr {
 
     #[cfg(target_arch = "wasm32")]
     pub async fn ls(path: PathBuf) -> FSRepr {
-        let payload = gloo::net::http::Request::get(&api_url("api/ls", &path))
-            .send()
+        let entries = propfind(&path, "1")
             .await
-            .unwrap()
-            .binary()
-            .await
-            .unwrap();
-        serde_json::from_slice(&payload).unwrap() // TODO: change to Request (to remove serde-json)?
+            .unwrap_or_else(|| panic!("PROPFIND {path:?}"));
+        let self_entry = entries.iter().find(|entry| entry.path == path);
+        let modified = self_entry
+            .and_then(|entry| entry.modified)
+            .unwrap_or(SystemTime::UNIX_EPOCH);
+        if self_entry.is_some_and(|entry| !entry.is_dir) {
+            return FSRepr::File { path, modified };
+        }
+
+        let children = entries
+            .into_iter()
+            .filter(|entry| entry.path != path)
+            .map(|entry| {
+                let modified = entry.modified.unwrap_or(SystemTime::UNIX_EPOCH);
+                if entry.is_dir {
+                    FSRepr::Directory {
+                        path: entry.path,
+                        children: vec![],
+                        modified,
+                        load_state: LoadState::NotLoaded,
+                    }
+                } else {
+                    FSRepr::File {
+                        path: entry.path,
+                        modified,
+                    }
+                }
+            })
+            .collect();
+
+        FSRepr::Directory {
+            path,
+            children,
+            modified,
+            load_state: LoadState::NotLoaded,
+        }
     }
 
     pub async fn expand(
@@ -404,4 +489,114 @@ impl FSRepr {
             current = next;
         }
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+struct ListingEntry {
+    path: PathBuf,
+    modified: Option<SystemTime>,
+    is_dir: bool,
+}
+
+/// Depth `0` or `1` PROPFIND of `filepath` under `/files`.
+/// `None` when the resource is missing or the response is not 207.
+#[cfg(target_arch = "wasm32")]
+async fn propfind(filepath: &Path, depth: &str) -> Option<Vec<ListingEntry>> {
+    const BODY: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<D:propfind xmlns:D="DAV:">
+  <D:prop>
+    <D:getlastmodified/>
+    <D:resourcetype/>
+  </D:prop>
+</D:propfind>"#;
+
+    let response = gloo::net::http::Request::get(&api_url("files", filepath))
+        .method(gloo::net::http::Method::from_bytes(b"PROPFIND").unwrap())
+        .header("Depth", depth)
+        .header("Content-Type", "application/xml; charset=utf-8")
+        .body(BODY)
+        .unwrap()
+        .send()
+        .await
+        .ok()?;
+    if response.status() != 207 {
+        return None;
+    }
+    let xml = response.text().await.ok()?;
+    Some(parse_propfind(&xml))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn parse_propfind(xml: &str) -> Vec<ListingEntry> {
+    let root = xmltree::Element::parse(xml.as_bytes()).unwrap();
+    root.children
+        .iter()
+        .filter_map(|node| match node {
+            xmltree::XMLNode::Element(response) if response.name == "response" => Some(response),
+            _ => None,
+        })
+        .map(|response| {
+            let href = response
+                .get_child("href")
+                .and_then(|node| node.get_text())
+                .unwrap_or_default();
+            ListingEntry {
+                path: href_storage_path(&href),
+                modified: prop_text(response, "getlastmodified")
+                    .and_then(|value| http_date(&value)),
+                is_dir: prop_element(response, "resourcetype")
+                    .and_then(|node| node.get_child("collection"))
+                    .is_some(),
+            }
+        })
+        .collect()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn prop_element<'a>(response: &'a xmltree::Element, name: &str) -> Option<&'a xmltree::Element> {
+    response
+        .children
+        .iter()
+        .filter_map(|node| match node {
+            xmltree::XMLNode::Element(element) if element.name == "propstat" => {
+                element.get_child("prop")
+            }
+            _ => None,
+        })
+        .find_map(|prop| prop.get_child(name))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn prop_text(response: &xmltree::Element, name: &str) -> Option<String> {
+    prop_element(response, name)
+        .and_then(|node| node.get_text())
+        .map(|text| text.trim().to_string())
+}
+
+/// Turn a PROPFIND href into a path relative to the storage root.
+/// Href is either `/files/...` or an absolute URL with that path.
+#[cfg(target_arch = "wasm32")]
+fn href_storage_path(href: &str) -> PathBuf {
+    let without_query = href.split(['?', '#']).next().unwrap_or(href);
+    let path = if let Some((_, rest)) = without_query.split_once("://") {
+        rest.split_once('/').map(|(_, path)| path).unwrap_or("")
+    } else {
+        without_query.trim_start_matches('/')
+    };
+    let decoded = urlencoding::decode(path).unwrap_or(std::borrow::Cow::Borrowed(path));
+    let mut segments: Vec<&str> = decoded.split('/').filter(|part| !part.is_empty()).collect();
+    if segments.first() == Some(&"files") {
+        segments.remove(0);
+    }
+    PathBuf::from(segments.join("/"))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn http_date(value: &str) -> Option<SystemTime> {
+    let parsed = chrono::DateTime::parse_from_rfc2822(value).ok()?;
+    let timestamp = parsed.timestamp();
+    if timestamp < 0 {
+        return None;
+    }
+    Some(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(timestamp as u64))
 }

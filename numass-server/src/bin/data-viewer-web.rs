@@ -6,15 +6,15 @@ use std::{
 };
 
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     body::Body,
-    extract::{Path, RawQuery, State},
-    response::Response,
-    routing::{get, post},
+    extract::{Path, RawQuery, Request, State},
+    response::{IntoResponse, Response},
+    routing::{any, get, post},
 };
 
 #[cfg(not(debug_assertions))]
-use axum::{body::Full, response::Html};
+use axum::response::Html;
 
 #[cfg(target_family = "unix")]
 use tikv_jemallocator::Jemalloc;
@@ -22,44 +22,24 @@ use tikv_jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-use dataforge::{DFMessage, read_df_header_and_meta, read_df_message};
+use dataforge::{DFMessage, read_df_message};
+use dav_server::{DavHandler, DavMethodSet, localfs::LocalFs};
 use numass_processing::{
     numass::{self, protos::rsb_event},
     postprocess::{PostProcessParams, post_process},
     preprocess::{Preprocess, PreprocessParams},
     process::{ProcessParams, extract_events},
-    storage::FSRepr,
     types::NumassEvents,
     viewer::ToROOTOptions,
 };
 use numass_server::Opt;
 use protobuf::Message;
-use tower_http::services::ServeDir;
+use socket2::{SockRef, TcpKeepalive};
 
-/// Rewrite all paths in the listing to be relative to the storage root, so
-/// that absolute server paths never leak into API responses.
-/// Paths outside of the root are left as is.
-fn make_relative(listing: &mut FSRepr, root: &std::path::Path) {
-    let path = match listing {
-        FSRepr::File { path, .. } => path,
-        FSRepr::Directory { path, .. } => path,
-    };
-    if let Ok(relative) = path.strip_prefix(root) {
-        *path = relative.to_path_buf();
-    }
-    if let FSRepr::Directory { children, .. } = listing {
-        for child in children {
-            make_relative(child, root);
-        }
-    }
-}
-
-/// List `filepath` (relative to the storage root), keeping all paths in the
-/// response relative to the root as well.
-async fn ls_listing(args: Opt, filepath: PathBuf) -> Json<FSRepr> {
-    let mut listing = FSRepr::ls(args.directory.join(filepath)).await;
-    make_relative(&mut listing, &args.directory);
-    Json(listing)
+/// Files are read-only at the method set. The data directory on disk may
+/// still be writable by the account that runs the server.
+async fn handle_dav(Extension(dav): Extension<DavHandler>, request: Request) -> impl IntoResponse {
+    dav.handle(request).await
 }
 
 #[tokio::main]
@@ -69,25 +49,15 @@ async fn main() {
 
     println!("Starting server at {}", address);
 
-    // Storage root listing; shared by /api/root and /api/ls with an empty path.
-    let root_listing =
-        |State(args): State<Opt>| async move { ls_listing(args, PathBuf::new()).await };
+    let dav = DavHandler::builder()
+        .filesystem(LocalFs::new(&args.directory, false, false, false))
+        .strip_prefix("/files")
+        .methods(DavMethodSet::WEBDAV_RO)
+        .hide_symlinks(true)
+        .build_handler();
 
     // build our application with a single route
     let app = Router::new()
-        .route("/api/meta/*path", get(|State(args): State<Opt>, Path(filepath): Path<PathBuf>| async move {
-            let mut point_file = tokio::fs::File::open(args.directory.join(filepath)).await.unwrap();
-            axum::response::Json(read_df_header_and_meta::<serde_json::Value>(&mut point_file).await.ok().map(|(_, meta)| meta))
-        }))
-        .route("/api/ls", get(root_listing))
-        .route("/api/ls/*path", get(|State(args): State<Opt>, Path(filepath): Path<PathBuf>| async move {
-            ls_listing(args, filepath).await
-        }))
-        .route("/api/root", get(root_listing))
-        .route("/api/modified/*path", get(|State(args): State<Opt>, Path(filepath): Path<PathBuf>| async move {
-            let metadata = tokio::fs::metadata(args.directory.join(filepath)).await.unwrap();
-            axum::response::Json(metadata.modified().unwrap())
-        }))
         .route("/api/to-root", get(|
             State(args): State<Opt>,
             RawQuery(to_root_options): RawQuery, // TODO: change to valid for TFile::Open(url)
@@ -128,7 +98,7 @@ async fn main() {
                     .body(Body::from(content))
                     .unwrap()
         }))
-        .route("/api/process/*path", post(|
+        .route("/api/process/{*path}", post(|
                 State(args): State<Opt>,
                 Path(filepath): Path<PathBuf>,
                 Json((preprocess, process, postprocessing)): Json<(
@@ -137,7 +107,6 @@ async fn main() {
                     Option<PostProcessParams>,
                 )>,
             | async move {
-
             let mut point_file = tokio::fs::File::open(args.directory.join(filepath)).await.unwrap();
             let amplitudes = if let Ok(DFMessage {
                 meta,
@@ -168,7 +137,10 @@ async fn main() {
                 .body(Body::from(amplitudes))
                 .unwrap()
         }))
-        .nest_service("/files", ServeDir::new(args.directory.clone()))
+        .route("/files", any(handle_dav))
+        .route("/files/", any(handle_dav))
+        .route("/files/{*path}", any(handle_dav))
+        .layer(Extension(dav))
         .with_state(args);
 
     #[cfg(not(debug_assertions))]
@@ -182,7 +154,7 @@ async fn main() {
             get(|| async {
                 Response::builder()
                     .header("content-type", "application/javascript")
-                    .body(Full::from(include_str!("../../dist/data-viewer.js")))
+                    .body(Body::from(include_str!("../../dist/data-viewer.js")))
                     .unwrap()
             }),
         )
@@ -202,7 +174,7 @@ async fn main() {
             get(|| async {
                 Response::builder()
                     .header("content-type", "application/javascript")
-                    .body(Full::from(include_str!("../../dist/worker.js")))
+                    .body(Body::from(include_str!("../../dist/worker.js")))
                     .unwrap()
             }),
         )
@@ -218,9 +190,9 @@ async fn main() {
             }),
         );
 
-    axum::Server::bind(&address)
-        .tcp_keepalive(Some(Duration::from_secs(600)))
-        .serve(app.into_make_service())
-        .await
+    let listener = tokio::net::TcpListener::bind(address).await.unwrap();
+    SockRef::from(&listener)
+        .set_tcp_keepalive(&TcpKeepalive::new().with_time(Duration::from_secs(600)))
         .unwrap();
+    axum::serve(listener, app).await.unwrap();
 }

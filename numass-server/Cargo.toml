@@ -17,14 +17,16 @@ serde_qs = "0.13.0"
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-axum = "0.6.18"
+axum = "0.8"
 
 tokio = { version = "1.21.2", features = ["full"] }
 dataforge = { workspace = true, features = ["tokio"] }
 
 cacache = { version = "11.6.0", default-features = false,  features = ["tokio-runtime"] }
 clap = { version = "4.1.4", features = ["derive"]}
-tower-http = { version = "0.4.1", features = ["fs"] }
+# localfs only: caldav/carddav would create directories inside the data root.
+dav-server = { version = "0.11", default-features = false, features = ["localfs"] }
+socket2 = "0.5"
 
 [target.'cfg(target_family = "unix")'.dependencies]
 tikv-jemallocator = { workspace = true }
