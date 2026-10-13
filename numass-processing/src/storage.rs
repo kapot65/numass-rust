@@ -49,15 +49,22 @@ pub async fn process_point(
 
         #[cfg(target_arch = "wasm32")]
         {
-            let amplitudes_raw = gloo::net::http::Request::post(&api_url("api/process", filepath))
-                .json(&(preprocess, process, postprocess))
-                .unwrap()
-                .send()
-                .await
-                .unwrap()
-                .binary()
-                .await
-                .unwrap();
+            let query = crate::process::HistParams {
+                preprocess: preprocess.clone(),
+                process: process.clone(),
+                postprocess: postprocess.copied(),
+            }
+            .to_query_string();
+            let amplitudes_raw = gloo::net::http::Request::get(&format!(
+                "{}?{query}",
+                api_url("api/process/hist", filepath)
+            ))
+            .send()
+            .await
+            .unwrap()
+            .binary()
+            .await
+            .unwrap();
             Some((
                 meta.unwrap(),
                 rmp_serde::from_slice::<Option<(NumassEvents, Preprocess)>>(&amplitudes_raw)

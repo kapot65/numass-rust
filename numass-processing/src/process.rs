@@ -21,6 +21,7 @@ use crate::{
         KEV_COEFF_AVERAGE, KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_LONGDIFF,
         KEV_COEFF_MAX, KEV_COEFF_TRAPEZIOD,
     },
+    postprocess::PostProcessParams,
     preprocess::{
         Preprocess, PreprocessParams, ProcessedFrame, apply_waveforms, extract_waveforms,
     },
@@ -137,6 +138,36 @@ impl Default for ProcessParams {
             algorithm: Algorithm::default(),
             convert_to_kev: true,
         }
+    }
+}
+
+/// Parameters of `GET /api/process/hist/{path}`.
+///
+/// The file path is the route wildcard. The query string is `params=<json>`.
+/// Bare `serde_qs` fields do not round-trip nested preprocess steps.
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+pub struct HistParams {
+    pub preprocess: PreprocessParams,
+    pub process: ProcessParams,
+    pub postprocess: Option<PostProcessParams>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct HistParamsQuery {
+    params: String,
+}
+
+impl HistParams {
+    pub fn to_query_string(&self) -> String {
+        serde_qs::to_string(&HistParamsQuery {
+            params: serde_json::to_string(self).expect("HistParams is JSON"),
+        })
+        .expect("hist query string")
+    }
+
+    pub fn from_query_string(query: &str) -> Result<Self, String> {
+        let wrapper: HistParamsQuery = serde_qs::from_str(query).map_err(|err| err.to_string())?;
+        serde_json::from_str(&wrapper.params).map_err(|err| err.to_string())
     }
 }
 
@@ -723,5 +754,31 @@ mod tests {
             }
             _ => unreachable!(),
         }
+    }
+
+    #[test]
+    fn hist_params_roundtrip_serde_qs() {
+        use crate::postprocess::PostProcessParams;
+        use crate::preprocess::PreprocessParams;
+        use crate::process::{HistParams, LIKHOVID_DEFAULT, ProcessParams};
+
+        let params = HistParams {
+            preprocess: PreprocessParams::default(),
+            process: ProcessParams {
+                algorithm: LIKHOVID_DEFAULT,
+                convert_to_kev: false,
+            },
+            postprocess: Some(PostProcessParams::default()),
+        };
+        let decoded = HistParams::from_query_string(&params.to_query_string()).unwrap();
+        assert_eq!(params, decoded);
+
+        let params = HistParams {
+            preprocess: PreprocessParams::trapezoid(),
+            process: ProcessParams::default(),
+            postprocess: None,
+        };
+        let decoded = HistParams::from_query_string(&params.to_query_string()).unwrap();
+        assert_eq!(params, decoded);
     }
 }

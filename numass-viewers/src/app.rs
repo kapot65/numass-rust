@@ -88,6 +88,35 @@ pub struct DataViewerApp {
     processor_pool: Vec<OneshotBridge<PointProcessor>>,
 }
 
+/// Write the point's meta JSON and open it in the default application.
+#[cfg(not(target_arch = "wasm32"))]
+fn open_point_meta(path: &Path) {
+    use std::hash::{DefaultHasher, Hash, Hasher};
+
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return;
+    };
+    let Ok((_, meta)) = dataforge::read_df_header_and_meta_sync::<serde_json::Value>(&mut file)
+    else {
+        return;
+    };
+    let Ok(text) = serde_json::to_string_pretty(&meta) else {
+        return;
+    };
+
+    let mut hasher = DefaultHasher::new();
+    path.hash(&mut hasher);
+    let stem = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("point");
+    let out = std::env::temp_dir().join(format!("{stem}-{:x}.json", hasher.finish()));
+    if std::fs::write(&out, text).is_err() {
+        return;
+    }
+    let _ = std::process::Command::new("xdg-open").arg(&out).spawn();
+}
+
 impl DataViewerApp {
     /// Draws processing parameters editor and handles input from user.
     ///
@@ -414,10 +443,18 @@ impl DataViewerApp {
                         let filename = path.file_name().unwrap().to_str().unwrap();
 
                         #[cfg(not(target_arch = "wasm32"))]
-                        ui.label(filename);
+                        if ui.link(filename).on_hover_text("point metadata").clicked() {
+                            open_point_meta(path);
+                        }
                         #[cfg(target_arch = "wasm32")]
                         {
-                            ui.hyperlink_to(filename, api_url("files", path));
+                            ui.add(
+                                egui::Hyperlink::from_label_and_url(
+                                    filename,
+                                    api_url("api/process/meta", path),
+                                )
+                                .open_in_new_tab(true),
+                            );
                         }
                     });
 

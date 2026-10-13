@@ -9,8 +9,9 @@ use axum::{
     Extension, Json, Router,
     body::Body,
     extract::{Path, RawQuery, Request, State},
+    http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{any, get, post},
+    routing::{any, get},
 };
 
 #[cfg(not(debug_assertions))]
@@ -22,13 +23,13 @@ use tikv_jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-use dataforge::{DFMessage, read_df_message};
+use dataforge::{DFMessage, read_df_header_and_meta, read_df_message};
 use dav_server::{DavHandler, DavMethodSet, localfs::LocalFs};
 use numass_processing::{
     numass::{self, protos::rsb_event},
-    postprocess::{PostProcessParams, post_process},
-    preprocess::{Preprocess, PreprocessParams},
-    process::{ProcessParams, extract_events},
+    postprocess::post_process,
+    preprocess::Preprocess,
+    process::{HistParams, extract_events},
     types::NumassEvents,
     viewer::ToROOTOptions,
 };
@@ -98,15 +99,33 @@ async fn main() {
                     .body(Body::from(content))
                     .unwrap()
         }))
-        .route("/api/process/{*path}", post(|
+        .route("/api/process/meta/{*path}", get(|
                 State(args): State<Opt>,
                 Path(filepath): Path<PathBuf>,
-                Json((preprocess, process, postprocessing)): Json<(
-                    PreprocessParams,
-                    ProcessParams,
-                    Option<PostProcessParams>,
-                )>,
             | async move {
+            let Ok(mut point_file) = tokio::fs::File::open(args.directory.join(filepath)).await else {
+                return StatusCode::NOT_FOUND.into_response();
+            };
+            let meta = read_df_header_and_meta::<serde_json::Value>(&mut point_file)
+                .await
+                .ok()
+                .map(|(_, meta)| meta);
+            Json(meta).into_response()
+        }))
+        .route("/api/process/hist/{*path}", get(|
+                State(args): State<Opt>,
+                Path(filepath): Path<PathBuf>,
+                RawQuery(query): RawQuery,
+            | async move {
+            let Ok(HistParams {
+                preprocess,
+                process,
+                postprocess: postprocessing,
+            }) = HistParams::from_query_string(&query.unwrap_or_default())
+            else {
+                return StatusCode::BAD_REQUEST.into_response();
+            };
+
             let mut point_file = tokio::fs::File::open(args.directory.join(filepath)).await.unwrap();
             let amplitudes = if let Ok(DFMessage {
                 meta,
