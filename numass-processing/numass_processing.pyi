@@ -15,8 +15,10 @@ __all__ = [
     "Baseline",
     "ChannelIgnore",
     "Frame",
+    "FrameEvents",
     "HWResetParams",
     "HistParams",
+    "NumassEvents",
     "Point",
     "PostProcessParams",
     "PreprocessParams",
@@ -28,7 +30,11 @@ __all__ = [
     "Waveforms",
     "apply_frame",
     "apply_waveforms",
+    "convert_to_kev",
+    "extract_frame",
+    "extract_processed",
     "extract_waveforms",
+    "load_meta",
     "load_point",
 ]
 
@@ -200,6 +206,16 @@ class Frame:
         """
 
 @typing.final
+class FrameEvents:
+    r"""
+    События одного кадра после [`extract_frame`].
+    """
+    def to_polars(self) -> polars.DataFrame:
+        r"""
+        Односторонняя таблица: `position`, `kind`, `channel`, `amplitude`, `size`.
+        """
+
+@typing.final
 class HWResetParams:
     @property
     def window(self) -> builtins.int: ...
@@ -235,6 +251,16 @@ class HistParams:
     def postprocess(self, value: typing.Optional[PostProcessParams]) -> None: ...
     def __eq__(self, other: builtins.object, /) -> builtins.bool: ...
     def __new__(cls, preprocess: PreprocessParams = ..., process: ProcessParams = ..., postprocess: typing.Optional[PostProcessParams] = None) -> HistParams: ...
+
+@typing.final
+class NumassEvents:
+    r"""
+    События точки после [`extract_processed`].
+    """
+    def to_polars(self) -> polars.DataFrame:
+        r"""
+        Односторонняя таблица: `time`, `position`, `kind`, `channel`, `amplitude`, `size`.
+        """
 
 @typing.final
 class Point:
@@ -434,9 +460,33 @@ def apply_waveforms(waveforms: Waveforms, steps: typing.Sequence[PreprocessStep]
     Те же шаги, что `preprocess::apply_waveforms`.
     """
 
+def convert_to_kev(amplitude: builtins.float, ch_id: builtins.int, algorithm: Algorithm) -> builtins.float:
+    r"""
+    Те же аргументы, что `process::convert_to_kev`.
+    """
+
+def extract_frame(processed: ProcessedFrame, frame: Frame, algorithm: Algorithm) -> FrameEvents:
+    r"""
+    Те же аргументы, что `process::extract_frame`, без egui.
+    """
+
+def extract_processed(processed: ProcessedPoint, waveforms: Waveforms, process: ProcessParams, meta: dict[str, typing.Any] | None = None) -> NumassEvents:
+    r"""
+    События точки. `processed` и `waveforms` — одна точка после предобработки.
+    
+    Тот же проход, что `process::extract_processed`: `extract_frame` по каждому
+    кадру и перевод амплитуды в кэВ, если `process.convert_to_kev`.
+    `meta` — словарь JSON точки; если он передан, читается как `NumassMeta`.
+    """
+
 def extract_waveforms(point: Point) -> Waveforms:
     r"""
     Кадры точки без копии отсчётов. `point` остаётся владельцем данных.
+    """
+
+def load_meta(path: builtins.str | os.PathLike | pathlib.Path) -> dict[str, typing.Any]:
+    r"""
+    Полный JSON метаданных точки из DataForge, без разбора в `NumassMeta`.
     """
 
 def load_point(path: builtins.str | os.PathLike | pathlib.Path) -> Point:

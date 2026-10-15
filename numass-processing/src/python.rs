@@ -7,9 +7,9 @@
 use std::path::PathBuf;
 
 use numass::protos::rsb_event;
-use pyo3::exceptions::{PyFileNotFoundError, PyKeyError};
+use pyo3::exceptions::{PyFileNotFoundError, PyKeyError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyType;
+use pyo3::types::{PyDict, PyType};
 use pyo3_polars::PyDataFrame;
 
 use crate::postprocess::{ChannelIgnore, PostProcessParams};
@@ -50,12 +50,19 @@ fn numass_processing(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Frame>()?;
     m.add_class::<ProcessedPoint>()?;
     m.add_class::<ProcessedFrame>()?;
+    m.add_class::<NumassEvents>()?;
+    m.add_class::<FrameEvents>()?;
 
     #[cfg(not(target_arch = "wasm32"))]
     m.add_function(wrap_pyfunction!(load_point, m)?)?;
+    #[cfg(not(target_arch = "wasm32"))]
+    m.add_function(wrap_pyfunction!(load_meta, m)?)?;
     m.add_function(wrap_pyfunction!(extract_waveforms, m)?)?;
     m.add_function(wrap_pyfunction!(apply_waveforms, m)?)?;
     m.add_function(wrap_pyfunction!(apply_frame, m)?)?;
+    m.add_function(wrap_pyfunction!(extract_processed, m)?)?;
+    m.add_function(wrap_pyfunction!(extract_frame, m)?)?;
+    m.add_function(wrap_pyfunction!(convert_to_kev, m)?)?;
     Ok(())
 }
 
@@ -215,6 +222,27 @@ fn polars_table(frame: polars::prelude::DataFrame) -> PyDataFrame {
     PyDataFrame(frame)
 }
 
+fn serde_error(err: serde_json::Error) -> PyErr {
+    PyValueError::new_err(err.to_string())
+}
+
+/// `serde_json::Value` → объект Python. Ошибка serde — если значение не сериализуется.
+fn json_to_py(py: Python<'_>, value: &serde_json::Value) -> PyResult<Py<PyAny>> {
+    let text = serde_json::to_string(value).map_err(serde_error)?;
+    Ok(py.import("json")?.call_method1("loads", (text,))?.unbind())
+}
+
+/// Словарь ↔ [`numass::NumassMeta`]. Ошибка serde с любого направления уходит в Python.
+fn read_meta_dict(py: Python<'_>, dict: &Bound<'_, PyDict>) -> PyResult<()> {
+    let text: String = py
+        .import("json")?
+        .call_method1("dumps", (dict,))?
+        .extract()?;
+    let meta: numass::NumassMeta = serde_json::from_str(&text).map_err(serde_error)?;
+    serde_json::to_value(&meta).map_err(serde_error)?;
+    Ok(())
+}
+
 /// Протокольная точка. Данные кадров лежат здесь; следующие шаги только ссылаются на них.
 #[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyclass)]
 #[pyclass(module = "numass_processing")]
@@ -249,6 +277,20 @@ struct ProcessedPoint {
 #[pyclass(module = "numass_processing")]
 struct ProcessedFrame {
     inner: crate::preprocess::ProcessedFrame,
+}
+
+/// События точки после [`extract_processed`].
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyclass)]
+#[pyclass(module = "numass_processing")]
+struct NumassEvents {
+    inner: crate::types::NumassEvents,
+}
+
+/// События одного кадра после [`extract_frame`].
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyclass)]
+#[pyclass(module = "numass_processing")]
+struct FrameEvents {
+    inner: Vec<crate::types::NumassEvent>,
 }
 
 fn frame_at(point: &rsb_event::Point, time: u64) -> Option<crate::types::NumassFrameFast<'_>> {
@@ -320,6 +362,28 @@ impl ProcessedFrame {
     }
 }
 
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pymethods)]
+#[cfg_attr(not(feature = "stubgen"), pyo3_stub_gen_derive::remove_gen_stub)]
+#[pymethods]
+impl NumassEvents {
+    /// Односторонняя таблица: `time`, `position`, `kind`, `channel`, `amplitude`, `size`.
+    #[gen_stub(override_return_type(type_repr = "polars.DataFrame", imports = ("polars")))]
+    fn to_polars(&self) -> PyDataFrame {
+        polars_table(crate::to_polars::ToPolars::to_polars(&self.inner))
+    }
+}
+
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pymethods)]
+#[cfg_attr(not(feature = "stubgen"), pyo3_stub_gen_derive::remove_gen_stub)]
+#[pymethods]
+impl FrameEvents {
+    /// Односторонняя таблица: `position`, `kind`, `channel`, `amplitude`, `size`.
+    #[gen_stub(override_return_type(type_repr = "polars.DataFrame", imports = ("polars")))]
+    fn to_polars(&self) -> PyDataFrame {
+        polars_table(crate::to_polars::ToPolars::to_polars(&self.inner))
+    }
+}
+
 /// Загружает протокольную точку из файла DataForge.
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyfunction)]
@@ -331,6 +395,21 @@ fn load_point(path: PathBuf) -> PyResult<Point> {
     Ok(Point {
         inner: crate::storage::load_point_sync(&path),
     })
+}
+
+/// Полный JSON метаданных точки из DataForge, без разбора в `NumassMeta`.
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyfunction)]
+#[cfg_attr(not(feature = "stubgen"), pyo3_stub_gen_derive::remove_gen_stub)]
+#[pyfunction]
+#[gen_stub(override_return_type(type_repr = "dict[str, typing.Any]", imports = ("typing")))]
+fn load_meta(py: Python<'_>, path: PathBuf) -> PyResult<Py<PyAny>> {
+    if !path.is_file() {
+        return Err(PyFileNotFoundError::new_err(path.display().to_string()));
+    }
+    let value = crate::storage::load_meta_json_sync(&path)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    json_to_py(py, &value)
 }
 
 /// Кадры точки без копии отсчётов. `point` остаётся владельцем данных.
@@ -370,4 +449,66 @@ fn apply_frame(
     Ok(ProcessedFrame {
         inner: crate::preprocess::apply_frame(&fast, &steps),
     })
+}
+
+/// События точки. `processed` и `waveforms` — одна точка после предобработки.
+///
+/// Тот же проход, что `process::extract_processed`: `extract_frame` по каждому
+/// кадру и перевод амплитуды в кэВ, если `process.convert_to_kev`.
+/// `meta` — словарь JSON точки; если он передан, читается как `NumassMeta`.
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyfunction)]
+#[cfg_attr(not(feature = "stubgen"), pyo3_stub_gen_derive::remove_gen_stub)]
+#[pyfunction]
+#[pyo3(signature = (processed, waveforms, process, meta = None))]
+fn extract_processed(
+    py: Python<'_>,
+    processed: &ProcessedPoint,
+    waveforms: &Waveforms,
+    process: ProcessParams,
+    #[gen_stub(override_type(
+        type_repr = "dict[str, typing.Any] | None",
+        imports = ("typing")
+    ))]
+    meta: Option<Py<PyDict>>,
+) -> PyResult<NumassEvents> {
+    // Словарь нужен только как NumassMeta: схема проверяется здесь, события от неё не зависят.
+    if let Some(meta) = meta {
+        read_meta_dict(py, meta.bind(py))?;
+    }
+    let point = waveforms.point.borrow(py);
+    let raw = crate::preprocess::extract_waveforms(&point.inner);
+    Ok(NumassEvents {
+        inner: crate::process::extract_processed(&processed.inner, &raw, &process),
+    })
+}
+
+/// Те же аргументы, что `process::extract_frame`, без egui.
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyfunction)]
+#[pyfunction]
+fn extract_frame(
+    py: Python<'_>,
+    processed: &ProcessedFrame,
+    frame: &Frame,
+    algorithm: Algorithm,
+) -> PyResult<FrameEvents> {
+    let point = frame.point.borrow(py);
+    let Some(raw) = frame_at(&point.inner, frame.time) else {
+        return Err(PyKeyError::new_err(frame.time));
+    };
+    Ok(FrameEvents {
+        inner: crate::process::extract_frame(
+            &processed.inner,
+            &raw,
+            &algorithm,
+            #[cfg(feature = "egui")]
+            &mut None,
+        ),
+    })
+}
+
+/// Те же аргументы, что `process::convert_to_kev`.
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyfunction)]
+#[pyfunction]
+fn convert_to_kev(amplitude: f32, ch_id: u8, algorithm: Algorithm) -> f32 {
+    crate::process::convert_to_kev(&amplitude, ch_id, &algorithm)
 }

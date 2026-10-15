@@ -4,8 +4,6 @@
 //! see [params](crate::process::ProcessParams) for details.
 //!
 
-use std::collections::BTreeMap;
-
 #[cfg(feature = "egui")]
 use {
     crate::utils::color_for_index,
@@ -23,9 +21,10 @@ use crate::{
     },
     postprocess::PostProcessParams,
     preprocess::{
-        Preprocess, PreprocessParams, ProcessedFrame, apply_waveforms, extract_waveforms,
+        Preprocess, PreprocessParams, ProcessedFrame, ProcessedPoint, apply_waveforms,
+        extract_waveforms,
     },
-    types::{FrameEvent, NumassEvent, NumassEvents, NumassFrameFast},
+    types::{FrameEvent, NumassEvent, NumassEvents, NumassFrameFast, NumassWaveformsFast},
 };
 
 #[repr(C)]
@@ -189,21 +188,11 @@ impl Default for ProcessParams {
     feature = "python",
     pyo3::pyclass(eq, module = "numass_processing", get_all, set_all, from_py_object)
 )]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Default)]
 pub struct HistParams {
     pub preprocess: PreprocessParams,
     pub process: ProcessParams,
     pub postprocess: Option<PostProcessParams>,
-}
-
-impl Default for HistParams {
-    fn default() -> Self {
-        Self {
-            preprocess: PreprocessParams::default(),
-            process: ProcessParams::default(),
-            postprocess: None,
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -298,9 +287,20 @@ pub fn extract_events(
     let meta_params = Preprocess::from_point(meta, &point);
     let raw = extract_waveforms(&point);
     let processed = apply_waveforms(&raw, &preprocess.steps);
+    (extract_processed(&processed, &raw, process), meta_params)
+}
 
-    let events = raw
-        .iter()
+/// События всех кадров уже предобработанной точки.
+///
+/// Тот же проход, что [`extract_events`] делает после `apply_waveforms`:
+/// [`extract_frame`] и, если `process.convert_to_kev`, перевод амплитуды в кэВ.
+/// `processed` и `raw` должны быть одной точкой.
+pub fn extract_processed(
+    processed: &ProcessedPoint,
+    raw: &NumassWaveformsFast<'_>,
+    process: &ProcessParams,
+) -> NumassEvents {
+    raw.iter()
         .map(|(time, frame)| {
             let mut events = extract_frame(
                 &processed[time],
@@ -321,9 +321,7 @@ pub fn extract_events(
             }
             (*time, events)
         })
-        .collect::<BTreeMap<_, _>>();
-
-    (events, meta_params)
+        .collect()
 }
 
 /// События одного кадра. Общие маркеры событий рисует эта обёртка, не тело алгоритма.
@@ -732,8 +730,10 @@ fn draw_process_events(events: &[NumassEvent], ui: &mut PlotUi) {
 mod tests {
     use std::collections::BTreeMap;
 
-    use crate::preprocess::{PreprocessStep, apply_frame};
-    use crate::process::{Algorithm, HWResetParams, extract_frame};
+    use crate::preprocess::{ChannelSamples, PreprocessStep, apply_frame};
+    use crate::process::{
+        Algorithm, HWResetParams, ProcessParams, convert_to_kev, extract_frame, extract_processed,
+    };
     use crate::types::FrameEvent;
 
     #[test]
@@ -765,6 +765,64 @@ mod tests {
                 assert_eq!(*size, 4);
             }
             _ => panic!("expected a FrameEvent::Event, got {event:?}"),
+        }
+    }
+
+    #[test]
+    fn extract_processed_keeps_max_and_applies_kev_flag() {
+        let processed = BTreeMap::from([(
+            10u64,
+            BTreeMap::from([(
+                0u8,
+                ChannelSamples {
+                    samples: vec![1.0, 4.0, 2.0],
+                    delay: 1,
+                },
+            )]),
+        )]);
+        let raw_samples = [0i16; 4];
+        let raw = BTreeMap::from([(10u64, BTreeMap::from([(0u8, raw_samples.as_slice())]))]);
+        let algorithm = Algorithm::Max {};
+
+        let events = extract_processed(
+            &processed,
+            &raw,
+            &ProcessParams {
+                algorithm: algorithm.clone(),
+                convert_to_kev: false,
+            },
+        );
+        let frame = &events[&10];
+        assert_eq!(frame.len(), 1);
+        match &frame[0] {
+            (
+                16,
+                FrameEvent::Event {
+                    channel,
+                    amplitude,
+                    size,
+                },
+            ) => {
+                assert_eq!(*channel, 0);
+                assert_eq!(*amplitude, 4.0);
+                assert_eq!(*size, 1);
+            }
+            other => panic!("expected max event, got {other:?}"),
+        }
+
+        let events = extract_processed(
+            &processed,
+            &raw,
+            &ProcessParams {
+                algorithm: algorithm.clone(),
+                convert_to_kev: true,
+            },
+        );
+        match &events[&10][0] {
+            (_, FrameEvent::Event { amplitude, .. }) => {
+                assert_eq!(*amplitude, convert_to_kev(&4.0, 0, &algorithm));
+            }
+            other => panic!("expected max event, got {other:?}"),
         }
     }
 
