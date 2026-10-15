@@ -10,7 +10,6 @@
 | [`dataforge-parser-numass`](dataforge-parser-numass/README.md) | Типы numass-данных для DataForge |
 | [`numass-processing`](numass-processing/README.md) | Общие алгоритмы обработки numass-точек |
 | [`numass-analysis`](numass-analysis/README.md) | Скрипты обработки данных numass |
-| [`numass-processing-py`](numass-processing-py/README.md) | Python-биндинги (`numass-processing`) |
 | [`numass-root`](numass-root/README.md) | C++-биндинги к CERN ROOT + утилита `convert-to-root`. Временно вне workspace |
 | [`numass-server`](numass-server/README.md) | Сервер (кросс-компиляция) |
 | [`numass-viewers`](numass-viewers/README.md) | Визуализация (wasm) |
