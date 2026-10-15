@@ -14,8 +14,9 @@
 //! [`Algorithm`](crate::process::Algorithm) и т.п.), метаданные точки
 //! ([`Preprocess`](crate::preprocess::Preprocess)) и гистограммы
 //! ([`PointHistogram`](crate::histogram::PointHistogram)) намеренно не
-//! конвертируются. Сырая точка протокола (`rsb_event::Point`) тоже: сначала её
-//! нужно разобрать [`extract_waveforms`](crate::preprocess::extract_waveforms).
+//! конвертируются: гистограммы нужны графике Rust. Сырая точка протокола
+//! (`rsb_event::Point`) тоже: сначала её нужно разобрать
+//! [`extract_waveforms`](crate::preprocess::extract_waveforms).
 //!
 //! ## Конвенции
 //! - Каналы — идентификаторы из данных (0-based); в отображении crate они
@@ -25,8 +26,9 @@
 //! - Сырые отсчёты — коды АЦП (i16 из данных), в таблицах хранятся как i64;
 //!   обработанные отсчёты — f32.
 //! - `size` событий измеряется в отсчётах по 8 нс.
-//! - Таблицы — «длинные»: одна строка на отсчёт или событие. Пустые данные
-//!   дают таблицу высоты 0.
+//! - Таблицы — «длинные»: одна строка на отсчёт или событие. Исключение —
+//!   [`ProcessedPoint`]: одна строка на осциллограмму канала, `value` — вектор
+//!   значений бинов. Пустые данные дают таблицу высоты 0.
 
 use std::collections::BTreeSet;
 
@@ -96,35 +98,37 @@ impl ToPolars for ProcessedFrame {
 }
 
 impl ToPolars for ProcessedPoint {
-    /// Одна строка на отсчёт: `time` (нс от начала набора точки), `channel`,
-    /// `index`, `delay`, `value`.
+    /// Одна строка на осциллограмму канала: `time` (нс от начала набора точки),
+    /// `channel`, `delay`, `value` (вектор значений бинов).
+    /// Позиция бина `value[i]` в сыром кадре — `i + delay`.
     fn to_polars(&self) -> DataFrame {
-        let total: usize = self
+        let rows: usize = self.values().map(|frame| frame.len()).sum();
+        let bins: usize = self
             .values()
             .map(|frame| frame.values().map(|ch| ch.samples.len()).sum::<usize>())
             .sum();
-        let mut time = Vec::with_capacity(total);
-        let mut channel = Vec::with_capacity(total);
-        let mut index = Vec::with_capacity(total);
-        let mut delay = Vec::with_capacity(total);
-        let mut value = Vec::with_capacity(total);
+        let mut time = Vec::with_capacity(rows);
+        let mut channel = Vec::with_capacity(rows);
+        let mut delay = Vec::with_capacity(rows);
+        let mut value = ListPrimitiveChunkedBuilder::<Float32Type>::new(
+            "value".into(),
+            rows,
+            bins,
+            DataType::Float32,
+        );
         for (frame_time, frame) in self {
             for (ch, samples) in frame {
-                for (idx, sample) in samples.samples.iter().enumerate() {
-                    time.push(*frame_time as i64);
-                    channel.push(*ch as i64);
-                    index.push(idx as i64);
-                    delay.push(samples.delay as i64);
-                    value.push(*sample);
-                }
+                time.push(*frame_time as i64);
+                channel.push(*ch as i64);
+                delay.push(samples.delay as i64);
+                value.append_slice(&samples.samples);
             }
         }
         frame(vec![
             Column::new("time".into(), time),
             Column::new("channel".into(), channel),
-            Column::new("index".into(), index),
             Column::new("delay".into(), delay),
-            Column::new("value".into(), value),
+            value.finish().into_column(),
         ])
     }
 }
@@ -409,6 +413,20 @@ mod tests {
         (0..values.len()).map(|idx| values.get(idx)).collect()
     }
 
+    fn list_f32(df: &DataFrame, name: &str, row: usize) -> Vec<f32> {
+        let series = df
+            .column(name)
+            .expect("column exists")
+            .list()
+            .expect("list column")
+            .get_as_series(row)
+            .expect("list row");
+        let values = series.f32().expect("f32 values");
+        (0..values.len())
+            .map(|idx| values.get(idx).expect("value"))
+            .collect()
+    }
+
     fn floats(df: &DataFrame, name: &str) -> Vec<Option<f32>> {
         let column = df.column(name).expect("column exists");
         let values = column.f32().expect("f32 column");
@@ -472,21 +490,20 @@ mod tests {
         let processed = apply_waveforms(&waveforms, &PreprocessParams::average().steps);
         let df = processed.to_polars();
 
-        assert_eq!(df.height(), 40);
+        assert_eq!(df.height(), 1);
+        assert_eq!(column_names(&df), ["time", "channel", "delay", "value"]);
         assert_eq!(
-            column_names(&df),
-            ["time", "channel", "index", "delay", "value"]
+            df.column("value").expect("value").dtype(),
+            &DataType::List(Box::new(DataType::Float32))
         );
-        assert_eq!(ints(&df, "time"), vec![Some(5); 40]);
-        assert_eq!(ints(&df, "delay"), vec![Some(0); 40]);
+        assert_eq!(ints(&df, "time"), [Some(5)]);
+        assert_eq!(ints(&df, "channel"), [Some(0)]);
+        assert_eq!(ints(&df, "delay"), [Some(0)]);
 
-        let values = floats(&df, "value");
-        assert!(values[..30].iter().all(|value| value.unwrap().abs() < 1e-4));
-        assert!(
-            values[30..]
-                .iter()
-                .all(|value| (value.unwrap() - 20.0).abs() < 1e-4)
-        );
+        let values = list_f32(&df, "value", 0);
+        assert_eq!(values.len(), 40);
+        assert!(values[..30].iter().all(|value| value.abs() < 1e-4));
+        assert!(values[30..].iter().all(|value| (value - 20.0).abs() < 1e-4));
     }
 
     #[test]

@@ -26,9 +26,11 @@ rgb_hsv = { version = "1.0.1", optional = true }
 clap = { version = "4", features = ["derive"], optional = true }
 polars = { version = "0.55.2", optional = true }
 pyo3 = { version = "0.29.3", optional = true }
+pyo3-polars = { version = "0.28.0", optional = true, default-features = false }
 pyo3-stub-gen = { version = "0.23.1", optional = true, default-features = false, features = [
     "infer_signature",
 ] }
+pyo3-stub-gen-derive = { version = "0.23.1", optional = true }
 
 protobuf = "3.2.0"
 
@@ -51,8 +53,8 @@ clap = ["dep:clap"]
 egui = ["dep:egui", "dep:egui_plot", "dep:egui_extras"]
 plotly = ["dep:plotly", "dep:rgb_hsv"]
 polars = ["dep:polars"]
-# Весь Python-binding код. Maturin включает только эту фичу.
-python = ["dep:pyo3"]
+# Весь Python-binding код, включая to_polars. Maturin включает только эту фичу.
+python = ["dep:pyo3", "polars", "dep:pyo3-polars", "dep:pyo3-stub-gen-derive"]
 # Ручная сборка cdylib без libpython. Maturin 1.9+ ставит PYO3_BUILD_EXTENSION_MODULE сам.
 extension-module = ["python", "pyo3/extension-module"]
 stubgen = ["python", "dep:pyo3-stub-gen"]

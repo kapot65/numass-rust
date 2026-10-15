@@ -1,10 +1,16 @@
-//! Python-биндинги конфигураций. Собирается только с фичей `python`.
+//! Python-биндинги. Собирается только с фичей `python`.
 //!
-//! Классы — это сами типы `numass-processing`. Здесь только модуль,
-//! конструкторы с дефолтами и фабрики без аргументов.
+//! Конфиги — сами типы `numass-processing`. Шаги обработки вызывают те же
+//! функции Rust и возвращают Rust-структуру. Промежуточные данные не копируются:
+//! [`Waveforms`] и [`Frame`] держат [`Point`]. `to_polars` — односторонний выход.
 
+use std::path::PathBuf;
+
+use numass::protos::rsb_event;
+use pyo3::exceptions::{PyFileNotFoundError, PyKeyError};
 use pyo3::prelude::*;
 use pyo3::types::PyType;
+use pyo3_polars::PyDataFrame;
 
 use crate::postprocess::{ChannelIgnore, PostProcessParams};
 use crate::preprocess::PreprocessParams;
@@ -13,15 +19,16 @@ use crate::process::{Algorithm, HWResetParams, HistParams, ProcessParams};
 #[cfg(feature = "stubgen")]
 pyo3_stub_gen::module_doc!(
     "numass_processing",
-    "Конфигурационные объекты numass-processing."
+    "Шаги обработки numass один в один с Rust. to_polars() — односторонний выход в таблицу Polars."
 );
 
 #[cfg(feature = "stubgen")]
 pyo3_stub_gen::define_stub_info_gatherer!(stub_info);
 
-/// Конфигурационные объекты numass-processing.
+/// Шаги обработки numass один в один с Rust.
 ///
 /// Query string и REST (`HistParams::to_query_string`) сюда не входят.
+/// После `to_polars()` методы этого модуля уже не вызываются.
 #[pymodule]
 fn numass_processing(m: &Bound<'_, PyModule>) -> PyResult<()> {
     use crate::preprocess::{Baseline, PreprocessStep};
@@ -37,6 +44,18 @@ fn numass_processing(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<ChannelIgnore>()?;
     m.add_class::<PostProcessParams>()?;
     m.add_class::<HistParams>()?;
+
+    m.add_class::<Point>()?;
+    m.add_class::<Waveforms>()?;
+    m.add_class::<Frame>()?;
+    m.add_class::<ProcessedPoint>()?;
+    m.add_class::<ProcessedFrame>()?;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    m.add_function(wrap_pyfunction!(load_point, m)?)?;
+    m.add_function(wrap_pyfunction!(extract_waveforms, m)?)?;
+    m.add_function(wrap_pyfunction!(apply_waveforms, m)?)?;
+    m.add_function(wrap_pyfunction!(apply_frame, m)?)?;
     Ok(())
 }
 
@@ -190,4 +209,165 @@ impl HistParams {
             postprocess,
         }
     }
+}
+
+fn polars_table(frame: polars::prelude::DataFrame) -> PyDataFrame {
+    PyDataFrame(frame)
+}
+
+/// Протокольная точка. Данные кадров лежат здесь; следующие шаги только ссылаются на них.
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyclass)]
+#[pyclass(module = "numass_processing")]
+struct Point {
+    inner: rsb_event::Point,
+}
+
+/// Кадры точки без копии отсчётов. Время кадра — ключ, как в `extract_waveforms`.
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyclass)]
+#[pyclass(module = "numass_processing")]
+struct Waveforms {
+    point: Py<Point>,
+}
+
+/// Один кадр точки. Отсчёты остаются в [`Point`].
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyclass)]
+#[pyclass(module = "numass_processing")]
+struct Frame {
+    point: Py<Point>,
+    time: u64,
+}
+
+/// Точка после [`apply_waveforms`].
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyclass)]
+#[pyclass(module = "numass_processing")]
+struct ProcessedPoint {
+    inner: crate::preprocess::ProcessedPoint,
+}
+
+/// Кадр после [`apply_frame`].
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyclass)]
+#[pyclass(module = "numass_processing")]
+struct ProcessedFrame {
+    inner: crate::preprocess::ProcessedFrame,
+}
+
+fn frame_at(point: &rsb_event::Point, time: u64) -> Option<crate::types::NumassFrameFast<'_>> {
+    crate::preprocess::extract_waveforms(point)
+        .get(&time)
+        .cloned()
+}
+
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pymethods)]
+#[cfg_attr(not(feature = "stubgen"), pyo3_stub_gen_derive::remove_gen_stub)]
+#[pymethods]
+impl Waveforms {
+    /// Кадр с этим временем (нс от начала набора). Отсчёты не копируются.
+    fn __getitem__(&self, py: Python<'_>, time: u64) -> PyResult<Frame> {
+        let point = self.point.borrow(py);
+        if frame_at(&point.inner, time).is_none() {
+            return Err(PyKeyError::new_err(time));
+        }
+        Ok(Frame {
+            point: self.point.clone_ref(py),
+            time,
+        })
+    }
+
+    /// Односторонняя таблица сырых кадров: `time`, `channel`, `index`, `value`.
+    #[gen_stub(override_return_type(type_repr = "polars.DataFrame", imports = ("polars")))]
+    fn to_polars(&self, py: Python<'_>) -> PyDataFrame {
+        let point = self.point.borrow(py);
+        let waveforms = crate::preprocess::extract_waveforms(&point.inner);
+        polars_table(crate::to_polars::ToPolars::to_polars(&waveforms))
+    }
+}
+
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pymethods)]
+#[cfg_attr(not(feature = "stubgen"), pyo3_stub_gen_derive::remove_gen_stub)]
+#[pymethods]
+impl Frame {
+    /// Односторонняя таблица кадра: `channel`, `index`, `value`.
+    #[gen_stub(override_return_type(type_repr = "polars.DataFrame", imports = ("polars")))]
+    fn to_polars(&self, py: Python<'_>) -> PyResult<PyDataFrame> {
+        let point = self.point.borrow(py);
+        let Some(frame) = frame_at(&point.inner, self.time) else {
+            return Err(PyKeyError::new_err(self.time));
+        };
+        Ok(polars_table(crate::to_polars::ToPolars::to_polars(&frame)))
+    }
+}
+
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pymethods)]
+#[cfg_attr(not(feature = "stubgen"), pyo3_stub_gen_derive::remove_gen_stub)]
+#[pymethods]
+impl ProcessedPoint {
+    /// Односторонняя таблица: одна строка на осциллограмму канала.
+    /// `time`, `channel`, `delay`, `value` (вектор значений бинов).
+    #[gen_stub(override_return_type(type_repr = "polars.DataFrame", imports = ("polars")))]
+    fn to_polars(&self) -> PyDataFrame {
+        polars_table(crate::to_polars::ToPolars::to_polars(&self.inner))
+    }
+}
+
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pymethods)]
+#[cfg_attr(not(feature = "stubgen"), pyo3_stub_gen_derive::remove_gen_stub)]
+#[pymethods]
+impl ProcessedFrame {
+    /// Односторонняя таблица: `channel`, `index`, `delay`, `value`.
+    #[gen_stub(override_return_type(type_repr = "polars.DataFrame", imports = ("polars")))]
+    fn to_polars(&self) -> PyDataFrame {
+        polars_table(crate::to_polars::ToPolars::to_polars(&self.inner))
+    }
+}
+
+/// Загружает протокольную точку из файла DataForge.
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyfunction)]
+#[pyfunction]
+fn load_point(path: PathBuf) -> PyResult<Point> {
+    if !path.is_file() {
+        return Err(PyFileNotFoundError::new_err(path.display().to_string()));
+    }
+    Ok(Point {
+        inner: crate::storage::load_point_sync(&path),
+    })
+}
+
+/// Кадры точки без копии отсчётов. `point` остаётся владельцем данных.
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyfunction)]
+#[pyfunction]
+fn extract_waveforms(point: Py<Point>) -> Waveforms {
+    Waveforms { point }
+}
+
+/// Те же шаги, что `preprocess::apply_waveforms`.
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyfunction)]
+#[pyfunction]
+fn apply_waveforms(
+    py: Python<'_>,
+    waveforms: &Waveforms,
+    steps: Vec<crate::preprocess::PreprocessStep>,
+) -> ProcessedPoint {
+    let point = waveforms.point.borrow(py);
+    let fast = crate::preprocess::extract_waveforms(&point.inner);
+    ProcessedPoint {
+        inner: crate::preprocess::apply_waveforms(&fast, &steps),
+    }
+}
+
+/// Те же шаги, что `preprocess::apply_frame`. `Baseline::Point` видит только этот кадр.
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyfunction)]
+#[pyfunction]
+fn apply_frame(
+    py: Python<'_>,
+    frame: &Frame,
+    steps: Vec<crate::preprocess::PreprocessStep>,
+) -> PyResult<ProcessedFrame> {
+    let point = frame.point.borrow(py);
+    let Some(fast) = frame_at(&point.inner, frame.time) else {
+        return Err(PyKeyError::new_err(frame.time));
+    };
+    Ok(ProcessedFrame {
+        inner: crate::preprocess::apply_frame(&fast, &steps),
+    })
 }

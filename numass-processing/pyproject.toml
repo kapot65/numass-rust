@@ -1,13 +1,13 @@
 [project]
 name = "numass-processing"
 version = "2.0.0" # version.nu обновляет только Cargo.toml
-description = "Configuration objects for numass-processing"
+description = "numass-processing pipeline for Python"
 readme = "README.md"
 authors = [
     { name = "chernov", email = "kapot65@gmail.com" }
 ]
 requires-python = ">=3.14.8"
-dependencies = []
+dependencies = ["polars>=1.30"]
 
 [build-system]
 requires = ["maturin>=1.15.0,<2.0"]
@@ -15,8 +15,16 @@ build-backend = "maturin"
 
 [tool.maturin]
 module-name = "numass_processing"
-# Только python: clap, egui, plotly и polars в модуль не входят.
+# python тянет polars. clap, egui и plotly в модуль не входят.
 features = ["python"]
+
+# Иначе uv не пересобирает расширение при правке Rust: по умолчанию ключ — только pyproject.toml.
+[tool.uv]
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "Cargo.toml" },
+    { file = "src/**/*.rs" },
+]
 
 [dependency-groups]
 dev = [
