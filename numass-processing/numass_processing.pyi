@@ -34,8 +34,11 @@ __all__ = [
     "extract_frame",
     "extract_processed",
     "extract_waveforms",
+    "from_point",
     "load_meta",
     "load_point",
+    "post_process",
+    "post_process_frame",
 ]
 
 class Algorithm:
@@ -484,6 +487,14 @@ def extract_waveforms(point: Point) -> Waveforms:
     Кадры точки без копии отсчётов. `point` остаётся владельцем данных.
     """
 
+def from_point(point: Point, meta: dict[str, typing.Any]) -> dict[str, typing.Any]:
+    r"""
+    `Preprocess::from_point` словарём. В биндингах `Preprocess` — только dict.
+    
+    `meta` читается как `NumassMeta`. Без ответа `aquired_point` функция
+    возвращает ошибку: в Rust в этом месте паника.
+    """
+
 def load_meta(path: builtins.str | os.PathLike | pathlib.Path) -> dict[str, typing.Any]:
     r"""
     Полный JSON метаданных точки из DataForge, без разбора в `NumassMeta`.
@@ -492,5 +503,17 @@ def load_meta(path: builtins.str | os.PathLike | pathlib.Path) -> dict[str, typi
 def load_point(path: builtins.str | os.PathLike | pathlib.Path) -> Point:
     r"""
     Загружает протокольную точку из файла DataForge.
+    """
+
+def post_process(events: NumassEvents, preprocess: dict[str, typing.Any], params: PostProcessParams) -> NumassEvents:
+    r"""
+    Те же аргументы, что `postprocess::post_process`, без egui.
+    
+    `preprocess` — словарь из `from_point`. Перед шагом он читается как `Preprocess`.
+    """
+
+def post_process_frame(events: FrameEvents, params: PostProcessParams) -> FrameEvents:
+    r"""
+    Те же аргументы, что `postprocess::post_process_frame`, без egui.
     """
 

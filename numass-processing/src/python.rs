@@ -60,9 +60,12 @@ fn numass_processing(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(extract_waveforms, m)?)?;
     m.add_function(wrap_pyfunction!(apply_waveforms, m)?)?;
     m.add_function(wrap_pyfunction!(apply_frame, m)?)?;
+    m.add_function(wrap_pyfunction!(from_point, m)?)?;
     m.add_function(wrap_pyfunction!(extract_processed, m)?)?;
     m.add_function(wrap_pyfunction!(extract_frame, m)?)?;
     m.add_function(wrap_pyfunction!(convert_to_kev, m)?)?;
+    m.add_function(wrap_pyfunction!(post_process, m)?)?;
+    m.add_function(wrap_pyfunction!(post_process_frame, m)?)?;
     Ok(())
 }
 
@@ -232,15 +235,18 @@ fn json_to_py(py: Python<'_>, value: &serde_json::Value) -> PyResult<Py<PyAny>> 
     Ok(py.import("json")?.call_method1("loads", (text,))?.unbind())
 }
 
-/// Словарь ↔ [`numass::NumassMeta`]. Ошибка serde с любого направления уходит в Python.
-fn read_meta_dict(py: Python<'_>, dict: &Bound<'_, PyDict>) -> PyResult<()> {
+/// Словарь ↔ `T`. Ошибка serde с любого направления уходит в Python.
+fn parse_json_dict<T>(py: Python<'_>, dict: &Bound<'_, PyDict>) -> PyResult<T>
+where
+    T: serde::de::DeserializeOwned + serde::Serialize,
+{
     let text: String = py
         .import("json")?
         .call_method1("dumps", (dict,))?
         .extract()?;
-    let meta: numass::NumassMeta = serde_json::from_str(&text).map_err(serde_error)?;
-    serde_json::to_value(&meta).map_err(serde_error)?;
-    Ok(())
+    let value: T = serde_json::from_str(&text).map_err(serde_error)?;
+    serde_json::to_value(&value).map_err(serde_error)?;
+    Ok(value)
 }
 
 /// Протокольная точка. Данные кадров лежат здесь; следующие шаги только ссылаются на них.
@@ -473,7 +479,7 @@ fn extract_processed(
 ) -> PyResult<NumassEvents> {
     // Словарь нужен только как NumassMeta: схема проверяется здесь, события от неё не зависят.
     if let Some(meta) = meta {
-        read_meta_dict(py, meta.bind(py))?;
+        parse_json_dict::<numass::NumassMeta>(py, meta.bind(py))?;
     }
     let point = waveforms.point.borrow(py);
     let raw = crate::preprocess::extract_waveforms(&point.inner);
@@ -511,4 +517,66 @@ fn extract_frame(
 #[pyfunction]
 fn convert_to_kev(amplitude: f32, ch_id: u8, algorithm: Algorithm) -> f32 {
     crate::process::convert_to_kev(&amplitude, ch_id, &algorithm)
+}
+
+/// `Preprocess::from_point` словарём. В биндингах `Preprocess` — только dict.
+///
+/// `meta` читается как `NumassMeta`. Без ответа `aquired_point` функция
+/// возвращает ошибку: в Rust в этом месте паника.
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyfunction)]
+#[cfg_attr(not(feature = "stubgen"), pyo3_stub_gen_derive::remove_gen_stub)]
+#[pyfunction]
+#[gen_stub(override_return_type(type_repr = "dict[str, typing.Any]", imports = ("typing")))]
+fn from_point(
+    py: Python<'_>,
+    point: &Point,
+    #[gen_stub(override_type(type_repr = "dict[str, typing.Any]", imports = ("typing")))] meta: Py<
+        PyDict,
+    >,
+) -> PyResult<Py<PyAny>> {
+    let meta = parse_json_dict::<numass::NumassMeta>(py, meta.bind(py))?;
+    if !matches!(
+        meta,
+        numass::NumassMeta::Reply(numass::Reply::AcquirePoint { .. })
+    ) {
+        return Err(PyValueError::new_err(
+            "acquisition_time/start_time not found in metadata",
+        ));
+    }
+    let preprocess = crate::preprocess::Preprocess::from_point(Some(meta), &point.inner);
+    let value = serde_json::to_value(&preprocess).map_err(serde_error)?;
+    json_to_py(py, &value)
+}
+
+/// Те же аргументы, что `postprocess::post_process`, без egui.
+///
+/// `preprocess` — словарь из `from_point`. Перед шагом он читается как `Preprocess`.
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyfunction)]
+#[cfg_attr(not(feature = "stubgen"), pyo3_stub_gen_derive::remove_gen_stub)]
+#[pyfunction]
+fn post_process(
+    py: Python<'_>,
+    events: &NumassEvents,
+    #[gen_stub(override_type(type_repr = "dict[str, typing.Any]", imports = ("typing")))]
+    preprocess: Py<PyDict>,
+    params: PostProcessParams,
+) -> PyResult<NumassEvents> {
+    let preprocess = parse_json_dict::<crate::preprocess::Preprocess>(py, preprocess.bind(py))?;
+    let (amplitudes, _) =
+        crate::postprocess::post_process((events.inner.clone(), preprocess), &params);
+    Ok(NumassEvents { inner: amplitudes })
+}
+
+/// Те же аргументы, что `postprocess::post_process_frame`, без egui.
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyfunction)]
+#[pyfunction]
+fn post_process_frame(events: &FrameEvents, params: PostProcessParams) -> FrameEvents {
+    FrameEvents {
+        inner: crate::postprocess::post_process_frame(
+            events.inner.clone(),
+            &params,
+            #[cfg(feature = "egui")]
+            None,
+        ),
+    }
 }
