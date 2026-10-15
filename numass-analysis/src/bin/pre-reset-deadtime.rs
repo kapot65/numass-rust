@@ -25,7 +25,9 @@ async fn main() {
     };
 
     match &mut process.algorithm {
-        numass_processing::process::Algorithm::Trapezoid { skip, .. } => *skip = SkipOption::Good,
+        numass_processing::process::Algorithm::Trapezoid { skip, .. } => {
+            *skip = Some(SkipOption::Good)
+        }
         _ => unreachable!(),
     }
 

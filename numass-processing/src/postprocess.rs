@@ -19,6 +19,12 @@ use {
     std::collections::HashSet,
 };
 
+/// Игнорируемые каналы (1–7, нумерация как на детекторе).
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyclass)]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(eq, module = "numass_processing", get_all, set_all, from_py_object)
+)]
 #[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize, Hash, Default)]
 pub struct ChannelIgnore {
     pub ch1: bool,
@@ -54,6 +60,11 @@ impl From<[bool; 7]> for ChannelIgnore {
 
 #[repr(C)]
 /// Postprocessing params.
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyclass)]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(eq, module = "numass_processing", get_all, set_all, from_py_object)
+)]
 #[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize, Hash, Default)]
 pub struct PostProcessParams {
     /// remove events inside [bad_blocks](crate::preprocess::Preprocess::bad_blocks) timestamps
