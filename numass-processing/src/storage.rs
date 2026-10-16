@@ -169,6 +169,13 @@ fn read_range_sync(filepath: &Path, start: u64, len: usize) -> Vec<u8> {
     buf
 }
 
+/// Полный JSON метаданных DF01, без сужения до [`NumassMeta`].
+#[cfg(not(target_arch = "wasm32"))]
+pub fn load_meta_json_sync(filepath: &Path) -> Result<serde_json::Value, dataforge::DFParseError> {
+    let mut file = std::fs::File::open(filepath)?;
+    Ok(dataforge::read_df_header_and_meta_sync::<serde_json::Value>(&mut file)?.1)
+}
+
 /// Load point metadata only from the storage.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn load_meta_sync(filepath: &Path) -> Option<NumassMeta> {

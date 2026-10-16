@@ -32,6 +32,16 @@ def deploy-native [root: string] {
     }
 
     sudo cp ($root | path join "target" "release" "data-viewer-web") /usr/local/bin/
+
+    # Сервис идёт от root и не видит ~/.local/bin, куда uv tool install кладёт CLI.
+    let converter = $"($env.HOME)/.local/bin/convert-to-root"
+    if ($converter | path exists) {
+        sudo ln -sfn $converter /usr/local/bin/convert-to-root
+    } else {
+        print -e $"Error: ($converter) не найден. Из numass-processing: uv tool install --force '.[root]'"
+        exit 1
+    }
+
     sudo systemctl start data-viewer-web
 }
 

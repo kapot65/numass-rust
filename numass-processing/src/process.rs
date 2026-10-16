@@ -4,8 +4,6 @@
 //! see [params](crate::process::ProcessParams) for details.
 //!
 
-use std::collections::BTreeMap;
-
 #[cfg(feature = "egui")]
 use {
     crate::utils::color_for_index,
@@ -23,12 +21,18 @@ use crate::{
     },
     postprocess::PostProcessParams,
     preprocess::{
-        Preprocess, PreprocessParams, ProcessedFrame, apply_waveforms, extract_waveforms,
+        Preprocess, PreprocessParams, ProcessedFrame, ProcessedPoint, apply_waveforms,
+        extract_waveforms,
     },
-    types::{FrameEvent, NumassEvent, NumassEvents, NumassFrameFast},
+    types::{FrameEvent, NumassEvent, NumassEvents, NumassFrameFast, NumassWaveformsFast},
 };
 
 #[repr(C)]
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyclass)]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(eq, module = "numass_processing", get_all, set_all, from_py_object)
+)]
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 #[cfg_attr(feature = "clap", derive(clap::Args))]
 pub struct HWResetParams {
@@ -40,50 +44,78 @@ pub struct HWResetParams {
     pub size: u16,
 }
 
+/// Какие кадры пропускает [`Algorithm::Trapezoid`], когда фильтр включён.
 #[repr(C)]
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyclass_enum)]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(eq, module = "numass_processing", from_py_object)
+)]
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum SkipOption {
-    None, // TODO: use rust Option<T> instead?
     Bad,
     Good,
 }
 
 #[repr(C)]
 /// Built-in algorithms params for processing the data.
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
+///
+/// `Max` and `Average` are empty struct variants: PyO3 rejects a unit variant
+/// inside a complex enum, and clap rejects an empty tuple. JSON is
+/// `{"Max":{}}` and `{"Average":{}}`.
+#[cfg_attr(
+    feature = "stubgen",
+    pyo3_stub_gen::derive::gen_stub_pyclass_complex_enum
+)]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(eq, module = "numass_processing", from_py_object)
+)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "clap", derive(clap::Subcommand))]
-#[derive(Default)]
 pub enum Algorithm {
-    Max,
+    /// Максимум кадра.
+    Max {},
+    /// Интегрирование в окне `[left, right]` от первого пика.
     Likhovid {
         #[cfg_attr(feature = "clap", arg(long, default_value_t = LIKHOVID_LEFT))]
         left: u16,
         #[cfg_attr(feature = "clap", arg(long, default_value_t = LIKHOVID_RIGHT))]
         right: u16,
     },
+    /// Амплитуда первого пика выше `threshold`, поиск от `left`-го отсчёта.
     FirstPeak {
         #[cfg_attr(feature = "clap", arg(long, default_value_t = FIRSTPEAK_THRESHOLD))]
         threshold: i16,
         #[cfg_attr(feature = "clap", arg(long, default_value_t = FIRSTPEAK_LEFT))]
         left: u16,
     },
+    /// Трапеция: нарастание до `treshold`, спад до `min_length`.
     Trapezoid {
         #[cfg_attr(feature = "clap", arg(long, default_value_t = TRAPEZOID_TRESHOLD))]
         treshold: i16,
         #[cfg_attr(feature = "clap", arg(long, default_value_t = TRAPEZOID_MIN_LENGTH))]
         min_length: u16,
-        #[cfg_attr(feature = "clap", arg(long, value_enum, default_value = "none"))]
-        skip: SkipOption,
+        /// `None` — не фильтровать кадры.
+        #[cfg_attr(feature = "clap", arg(long, value_enum))]
+        skip: Option<SkipOption>,
         #[cfg_attr(feature = "clap", command(flatten))]
         reset_detection: HWResetParams,
     },
+    /// Длинная производная с детекцией сброса.
     LongDiff {
         #[cfg_attr(feature = "clap", command(flatten))]
         reset_detection: HWResetParams,
     },
-    #[default]
-    Average,
+    /// Среднее по стандартной части кадра.
+    Average {},
+}
+
+impl Default for Algorithm {
+    fn default() -> Self {
+        Self::Average {}
+    }
 }
 
 // Scalar defaults shared between the `*_DEFAULT` singletons and the clap
@@ -98,6 +130,18 @@ pub const HW_RESET_WINDOW: u16 = 10;
 pub const HW_RESET_TRESHOLD: i16 = 800;
 pub const HW_RESET_SIZE: u16 = 110;
 
+pub const HW_RESET_DEFAULT: HWResetParams = HWResetParams {
+    window: HW_RESET_WINDOW,
+    treshold: HW_RESET_TRESHOLD,
+    size: HW_RESET_SIZE,
+};
+
+impl Default for HWResetParams {
+    fn default() -> Self {
+        HW_RESET_DEFAULT
+    }
+}
+
 pub const LIKHOVID_DEFAULT: Algorithm = Algorithm::Likhovid {
     left: LIKHOVID_LEFT,
     right: LIKHOVID_RIGHT,
@@ -109,23 +153,20 @@ pub const FIRSTPEAK_DEFAULT: Algorithm = Algorithm::FirstPeak {
 pub const TRAPEZOID_DEFAULT: Algorithm = Algorithm::Trapezoid {
     treshold: TRAPEZOID_TRESHOLD,
     min_length: TRAPEZOID_MIN_LENGTH,
-    skip: SkipOption::None,
-    reset_detection: HWResetParams {
-        window: HW_RESET_WINDOW,
-        treshold: HW_RESET_TRESHOLD,
-        size: HW_RESET_SIZE,
-    },
+    skip: None,
+    reset_detection: HW_RESET_DEFAULT,
 };
 pub const LONGDIFF_DEFAULT: Algorithm = Algorithm::LongDiff {
-    reset_detection: HWResetParams {
-        window: HW_RESET_WINDOW,
-        treshold: HW_RESET_TRESHOLD,
-        size: HW_RESET_SIZE,
-    },
+    reset_detection: HW_RESET_DEFAULT,
 };
 
 #[repr(C)]
 /// Built-in processing params.
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyclass)]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(eq, module = "numass_processing", get_all, set_all, from_py_object)
+)]
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
 pub struct ProcessParams {
     pub algorithm: Algorithm,
@@ -141,11 +182,13 @@ impl Default for ProcessParams {
     }
 }
 
-/// Parameters of `GET /api/process/hist/{path}`.
-///
-/// The file path is the route wildcard. The query string is `params=<json>`.
-/// Bare `serde_qs` fields do not round-trip nested preprocess steps.
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+/// Preprocess, extraction algorithm, and optional postprocess.
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyclass)]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(eq, module = "numass_processing", get_all, set_all, from_py_object)
+)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Default)]
 pub struct HistParams {
     pub preprocess: PreprocessParams,
     pub process: ProcessParams,
@@ -158,6 +201,10 @@ struct HistParamsQuery {
 }
 
 impl HistParams {
+    /// Query string for `GET /api/process/hist/{path}`: `params=<json>`.
+    ///
+    /// The file path is the route wildcard. Bare `serde_qs` fields do not
+    /// round-trip nested preprocess steps, so the JSON is a single query value.
     pub fn to_query_string(&self) -> String {
         serde_qs::to_string(&HistParamsQuery {
             params: serde_json::to_string(self).expect("HistParams is JSON"),
@@ -195,7 +242,7 @@ impl Extract for Algorithm {
         #[cfg(feature = "egui")] ui: &mut Option<&mut PlotUi>,
     ) -> Vec<NumassEvent> {
         match self {
-            Algorithm::Max => extract_max(input),
+            Algorithm::Max {} => extract_max(input),
             Algorithm::Likhovid { left, right } => extract_likhovid(input, *left, *right),
             Algorithm::FirstPeak { threshold, left } => {
                 extract_first_peak(input, *threshold, *left)
@@ -220,7 +267,7 @@ impl Extract for Algorithm {
                 #[cfg(feature = "egui")]
                 ui,
             ),
-            Algorithm::Average => extract_average(input),
+            Algorithm::Average {} => extract_average(input),
         }
     }
 
@@ -240,9 +287,20 @@ pub fn extract_events(
     let meta_params = Preprocess::from_point(meta, &point);
     let raw = extract_waveforms(&point);
     let processed = apply_waveforms(&raw, &preprocess.steps);
+    (extract_processed(&processed, &raw, process), meta_params)
+}
 
-    let events = raw
-        .iter()
+/// События всех кадров уже предобработанной точки.
+///
+/// Тот же проход, что [`extract_events`] делает после `apply_waveforms`:
+/// [`extract_frame`] и, если `process.convert_to_kev`, перевод амплитуды в кэВ.
+/// `processed` и `raw` должны быть одной точкой.
+pub fn extract_processed(
+    processed: &ProcessedPoint,
+    raw: &NumassWaveformsFast<'_>,
+    process: &ProcessParams,
+) -> NumassEvents {
+    raw.iter()
         .map(|(time, frame)| {
             let mut events = extract_frame(
                 &processed[time],
@@ -263,9 +321,7 @@ pub fn extract_events(
             }
             (*time, events)
         })
-        .collect::<BTreeMap<_, _>>();
-
-    (events, meta_params)
+        .collect()
 }
 
 /// События одного кадра. Общие маркеры событий рисует эта обёртка, не тело алгоритма.
@@ -295,12 +351,12 @@ pub fn extract_frame(
 /// TODO: make configurable
 pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 {
     let [a, b] = match algorithm {
-        Algorithm::Max => KEV_COEFF_MAX[ch_id as usize],
+        Algorithm::Max {} => KEV_COEFF_MAX[ch_id as usize],
         Algorithm::Likhovid { .. } => KEV_COEFF_LIKHOVID[ch_id as usize],
         Algorithm::FirstPeak { .. } => KEV_COEFF_FIRST_PEAK[ch_id as usize],
         Algorithm::Trapezoid { .. } => KEV_COEFF_TRAPEZIOD[ch_id as usize],
         Algorithm::LongDiff { .. } => KEV_COEFF_LONGDIFF[ch_id as usize],
-        Algorithm::Average => KEV_COEFF_AVERAGE[ch_id as usize],
+        Algorithm::Average {} => KEV_COEFF_AVERAGE[ch_id as usize],
     };
     a * *amplitude + b
 }
@@ -395,7 +451,7 @@ fn extract_trapezoid(
     input: &FrameIn<'_>,
     treshold: i16,
     min_length: u16,
-    skip: &SkipOption,
+    skip: &Option<SkipOption>,
     reset_detection: &HWResetParams,
     #[cfg(feature = "egui")] ui: &mut Option<&mut PlotUi>,
 ) -> Vec<NumassEvent> {
@@ -473,15 +529,15 @@ fn extract_trapezoid(
     }
 
     match skip {
-        SkipOption::None => events,
-        SkipOption::Bad => {
+        None => events,
+        Some(SkipOption::Bad) => {
             if bad_frame {
                 Vec::new()
             } else {
                 events
             }
         }
-        SkipOption::Good => {
+        Some(SkipOption::Good) => {
             if bad_frame {
                 events
             } else {
@@ -674,8 +730,10 @@ fn draw_process_events(events: &[NumassEvent], ui: &mut PlotUi) {
 mod tests {
     use std::collections::BTreeMap;
 
-    use crate::preprocess::{PreprocessStep, apply_frame};
-    use crate::process::{Algorithm, HWResetParams, SkipOption, extract_frame};
+    use crate::preprocess::{ChannelSamples, PreprocessStep, apply_frame};
+    use crate::process::{
+        Algorithm, HWResetParams, ProcessParams, convert_to_kev, extract_frame, extract_processed,
+    };
     use crate::types::FrameEvent;
 
     #[test]
@@ -689,7 +747,7 @@ mod tests {
         let events = extract_frame(
             &processed,
             &raw,
-            &Algorithm::Average,
+            &Algorithm::Average {},
             #[cfg(feature = "egui")]
             &mut None,
         );
@@ -707,6 +765,64 @@ mod tests {
                 assert_eq!(*size, 4);
             }
             _ => panic!("expected a FrameEvent::Event, got {event:?}"),
+        }
+    }
+
+    #[test]
+    fn extract_processed_keeps_max_and_applies_kev_flag() {
+        let processed = BTreeMap::from([(
+            10u64,
+            BTreeMap::from([(
+                0u8,
+                ChannelSamples {
+                    samples: vec![1.0, 4.0, 2.0],
+                    delay: 1,
+                },
+            )]),
+        )]);
+        let raw_samples = [0i16; 4];
+        let raw = BTreeMap::from([(10u64, BTreeMap::from([(0u8, raw_samples.as_slice())]))]);
+        let algorithm = Algorithm::Max {};
+
+        let events = extract_processed(
+            &processed,
+            &raw,
+            &ProcessParams {
+                algorithm: algorithm.clone(),
+                convert_to_kev: false,
+            },
+        );
+        let frame = &events[&10];
+        assert_eq!(frame.len(), 1);
+        match &frame[0] {
+            (
+                16,
+                FrameEvent::Event {
+                    channel,
+                    amplitude,
+                    size,
+                },
+            ) => {
+                assert_eq!(*channel, 0);
+                assert_eq!(*amplitude, 4.0);
+                assert_eq!(*size, 1);
+            }
+            other => panic!("expected max event, got {other:?}"),
+        }
+
+        let events = extract_processed(
+            &processed,
+            &raw,
+            &ProcessParams {
+                algorithm: algorithm.clone(),
+                convert_to_kev: true,
+            },
+        );
+        match &events[&10][0] {
+            (_, FrameEvent::Event { amplitude, .. }) => {
+                assert_eq!(*amplitude, convert_to_kev(&4.0, 0, &algorithm));
+            }
+            other => panic!("expected max event, got {other:?}"),
         }
     }
 
@@ -729,7 +845,7 @@ mod tests {
             &Algorithm::Trapezoid {
                 treshold: 10,
                 min_length: 2,
-                skip: SkipOption::None,
+                skip: None,
                 reset_detection: HWResetParams {
                     window: 2,
                     treshold: 800,
@@ -754,6 +870,45 @@ mod tests {
             }
             _ => unreachable!(),
         }
+    }
+
+    #[test]
+    fn empty_struct_variants_are_json_objects() {
+        use crate::preprocess::{Baseline, PreprocessStep};
+
+        assert_eq!(
+            serde_json::to_string(&Algorithm::Max {}).unwrap(),
+            "{\"Max\":{}}"
+        );
+        assert_eq!(
+            serde_json::to_string(&Algorithm::Average {}).unwrap(),
+            "{\"Average\":{}}"
+        );
+        assert_eq!(
+            serde_json::from_str::<Algorithm>("{\"Average\":{}}").unwrap(),
+            Algorithm::Average {}
+        );
+        assert_eq!(
+            serde_json::to_string(&super::LIKHOVID_DEFAULT).unwrap(),
+            "{\"Likhovid\":{\"left\":15,\"right\":36}}"
+        );
+
+        assert_eq!(
+            serde_json::to_string(&PreprocessStep::Invert {}).unwrap(),
+            "{\"Invert\":{}}"
+        );
+        assert_eq!(
+            serde_json::from_str::<PreprocessStep>("{\"Invert\":{}}").unwrap(),
+            PreprocessStep::Invert {}
+        );
+        assert_eq!(
+            serde_json::to_string(&Baseline::Constant([1.0; 7])).unwrap(),
+            "{\"Constant\":[1.0,1.0,1.0,1.0,1.0,1.0,1.0]}"
+        );
+        assert_eq!(
+            serde_json::to_string(&PreprocessStep::Baseline(Baseline::Head { bins: 30 })).unwrap(),
+            "{\"Baseline\":{\"Head\":{\"bins\":30}}}"
+        );
     }
 
     #[test]

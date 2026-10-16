@@ -151,6 +151,14 @@ impl Preprocess {
 }
 
 /// Оценка базовой линии, которую вычитают из кадра.
+#[cfg_attr(
+    feature = "stubgen",
+    pyo3_stub_gen::derive::gen_stub_pyclass_complex_enum
+)]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(eq, module = "numass_processing", from_py_object)
+)]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Baseline {
     /// Константа на канал, задаёт пользователь. Индекс — номер канала.
@@ -162,14 +170,33 @@ pub enum Baseline {
 }
 
 /// Один шаг предобработки. Список выполняется по порядку, каждый шаг — один проход.
+///
+/// `Invert` — пустая структура: PyO3 не принимает unit-вариант в complex enum.
+/// В JSON это объект `{"Invert":{}}`.
+#[cfg_attr(
+    feature = "stubgen",
+    pyo3_stub_gen::derive::gen_stub_pyclass_complex_enum
+)]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(eq, module = "numass_processing", from_py_object)
+)]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum PreprocessStep {
+    /// FIR-фильтр с окном `left + center + right`.
     Fir { left: u16, center: u16, right: u16 },
+    /// Вычесть базовую линию.
     Baseline(Baseline),
-    Invert,
+    /// Инвертировать сигнал.
+    Invert {},
 }
 
 /// Упорядоченный список шагов waveform → waveform.
+#[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyclass)]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(eq, module = "numass_processing", get_all, set_all, from_py_object)
+)]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PreprocessParams {
     pub steps: Vec<PreprocessStep>,
@@ -206,7 +233,7 @@ impl PreprocessParams {
         Self {
             steps: vec![
                 PreprocessStep::Baseline(Baseline::Head { bins: HEAD_BINS }),
-                PreprocessStep::Invert,
+                PreprocessStep::Invert {},
             ],
         }
     }
@@ -331,7 +358,7 @@ fn apply_step(buffers: &mut ProcessedPoint, step: &PreprocessStep) {
                 }
             }
         }
-        PreprocessStep::Invert => {
+        PreprocessStep::Invert {} => {
             for frame in buffers.values_mut() {
                 for channel in frame.values_mut() {
                     for sample in &mut channel.samples {

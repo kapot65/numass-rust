@@ -1,0 +1,41 @@
+[project]
+name = "numass-processing"
+version = "2.0.0" # version.nu обновляет только Cargo.toml
+description = "numass-processing pipeline for Python"
+readme = "README.md"
+authors = [
+    { name = "chernov", email = "kapot65@gmail.com" }
+]
+requires-python = ">=3.14.8"
+dependencies = ["polars>=1.30"]
+
+[project.optional-dependencies]
+# convert-to-root пишет RNTuple через uproot. Пакет root с PyPI не нужен.
+root = [
+    "awkward>=2.8",
+    "pyarrow>=19",
+    "uproot>=5.7",
+]
+
+[build-system]
+requires = ["maturin>=1.15.0,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+module-name = "numass_processing"
+# python тянет polars. clap, egui и plotly в модуль не входят.
+features = ["python"]
+
+# Иначе uv не пересобирает расширение при правке Rust: по умолчанию ключ — только pyproject.toml.
+[tool.uv]
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "Cargo.toml" },
+    { file = "src/**/*.rs" },
+    { file = "convert-to-root.py" },
+]
+
+[dependency-groups]
+dev = [
+    "maturin>=1.15.0",
+]

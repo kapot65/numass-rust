@@ -73,7 +73,7 @@ fn step_title(step: &PreprocessStep) -> &'static str {
         PreprocessStep::Baseline(Baseline::Constant(_)) => "baseline const",
         PreprocessStep::Baseline(Baseline::Head { .. }) => "baseline head",
         PreprocessStep::Baseline(Baseline::Point { .. }) => "baseline point",
-        PreprocessStep::Invert => "invert",
+        PreprocessStep::Invert {} => "invert",
     }
 }
 
@@ -144,7 +144,7 @@ impl UserInput for PreprocessParams {
                             ui.add(egui::Slider::new(max, -200.0..=800.0).text("max"));
                             ui.add(egui::Slider::new(step, 0.05..=20.0).text("step"));
                         }
-                        PreprocessStep::Invert => {}
+                        PreprocessStep::Invert {} => {}
                     },
                 );
                 if removed {
@@ -178,7 +178,7 @@ impl UserInput for PreprocessParams {
                     steps.push(PreprocessStep::Baseline(Baseline::Constant([0.0; 7])));
                 }
                 if ui.button("+ invert").clicked() {
-                    steps.push(PreprocessStep::Invert);
+                    steps.push(PreprocessStep::Invert {});
                 }
             });
         });
@@ -195,10 +195,13 @@ impl UserInput for ProcessParams {
         block(ui, "Processing params", |ui| {
             ui.horizontal(|ui| {
                 if ui
-                    .add(egui::RadioButton::new(algorithm == Algorithm::Max, "Max"))
+                    .add(egui::RadioButton::new(
+                        algorithm == Algorithm::Max {},
+                        "Max",
+                    ))
                     .clicked()
                 {
-                    algorithm = Algorithm::Max
+                    algorithm = Algorithm::Max {}
                 }
 
                 if ui
@@ -243,17 +246,17 @@ impl UserInput for ProcessParams {
                 }
                 if ui
                     .add(egui::RadioButton::new(
-                        matches!(algorithm, Algorithm::Average),
+                        matches!(algorithm, Algorithm::Average {}),
                         "Average",
                     ))
                     .clicked()
                 {
-                    algorithm = Algorithm::Average
+                    algorithm = Algorithm::Average {}
                 }
             });
 
             match &mut algorithm {
-                Algorithm::Max | Algorithm::Average => {}
+                Algorithm::Max {} | Algorithm::Average {} => {}
                 Algorithm::Likhovid { left, right } => {
                     ui.add(egui::Slider::new(left, 0..=30).text("left"));
                     ui.add(egui::Slider::new(right, 0..=40).text("right"));
@@ -275,9 +278,9 @@ impl UserInput for ProcessParams {
                     hw_reset_block(ui, reset_detection);
                     ui.horizontal(|ui| {
                         ui.label("skip:");
-                        ui.radio_value(skip, crate::process::SkipOption::None, "none");
-                        ui.radio_value(skip, crate::process::SkipOption::Bad, "bad");
-                        ui.radio_value(skip, crate::process::SkipOption::Good, "good");
+                        ui.radio_value(skip, None, "none");
+                        ui.radio_value(skip, Some(crate::process::SkipOption::Bad), "bad");
+                        ui.radio_value(skip, Some(crate::process::SkipOption::Good), "good");
                     });
                 }
                 Algorithm::LongDiff { reset_detection } => {

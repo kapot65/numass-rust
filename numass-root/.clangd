@@ -1,5 +1,0 @@
-# clangd project config.
-# The compile flags (incl. CERN ROOT includes) come from build/compile_commands.json,
-# which CMake generates because CMAKE_EXPORT_COMPILE_COMMANDS is enabled.
-CompileFlags:
-  CompilationDatabase: build
