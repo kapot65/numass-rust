@@ -64,8 +64,13 @@ async fn main() {
             RawQuery(to_root_options): RawQuery, // TODO: change to valid for TFile::Open(url)
             | async move {
 
-                // axum default queryparser doesn't have corresponding serializer
-                let root_options = serde_qs::from_str::<ToROOTOptions>(&to_root_options.unwrap()).unwrap();
+                // Голый serde_qs теряет пустые варианты вроде Average и Invert.
+                let Some(query) = to_root_options else {
+                    return StatusCode::BAD_REQUEST.into_response();
+                };
+                let Ok(root_options) = ToROOTOptions::from_query_string(&query) else {
+                    return StatusCode::BAD_REQUEST.into_response();
+                };
 
                 let output = {
                     let mut hasher = DefaultHasher::new();

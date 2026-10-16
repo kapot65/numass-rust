@@ -55,6 +55,29 @@ impl Hash for ToROOTOptions {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct ToROOTQuery {
+    params: String,
+}
+
+impl ToROOTOptions {
+    /// Query string для `GET /api/to-root`: `params=<json>`.
+    ///
+    /// Голый `serde_qs` выкидывает пустые варианты (`Average`, `Invert`),
+    /// поэтому JSON передаётся одним значением.
+    pub fn to_query_string(&self) -> String {
+        serde_qs::to_string(&ToROOTQuery {
+            params: serde_json::to_string(self).expect("ToROOTOptions is JSON"),
+        })
+        .expect("root query string")
+    }
+
+    pub fn from_query_string(query: &str) -> Result<Self, String> {
+        let wrapper: ToROOTQuery = serde_qs::from_str(query).map_err(|err| err.to_string())?;
+        serde_json::from_str(&wrapper.params).map_err(|err| err.to_string())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ViewerMode {
     FilteredEvents {
@@ -96,3 +119,25 @@ pub const EMPTY_POINT: PointState = PointState {
     counts: None,
     modified: None,
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::postprocess::PostProcessParams;
+    use crate::process::ProcessParams;
+
+    #[test]
+    fn to_root_options_roundtrip_query() {
+        let options = ToROOTOptions {
+            filepath: PathBuf::from("p4(30s)"),
+            preprocess: PreprocessParams::default(),
+            process: ProcessParams::default(),
+            postprocess: PostProcessParams::default(),
+        };
+        let decoded = ToROOTOptions::from_query_string(&options.to_query_string()).unwrap();
+        assert_eq!(
+            serde_json::to_string(&options).unwrap(),
+            serde_json::to_string(&decoded).unwrap()
+        );
+    }
+}

@@ -269,13 +269,13 @@ impl DataViewerApp {
             {
                 for (name, cache) in state.iter() {
                     if let PointState { opened: true, .. } = cache {
-                        let search = serde_qs::to_string(&ToROOTOptions {
+                        let search = ToROOTOptions {
                             filepath: PathBuf::from(name),
                             preprocess: self.processing_params.preprocess.clone(),
                             process: self.processing_params.process.clone(),
                             postprocess: self.processing_params.post_process,
-                        })
-                        .unwrap();
+                        }
+                        .to_query_string();
                         window()
                             .unwrap()
                             .open_with_url(&format!("/api/to-root?{search}"))
