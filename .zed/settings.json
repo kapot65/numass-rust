@@ -13,11 +13,6 @@
                 }
             }
         },
-        "clangd": {
-            "binary": {
-                "arguments": ["--compile-commands-dir=numass-root/build"]
-            }
-        },
         "yaml-language-server": {
             "settings": {
                 "yaml": {

@@ -5,9 +5,6 @@
 		},
 		{
 			"path": "../numass-processing"
-		},
-		{
-			"path": "../numass-root"
 		}
 	],
 	"extensions": {
@@ -31,8 +28,7 @@
 			"ios": "cpp"
 		},
 		"clangd.fallbackFlags": [
-			"-I/home/chernov/.julia/conda/3/x86_64/include",
-			"-I/home/chernov/projects/numass-root"
+			"-I/home/chernov/.julia/conda/3/x86_64/include"
 		],
 		"julia.environmentPath": "/home/chernov/projects/numass-analysis",
 		"json.schemas": [

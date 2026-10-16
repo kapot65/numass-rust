@@ -5,7 +5,6 @@ members = [
     "dataforge-parser-rust",
     "numass-analysis",
     "numass-processing",
-    # "numass-root",
     "numass-server",
     "numass-viewers",
     "tqdc-controller-rust/apps",

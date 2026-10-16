@@ -10,7 +10,6 @@
 | [`dataforge-parser-numass`](dataforge-parser-numass/README.md) | Типы numass-данных для DataForge |
 | [`numass-processing`](numass-processing/README.md) | Общие алгоритмы обработки numass-точек |
 | [`numass-analysis`](numass-analysis/README.md) | Скрипты обработки данных numass |
-| [`numass-root`](numass-root/README.md) | C++-биндинги к CERN ROOT + утилита `convert-to-root`. Временно вне workspace |
 | [`numass-server`](numass-server/README.md) | Сервер (кросс-компиляция) |
 | [`numass-viewers`](numass-viewers/README.md) | Визуализация (wasm) |
 | [`tqdc-controller-rust`](tqdc-controller-rust/README.md) | Контроллер TQDC (`frame-viewer`) |
@@ -22,23 +21,6 @@
 ### Общие (Rust-крейты)
 
 - Rust (cargo)
-
-### `numass-root` (дополнительно)
-
-Крейт временно исключён из workspace: `cargo build --workspace` его не собирает. Каталог `numass-root/` на месте. Чтобы снова собрать, верните его в `members` в корневом `Cargo.toml`.
-
-Для сборки `numass-root` — C++-биндингов к CERN ROOT — дополнительно нужны:
-
-- CMake ≥ 3.20 (и генератор: Make или Ninja)
-- Компилятор C++ (`g++`/`clang++`)
-- [CERN ROOT](https://root.cern/) — `root-config` в `PATH`
-- **Vdt** — зависимость ROOT:
-  ```bash
-  sudo apt-get install libvdt-dev
-  ```
-  либо соберите Vdt локально и передайте `-DCMAKE_PREFIX_PATH=/path/to/vdt`.
-
-Полный список и инструкции — [`numass-root/README.md`](numass-root/README.md).
 
 ### `numass-server` (дополнительно)
 
