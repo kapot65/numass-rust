@@ -1139,14 +1139,14 @@ impl eframe::App for DataViewerApp {
                     }
                     #[cfg(target_arch = "wasm32")]
                     {
-                        let search = serde_qs::to_string(&ViewerMode::FilteredEvents {
+                        let search = ViewerMode::FilteredEvents {
                             filepath: PathBuf::from(filepath),
                             preprocess: self.processing_params.preprocess.clone(),
                             process: self.processing_params.process.clone(),
                             postprocess: self.processing_params.post_process,
                             range: left_border..right_border,
-                        })
-                        .unwrap();
+                        }
+                        .to_query_string();
                         window()
                             .unwrap()
                             .open_with_url(&format!("/?{search}"))
@@ -1184,10 +1184,10 @@ impl eframe::App for DataViewerApp {
                     }
                     #[cfg(target_arch = "wasm32")]
                     {
-                        let search = serde_qs::to_string(&ViewerMode::Waveforms {
+                        let search = ViewerMode::Waveforms {
                             filepath: PathBuf::from(filepath),
-                        })
-                        .unwrap();
+                        }
+                        .to_query_string();
                         window()
                             .unwrap()
                             .open_with_url(&format!("/?{search}"))
@@ -1225,10 +1225,10 @@ impl eframe::App for DataViewerApp {
                     }
                     #[cfg(target_arch = "wasm32")]
                     {
-                        let search = serde_qs::to_string(&ViewerMode::Triggers {
+                        let search = ViewerMode::Triggers {
                             filepath: PathBuf::from(filepath),
-                        })
-                        .unwrap();
+                        }
+                        .to_query_string();
                         window()
                             .unwrap()
                             .open_with_url(&format!("/?{search}"))
@@ -1275,13 +1275,13 @@ impl eframe::App for DataViewerApp {
                     }
                     #[cfg(target_arch = "wasm32")]
                     {
-                        let search = serde_qs::to_string(&ViewerMode::Bundles {
+                        let search = ViewerMode::Bundles {
                             filepath: PathBuf::from(filepath),
                             preprocess: self.processing_params.preprocess.clone(),
                             process: self.processing_params.process.clone(),
                             postprocess: self.processing_params.post_process,
-                        })
-                        .unwrap();
+                        }
+                        .to_query_string();
                         window()
                             .unwrap()
                             .open_with_url(&format!("/?{search}"))

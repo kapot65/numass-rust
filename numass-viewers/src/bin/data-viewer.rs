@@ -86,7 +86,7 @@ fn main() {
     let request = match window().unwrap().location().search() {
         Ok(search) => {
             let search = search.trim_start_matches('?');
-            serde_qs::from_str::<ViewerMode>(search).ok()
+            ViewerMode::from_query_string(search).ok()
         }
         _ => None,
     };

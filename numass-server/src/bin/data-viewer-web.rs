@@ -64,7 +64,7 @@ async fn main() {
             RawQuery(to_root_options): RawQuery, // TODO: change to valid for TFile::Open(url)
             | async move {
 
-                // Голый serde_qs теряет пустые варианты вроде Average и Invert.
+                // params=<json>, как и у остальных GET /api.
                 let Some(query) = to_root_options else {
                     return StatusCode::BAD_REQUEST.into_response();
                 };

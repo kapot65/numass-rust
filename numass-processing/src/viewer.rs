@@ -55,26 +55,14 @@ impl Hash for ToROOTOptions {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-struct ToROOTQuery {
-    params: String,
-}
-
 impl ToROOTOptions {
     /// Query string для `GET /api/to-root`: `params=<json>`.
-    ///
-    /// Голый `serde_qs` выкидывает пустые варианты (`Average`, `Invert`),
-    /// поэтому JSON передаётся одним значением.
     pub fn to_query_string(&self) -> String {
-        serde_qs::to_string(&ToROOTQuery {
-            params: serde_json::to_string(self).expect("ToROOTOptions is JSON"),
-        })
-        .expect("root query string")
+        crate::query::to_query_string(self)
     }
 
     pub fn from_query_string(query: &str) -> Result<Self, String> {
-        let wrapper: ToROOTQuery = serde_qs::from_str(query).map_err(|err| err.to_string())?;
-        serde_json::from_str(&wrapper.params).map_err(|err| err.to_string())
+        crate::query::from_query_string(query)
     }
 }
 
@@ -101,6 +89,17 @@ pub enum ViewerMode {
     Triggers {
         filepath: PathBuf,
     },
+}
+
+impl ViewerMode {
+    /// Query string окна вьювера: `params=<json>`, тот же вид, что у GET `/api`.
+    pub fn to_query_string(&self) -> String {
+        crate::query::to_query_string(self)
+    }
+
+    pub fn from_query_string(query: &str) -> Result<Self, String> {
+        crate::query::from_query_string(query)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,5 +138,40 @@ mod tests {
             serde_json::to_string(&options).unwrap(),
             serde_json::to_string(&decoded).unwrap()
         );
+    }
+
+    #[test]
+    fn viewer_mode_roundtrip_query() {
+        let modes = [
+            ViewerMode::FilteredEvents {
+                filepath: PathBuf::from("p4(30s)(HV1=18300)"),
+                range: -50.0..100.0,
+                preprocess: PreprocessParams::default(),
+                process: ProcessParams::default(),
+                postprocess: PostProcessParams::default(),
+            },
+            ViewerMode::Waveforms {
+                filepath: PathBuf::from("p4(30s)(HV1=18300)"),
+            },
+            ViewerMode::Bundles {
+                filepath: PathBuf::from("p4(30s)(HV1=18300)"),
+                preprocess: PreprocessParams::default(),
+                process: ProcessParams::default(),
+                postprocess: PostProcessParams::default(),
+            },
+            ViewerMode::Triggers {
+                filepath: PathBuf::from("p4(30s)(HV1=18300)"),
+            },
+        ];
+
+        for mode in modes {
+            let query = mode.to_query_string();
+            assert!(query.starts_with("params="), "{query}");
+            let decoded = ViewerMode::from_query_string(&query).unwrap();
+            assert_eq!(
+                serde_json::to_string(&mode).unwrap(),
+                serde_json::to_string(&decoded).unwrap()
+            );
+        }
     }
 }

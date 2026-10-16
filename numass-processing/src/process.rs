@@ -195,26 +195,17 @@ pub struct HistParams {
     pub postprocess: Option<PostProcessParams>,
 }
 
-#[derive(Serialize, Deserialize)]
-struct HistParamsQuery {
-    params: String,
-}
-
 impl HistParams {
     /// Query string for `GET /api/process/hist/{path}`: `params=<json>`.
     ///
-    /// The file path is the route wildcard. Bare `serde_qs` fields do not
-    /// round-trip nested preprocess steps, so the JSON is a single query value.
+    /// The file path is the route wildcard. The JSON payload is the same single
+    /// query value as the other GET `/api` routes.
     pub fn to_query_string(&self) -> String {
-        serde_qs::to_string(&HistParamsQuery {
-            params: serde_json::to_string(self).expect("HistParams is JSON"),
-        })
-        .expect("hist query string")
+        crate::query::to_query_string(self)
     }
 
     pub fn from_query_string(query: &str) -> Result<Self, String> {
-        let wrapper: HistParamsQuery = serde_qs::from_str(query).map_err(|err| err.to_string())?;
-        serde_json::from_str(&wrapper.params).map_err(|err| err.to_string())
+        crate::query::from_query_string(query)
     }
 }
 

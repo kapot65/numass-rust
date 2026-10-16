@@ -13,7 +13,6 @@ rmp-serde = "1.1.1"
 
 numass_processing = { workspace = true }
 protobuf = "3.7.1"
-serde_qs = "0.13.0"
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
