@@ -1,6 +1,6 @@
 [project]
 name = "numass-processing"
-version = "2.0.0" # version.nu обновляет только Cargo.toml
+version = "2.0.0"
 description = "numass-processing pipeline for Python"
 readme = "README.md"
 authors = [

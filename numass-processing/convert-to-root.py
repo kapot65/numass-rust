@@ -10,9 +10,17 @@ import argparse
 import sys
 from pathlib import Path
 
+__version__ = "2.0.0"
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="convert-to-root", description=__doc__)
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help="показать версию и выйти",
+    )
     parser.add_argument("path", help="путь к точке")
     parser.add_argument(
         "--preprocess",
