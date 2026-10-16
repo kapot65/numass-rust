@@ -9,7 +9,12 @@ use crate::{
     process::ProcessParams,
 };
 use serde::{Deserialize, Serialize};
-use std::{ops::Range, path::PathBuf, time::SystemTime};
+use std::{
+    hash::{Hash, Hasher},
+    ops::Range,
+    path::PathBuf,
+    time::SystemTime,
+};
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct ViewerState {
@@ -36,11 +41,18 @@ impl Default for ViewerState {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToROOTOptions {
     pub filepath: PathBuf,
+    pub preprocess: PreprocessParams,
     pub process: ProcessParams,
     pub postprocess: PostProcessParams,
+}
+
+impl Hash for ToROOTOptions {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        serde_json::to_string(self).unwrap().hash(state);
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

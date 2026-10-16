@@ -77,6 +77,8 @@ async fn main() {
                 let mut command = tokio::process::Command::new("convert-to-root");
                 command
                     .arg(args.directory.join(&root_options.filepath))
+                    .arg("--preprocess")
+                    .arg(serde_json::to_string(&root_options.preprocess).unwrap())
                     .arg("--process")
                     .arg(serde_json::to_string(&root_options.process).unwrap())
                     .arg("--postprocess")

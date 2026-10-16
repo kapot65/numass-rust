@@ -256,7 +256,13 @@ impl DataViewerApp {
     }
 
     fn files_save_root_button(&mut self, ui: &mut Ui) {
-        if ui.button("save(root)").clicked() {
+        if ui
+            .button("save(root)")
+            .on_hover_text(
+                "Пишет открытые точки в .root с текущими параметрами предобработки, обработки и постобработки.",
+            )
+            .clicked()
+        {
             let state = self.state.lock().clone();
 
             #[cfg(target_arch = "wasm32")]
@@ -265,6 +271,7 @@ impl DataViewerApp {
                     if let PointState { opened: true, .. } = cache {
                         let search = serde_qs::to_string(&ToROOTOptions {
                             filepath: PathBuf::from(name),
+                            preprocess: self.processing_params.preprocess.clone(),
                             process: self.processing_params.process.clone(),
                             postprocess: self.processing_params.post_process,
                         })
@@ -308,6 +315,11 @@ impl DataViewerApp {
                                 let mut command = tokio::process::Command::new("convert-to-root");
                                 command
                                     .arg(name)
+                                    .arg("--preprocess")
+                                    .arg(
+                                        serde_json::to_string(&processing_params.preprocess)
+                                            .unwrap(),
+                                    )
                                     .arg("--process")
                                     .arg(serde_json::to_string(&processing_params.process).unwrap())
                                     .arg("--postprocess")
