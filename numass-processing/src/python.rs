@@ -106,6 +106,12 @@ impl PreprocessParams {
     fn py_average(_cls: &Bound<'_, PyType>) -> Self {
         Self::average()
     }
+
+    /// JSON этой структуры. Ошибка serde приходит в Python как есть.
+    #[classmethod]
+    fn from_json(_cls: &Bound<'_, PyType>, text: &str) -> PyResult<Self> {
+        from_json_str(text)
+    }
 }
 
 #[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pymethods)]
@@ -139,6 +145,12 @@ impl ProcessParams {
             algorithm,
             convert_to_kev,
         }
+    }
+
+    /// JSON этой структуры. Ошибка serde приходит в Python как есть.
+    #[classmethod]
+    fn from_json(_cls: &Bound<'_, PyType>, text: &str) -> PyResult<Self> {
+        from_json_str(text)
     }
 }
 
@@ -197,6 +209,12 @@ impl PostProcessParams {
             ignore_channels,
         }
     }
+
+    /// JSON этой структуры. Ошибка serde приходит в Python как есть.
+    #[classmethod]
+    fn from_json(_cls: &Bound<'_, PyType>, text: &str) -> PyResult<Self> {
+        from_json_str(text)
+    }
 }
 
 #[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pymethods)]
@@ -227,6 +245,10 @@ fn polars_table(frame: polars::prelude::DataFrame) -> PyDataFrame {
 
 fn serde_error(err: serde_json::Error) -> PyErr {
     PyValueError::new_err(err.to_string())
+}
+
+fn from_json_str<T: serde::de::DeserializeOwned>(text: &str) -> PyResult<T> {
+    serde_json::from_str(text).map_err(serde_error)
 }
 
 /// `serde_json::Value` → объект Python. Ошибка serde — если значение не сериализуется.
@@ -321,7 +343,8 @@ impl Waveforms {
         })
     }
 
-    /// Односторонняя таблица сырых кадров: `time`, `channel`, `index`, `value`.
+    /// Односторонняя таблица сырых кадров: одна строка на осциллограмму канала.
+    /// `time`, `channel`, `value` (вектор кодов АЦП).
     #[gen_stub(override_return_type(type_repr = "polars.DataFrame", imports = ("polars")))]
     fn to_polars(&self, py: Python<'_>) -> PyDataFrame {
         let point = self.point.borrow(py);
@@ -334,7 +357,7 @@ impl Waveforms {
 #[cfg_attr(not(feature = "stubgen"), pyo3_stub_gen_derive::remove_gen_stub)]
 #[pymethods]
 impl Frame {
-    /// Односторонняя таблица кадра: `channel`, `index`, `value`.
+    /// Односторонняя таблица кадра: одна строка на канал, `value` — вектор кодов АЦП.
     #[gen_stub(override_return_type(type_repr = "polars.DataFrame", imports = ("polars")))]
     fn to_polars(&self, py: Python<'_>) -> PyResult<PyDataFrame> {
         let point = self.point.borrow(py);

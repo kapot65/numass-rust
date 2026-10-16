@@ -16,6 +16,38 @@ maturin develop --manifest-path numass-processing/Cargo.toml
 
 Сценарий: собрать цепь предобработка → (обработка) → (постобработка), вызвать `to_polars()`, дальше анализировать таблицу на Python. Пример предобработки точки: `examples/preprocess.py`.
 
+### convert-to-root
+
+Скрипт ставится из этого каталога. Extra `root` ставит uproot, awkward и pyarrow. Пакет ROOT с PyPI не нужен.
+
+```shell
+cd numass-processing
+uv tool install '.[root]'
+```
+
+`uv tool install` не принимает `--extra`: extra задаётся как `.[root]`. Повторная установка после правок: `uv tool install --force '.[root]'`. Команда попадает в `PATH` как `convert-to-root`.
+
+Без глобальной установки, из каталога пакета:
+
+```shell
+uv run --extra root python convert-to-root.py /path/to/point -o point.root
+```
+
+Вызов:
+
+```shell
+convert-to-root /path/to/point -o point.root
+```
+
+Без флагов в файл пишется сырая точка. `--preprocess` добавляет предобработку, вместе с `-p`/`--process` — события, вместе с `--postprocess` — полную цепь. `--process` без `--preprocess` и `--postprocess` без `--process` завершаются с ошибкой. Значение флага — JSON serde-структуры `PreprocessParams`, `ProcessParams` или `PostProcessParams`. Ошибку разбора печатает Rust. Выход по умолчанию — `<имя файла точки>.root` в текущем каталоге.
+
+```shell
+convert-to-root /path/to/point --preprocess '{"steps":[]}' \
+  -p '{"algorithm":{"Max":{}},"convert_to_kev":true}'
+```
+
+В файле один RNTuple `T`. Колонки те же, что у таблицы Polars этого шага. Метаданные в файл не пишутся.
+
 <!-- TODO: расписать типы обработки (по точке, по кадру) -->
 
 <!-- расписать по #[cfg(feature = "egui")] ui: &mut Option<&mut PlotUi>, -->

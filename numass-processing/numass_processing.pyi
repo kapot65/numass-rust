@@ -205,7 +205,7 @@ class Frame:
     """
     def to_polars(self) -> polars.DataFrame:
         r"""
-        Односторонняя таблица кадра: `channel`, `index`, `value`.
+        Односторонняя таблица кадра: одна строка на канал, `value` — вектор кодов АЦП.
         """
 
 @typing.final
@@ -315,6 +315,11 @@ class PostProcessParams:
         """
     def __eq__(self, other: builtins.object, /) -> builtins.bool: ...
     def __new__(cls, cut_bad_blocks: builtins.bool = False, merge_frames: typing.Optional[builtins.int] = None, merge_splits_first: builtins.bool = False, merge_close_events: builtins.bool = False, ignore_borders: builtins.bool = False, ignore_channels: ChannelIgnore = ...) -> PostProcessParams: ...
+    @classmethod
+    def from_json(cls, text: builtins.str) -> PostProcessParams:
+        r"""
+        JSON этой структуры. Ошибка serde приходит в Python как есть.
+        """
 
 @typing.final
 class PreprocessParams:
@@ -349,6 +354,11 @@ class PreprocessParams:
     def average(cls) -> PreprocessParams:
         r"""
         Голова кадра + инверсия. Сохраняет числа прежнего Average.
+        """
+    @classmethod
+    def from_json(cls, text: builtins.str) -> PreprocessParams:
+        r"""
+        JSON этой структуры. Ошибка serde приходит в Python как есть.
         """
 
 class PreprocessStep:
@@ -409,6 +419,11 @@ class ProcessParams:
     def convert_to_kev(self, value: builtins.bool) -> None: ...
     def __eq__(self, other: builtins.object, /) -> builtins.bool: ...
     def __new__(cls, algorithm: Algorithm = ..., convert_to_kev: builtins.bool = True) -> ProcessParams: ...
+    @classmethod
+    def from_json(cls, text: builtins.str) -> ProcessParams:
+        r"""
+        JSON этой структуры. Ошибка serde приходит в Python как есть.
+        """
 
 @typing.final
 class ProcessedFrame:
@@ -442,7 +457,8 @@ class Waveforms:
         """
     def to_polars(self) -> polars.DataFrame:
         r"""
-        Односторонняя таблица сырых кадров: `time`, `channel`, `index`, `value`.
+        Односторонняя таблица сырых кадров: одна строка на осциллограмму канала.
+        `time`, `channel`, `value` (вектор кодов АЦП).
         """
 
 @typing.final

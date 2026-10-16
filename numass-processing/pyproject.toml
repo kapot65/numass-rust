@@ -9,6 +9,14 @@ authors = [
 requires-python = ">=3.14.8"
 dependencies = ["polars>=1.30"]
 
+[project.optional-dependencies]
+# convert-to-root пишет RNTuple через uproot. Пакет root с PyPI не нужен.
+root = [
+    "awkward>=2.8",
+    "pyarrow>=19",
+    "uproot>=5.7",
+]
+
 [build-system]
 requires = ["maturin>=1.15.0,<2.0"]
 build-backend = "maturin"
@@ -24,6 +32,7 @@ cache-keys = [
     { file = "pyproject.toml" },
     { file = "Cargo.toml" },
     { file = "src/**/*.rs" },
+    { file = "convert-to-root.py" },
 ]
 
 [dependency-groups]

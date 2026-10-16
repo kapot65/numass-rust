@@ -26,9 +26,10 @@
 //! - Сырые отсчёты — коды АЦП (i16 из данных), в таблицах хранятся как i64;
 //!   обработанные отсчёты — f32.
 //! - `size` событий измеряется в отсчётах по 8 нс.
-//! - Таблицы — «длинные»: одна строка на отсчёт или событие. Исключение —
-//!   [`ProcessedPoint`]: одна строка на осциллограмму канала, `value` — вектор
-//!   значений бинов. Пустые данные дают таблицу высоты 0.
+//! - Таблицы событий и отдельных осциллограмм — «длинные»: одна строка на
+//!   отсчёт или событие. Сырые кадры ([`NumassFrame`], [`NumassWaveforms`] и
+//!   `Fast`) и [`ProcessedPoint`] — одна строка на осциллограмму канала,
+//!   `value` — вектор значений бинов. Пустые данные дают таблицу высоты 0.
 
 use std::collections::BTreeSet;
 
@@ -135,97 +136,107 @@ impl ToPolars for ProcessedPoint {
 
 // ===================== Сырые кадры =====================
 
-/// Таблица одного кадра: `channel`, `index`, `value` (код АЦП).
+fn adc_list() -> ListPrimitiveChunkedBuilder<Int64Type> {
+    ListPrimitiveChunkedBuilder::<Int64Type>::new("value".into(), 0, 0, DataType::Int64)
+}
+
+fn push_waveform(
+    channel: &mut Vec<i64>,
+    value: &mut ListPrimitiveChunkedBuilder<Int64Type>,
+    ch: u8,
+    waveform: &[i16],
+) {
+    channel.push(ch as i64);
+    value.append_values_iter(waveform.iter().map(|sample| i64::from(*sample)));
+}
+
+/// Таблица одного кадра: `channel`, `value` (вектор кодов АЦП).
 fn raw_frame_table<'s>(channels: impl Iterator<Item = (u8, &'s [i16])>) -> DataFrame {
     let mut channel = Vec::new();
-    let mut index = Vec::new();
-    let mut value = Vec::new();
+    let mut value = adc_list();
     for (ch, waveform) in channels {
-        for (idx, sample) in waveform.iter().enumerate() {
-            channel.push(ch as i64);
-            index.push(idx as i64);
-            value.push(*sample as i64);
-        }
+        push_waveform(&mut channel, &mut value, ch, waveform);
     }
     frame(vec![
         Column::new("channel".into(), channel),
-        Column::new("index".into(), index),
-        Column::new("value".into(), value),
+        value.finish().into_column(),
     ])
 }
 
-/// Таблица точки: `time`, `channel`, `index`, `value`.
-fn raw_point_table<'s>(frames: impl Iterator<Item = (u64, Vec<(u8, &'s [i16])>)>) -> DataFrame {
+/// Таблица точки: `time`, `channel`, `value` (вектор кодов АЦП).
+fn raw_point_table<'a, C, I>(frames: I) -> DataFrame
+where
+    C: Iterator<Item = (u8, &'a [i16])>,
+    I: Iterator<Item = (u64, C)>,
+{
     let mut time = Vec::new();
     let mut channel = Vec::new();
-    let mut index = Vec::new();
-    let mut value = Vec::new();
+    let mut value = adc_list();
     for (frame_time, channels) in frames {
         for (ch, waveform) in channels {
-            for (idx, sample) in waveform.iter().enumerate() {
-                time.push(frame_time as i64);
-                channel.push(ch as i64);
-                index.push(idx as i64);
-                value.push(*sample as i64);
-            }
+            time.push(frame_time as i64);
+            push_waveform(&mut channel, &mut value, ch, waveform);
         }
     }
     frame(vec![
         Column::new("time".into(), time),
         Column::new("channel".into(), channel),
-        Column::new("index".into(), index),
-        Column::new("value".into(), value),
+        value.finish().into_column(),
     ])
 }
 
 impl ToPolars for NumassFrame {
-    /// Одна строка на отсчёт: `channel`, `index`, `value` (код АЦП).
+    /// Одна строка на канал: `channel`, `value` (вектор кодов АЦП).
     fn to_polars(&self) -> DataFrame {
         raw_frame_table(self.iter().map(|(ch, waveform)| (*ch, waveform.as_slice())))
     }
 }
 
 impl ToPolars for NumassFrameFast<'_> {
-    /// Одна строка на отсчёт: `channel`, `index`, `value` (код АЦП).
+    /// Одна строка на канал: `channel`, `value` (вектор кодов АЦП).
     fn to_polars(&self) -> DataFrame {
         raw_frame_table(self.iter().map(|(ch, waveform)| (*ch, *waveform)))
     }
 }
 
 impl ToPolars for NumassWaveforms {
-    /// Одна строка на отсчёт: `time` (нс), `channel`, `index`, `value`.
+    /// Одна строка на осциллограмму канала: `time` (нс), `channel`, `value`.
     fn to_polars(&self) -> DataFrame {
         raw_point_table(self.iter().map(|(time, frame)| {
             (
                 *time,
                 frame
                     .iter()
-                    .map(|(ch, waveform)| (*ch, waveform.as_slice()))
-                    .collect::<Vec<_>>(),
+                    .map(|(ch, waveform)| (*ch, waveform.as_slice())),
             )
         }))
     }
 }
 
 impl ToPolars for NumassWaveformsFast<'_> {
-    /// Одна строка на отсчёт: `time` (нс), `channel`, `index`, `value`.
+    /// Одна строка на осциллограмму канала: `time` (нс), `channel`, `value`.
     fn to_polars(&self) -> DataFrame {
-        raw_point_table(self.iter().map(|(time, frame)| {
-            (
-                *time,
-                frame
-                    .iter()
-                    .map(|(ch, waveform)| (*ch, *waveform))
-                    .collect::<Vec<_>>(),
-            )
-        }))
+        raw_point_table(
+            self.iter()
+                .map(|(time, frame)| (*time, frame.iter().map(|(ch, waveform)| (*ch, *waveform)))),
+        )
     }
 }
 
 impl ToPolars for RawWaveform {
     /// Одна строка на отсчёт: `index`, `value` (код АЦП).
     fn to_polars(&self) -> DataFrame {
-        raw_frame_table(std::iter::once((0, self.0.as_slice())))
+        let height = self.0.len();
+        frame(vec![
+            Column::new("index".into(), (0..height as i64).collect::<Vec<_>>()),
+            Column::new(
+                "value".into(),
+                self.0
+                    .iter()
+                    .map(|sample| i64::from(*sample))
+                    .collect::<Vec<_>>(),
+            ),
+        ])
     }
 }
 
@@ -413,6 +424,20 @@ mod tests {
         (0..values.len()).map(|idx| values.get(idx)).collect()
     }
 
+    fn list_i64(df: &DataFrame, name: &str, row: usize) -> Vec<i64> {
+        let series = df
+            .column(name)
+            .expect("column exists")
+            .list()
+            .expect("list column")
+            .get_as_series(row)
+            .expect("list row");
+        let values = series.i64().expect("i64 values");
+        (0..values.len())
+            .map(|idx| values.get(idx).expect("value"))
+            .collect()
+    }
+
     fn list_f32(df: &DataFrame, name: &str, row: usize) -> Vec<f32> {
         let series = df
             .column(name)
@@ -449,24 +474,15 @@ mod tests {
     }
 
     #[test]
-    fn raw_frame_is_long_format() {
+    fn raw_frame_is_one_waveform_per_row() {
         let frame: NumassFrame = BTreeMap::from([(1u8, vec![10i16, -20]), (0u8, vec![1i16, 2, 3])]);
         let df = frame.to_polars();
 
-        assert_eq!(df.height(), 5);
-        assert_eq!(column_names(&df), ["channel", "index", "value"]);
-        assert_eq!(
-            ints(&df, "channel"),
-            [Some(0), Some(0), Some(0), Some(1), Some(1)]
-        );
-        assert_eq!(
-            ints(&df, "index"),
-            [Some(0), Some(1), Some(2), Some(0), Some(1)]
-        );
-        assert_eq!(
-            ints(&df, "value"),
-            [Some(1), Some(2), Some(3), Some(10), Some(-20)]
-        );
+        assert_eq!(df.height(), 2);
+        assert_eq!(column_names(&df), ["channel", "value"]);
+        assert_eq!(ints(&df, "channel"), [Some(0), Some(1)]);
+        assert_eq!(list_i64(&df, "value", 0), [1, 2, 3]);
+        assert_eq!(list_i64(&df, "value", 1), [10, -20]);
     }
 
     #[test]
@@ -476,9 +492,11 @@ mod tests {
         let waveforms: NumassWaveformsFast = BTreeMap::from([(7u64, frame)]);
         let df = waveforms.to_polars();
 
-        assert_eq!(df.height(), 2);
-        assert_eq!(ints(&df, "time"), [Some(7), Some(7)]);
-        assert_eq!(ints(&df, "value"), [Some(5), Some(6)]);
+        assert_eq!(df.height(), 1);
+        assert_eq!(column_names(&df), ["time", "channel", "value"]);
+        assert_eq!(ints(&df, "time"), [Some(7)]);
+        assert_eq!(ints(&df, "channel"), [Some(0)]);
+        assert_eq!(list_i64(&df, "value", 0), [5, 6]);
     }
 
     #[test]
