@@ -189,6 +189,9 @@ pub enum PreprocessStep {
     Baseline(Baseline),
     /// Инвертировать сигнал.
     Invert {},
+    /// Слить вейвформы всех каналов кадра в одну: отсчёты складываются
+    /// бин за бин. Итог остаётся под номером наименьшего канала кадра.
+    Merge {},
 }
 
 /// Упорядоченный список шагов waveform → waveform.
@@ -367,6 +370,39 @@ fn apply_step(buffers: &mut ProcessedPoint, step: &PreprocessStep) {
                 }
             }
         }
+        PreprocessStep::Merge {} => {
+            for frame in buffers.values_mut() {
+                merge_frame(frame);
+            }
+        }
+    }
+}
+
+/// Складывает вейвформы всех каналов кадра в одну, бин за бин.
+///
+/// Итог хранится под номером наименьшего канала кадра: этот канал есть
+/// и в сырых кодах, поэтому дальнейшая обработка (`Extract`) не теряет кадр.
+/// `delay` берётся у первого канала: шаги не различают каналы, внутри
+/// одного кадра он совпадает.
+fn merge_frame(frame: &mut ProcessedFrame) {
+    let channels = std::mem::take(frame);
+    let mut merged: Option<(u8, ChannelSamples)> = None;
+    for (channel, samples) in channels {
+        match &mut merged {
+            None => merged = Some((channel, samples)),
+            Some((_, acc)) => {
+                for (idx, sample) in samples.samples.iter().enumerate() {
+                    if idx < acc.samples.len() {
+                        acc.samples[idx] += *sample;
+                    } else {
+                        acc.samples.push(*sample);
+                    }
+                }
+            }
+        }
+    }
+    if let Some((channel, samples)) = merged {
+        frame.insert(channel, samples);
     }
 }
 
@@ -581,6 +617,49 @@ mod tests {
                 .samples
                 .iter()
                 .all(|value| (*value - (20.0 - 20.25)).abs() < 1e-3)
+        );
+    }
+
+    #[test]
+    fn merge_sums_channels_binwise() {
+        let first = [1i16, 2, 3];
+        let second = [10i16, 20, 30];
+        let frame = BTreeMap::from([(0u8, first.as_slice()), (1u8, second.as_slice())]);
+        let waveforms = BTreeMap::from([(0u64, frame)]);
+        let processed = apply_waveforms(&waveforms, &[PreprocessStep::Merge {}]);
+
+        let frame = &processed[&0];
+        assert_eq!(frame.len(), 1);
+        assert_eq!(frame[&0].samples, vec![11.0, 22.0, 33.0]);
+    }
+
+    #[test]
+    fn merge_keeps_delay_and_smallest_channel() {
+        let waveform: Vec<i16> = (0..30).map(|idx| (idx * 40) as i16).collect();
+        let frame = BTreeMap::from([(5u8, waveform.as_slice()), (2u8, waveform.as_slice())]);
+        let waveforms = BTreeMap::from([(1u64, frame)]);
+        let steps = [
+            PreprocessStep::Fir {
+                left: 1,
+                center: 0,
+                right: 1,
+            },
+            PreprocessStep::Merge {},
+        ];
+
+        let processed = apply_waveforms(&waveforms, &steps);
+
+        let frame = &processed[&1];
+        assert_eq!(frame.len(), 1);
+        let merged = &frame[&2];
+        assert_eq!(merged.delay, 2);
+        assert_eq!(merged.samples.len(), 29);
+        // FIR даёт 20.0 на канал, каналов два
+        assert!(
+            merged
+                .samples
+                .iter()
+                .all(|value| (*value - 40.0).abs() < 1e-4)
         );
     }
 }

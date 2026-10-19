@@ -402,6 +402,15 @@ class PreprocessStep:
         __match_args__ = ()
         def __new__(cls) -> PreprocessStep.Invert: ...
     
+    @typing.final
+    class Merge(PreprocessStep):
+        r"""
+        Слить вейвформы всех каналов кадра в одну: отсчёты складываются
+        бин за бин. Итог остаётся под номером наименьшего канала кадра.
+        """
+        __match_args__ = ()
+        def __new__(cls) -> PreprocessStep.Merge: ...
+    
     ...
 
 @typing.final

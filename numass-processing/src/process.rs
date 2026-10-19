@@ -893,6 +893,14 @@ mod tests {
             PreprocessStep::Invert {}
         );
         assert_eq!(
+            serde_json::to_string(&PreprocessStep::Merge {}).unwrap(),
+            "{\"Merge\":{}}"
+        );
+        assert_eq!(
+            serde_json::from_str::<PreprocessStep>("{\"Merge\":{}}").unwrap(),
+            PreprocessStep::Merge {}
+        );
+        assert_eq!(
             serde_json::to_string(&Baseline::Constant([1.0; 7])).unwrap(),
             "{\"Constant\":[1.0,1.0,1.0,1.0,1.0,1.0,1.0]}"
         );

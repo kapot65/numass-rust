@@ -74,6 +74,7 @@ fn step_title(step: &PreprocessStep) -> &'static str {
         PreprocessStep::Baseline(Baseline::Head { .. }) => "baseline head",
         PreprocessStep::Baseline(Baseline::Point { .. }) => "baseline point",
         PreprocessStep::Invert {} => "invert",
+        PreprocessStep::Merge {} => "merge",
     }
 }
 
@@ -145,6 +146,7 @@ impl UserInput for PreprocessParams {
                             ui.add(egui::Slider::new(step, 0.05..=20.0).text("step"));
                         }
                         PreprocessStep::Invert {} => {}
+                        PreprocessStep::Merge {} => {}
                     },
                 );
                 if removed {
@@ -179,6 +181,9 @@ impl UserInput for PreprocessParams {
                 }
                 if ui.button("+ invert").clicked() {
                     steps.push(PreprocessStep::Invert {});
+                }
+                if ui.button("+ merge").clicked() {
+                    steps.push(PreprocessStep::Merge {});
                 }
             });
         });
