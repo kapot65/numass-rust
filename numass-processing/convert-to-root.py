@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 __version__ = "3.0.1"
 
@@ -90,7 +91,7 @@ def _params(cls, kind: str, text: str | None):
         _die(f"Failed to parse {kind} parameters: {exc}")
 
 
-def _die(message: str) -> None:
+def _die(message: str) -> NoReturn:
     print(message, file=sys.stderr)
     raise SystemExit(1)
 
@@ -102,11 +103,11 @@ def _write_root(frame, output: Path) -> None:
     except ImportError:
         _die("нужен extra root: uv tool install '.[root]'")
 
-    array = ak.from_arrow(frame.to_arrow())
     try:
+        array = ak.from_arrow(frame.to_arrow())
         with uproot.recreate(output) as file:
             file["T"] = array
-    except Exception as exc:
+    except (OSError, ValueError, TypeError, KeyError) as exc:
         _die(str(exc))
 
 

@@ -10,6 +10,12 @@ This repository contains common numass processing algorithms used in 2022_12 run
 maturin develop --manifest-path numass-processing/Cargo.toml
 ```
 
+Стабы генерируются отдельным шагом; сгенерированный `numass_processing.pyi` автоматически правится `ruff check --fix` (если `ruff` нет в `PATH`, используется `uvx ruff`).
+
+```shell
+cargo run -p numass-processing --features stubgen --bin stub_gen
+```
+
 Шаги обработки перенесены один в один из Rust: те же аргументы, тот же результат. Результат — Rust-структура. Отдельные биндинги полей промежуточных типов не пишутся; если доступ к полю появляется сам, это нормально. Промежуточные значения не копируются: объект Python держит исходные данные, и шаг читает их так же, как Rust.
 
 У результата обработки есть метод `to_polars()`. Это одностороннее преобразование в таблицу Polars. Таблицу можно собирать как угодно. После `to_polars()` это `polars.DataFrame`: методы обработки модуля на нём уже нельзя вызвать.
