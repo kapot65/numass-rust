@@ -1,21 +1,21 @@
-use std::{ops::Range, path::PathBuf};
+use std::{collections::BTreeMap, ops::Range, path::PathBuf};
 
 use egui::Visuals;
 use egui_plot::{Legend, PlotUi};
 
 use numass_processing::{
+    numass::protos::rsb_event,
     postprocess::{PostProcessParams, post_process_frame},
     preprocess::{
         PreprocessParams, ProcessedPoint, apply_waveforms, draw_processed_frame, draw_raw_frame,
-        extract_waveforms,
+        extract_waveforms, frame_to_waveform,
     },
     process::{ProcessParams, convert_to_kev, extract_frame},
     storage::load_point,
-    types::{FrameEvent, NumassWaveformsFast},
-    widgets::{HISTOGRAM_MAX, HISTOGRAM_MIN},
+    types::{FrameEvent, NumassFrameFast, NumassWaveformsFast},
+    utils::correct_frame_time,
+    widgets::{HISTOGRAM_MAX, HISTOGRAM_MIN, UserInput},
 };
-
-use numass_processing::widgets::UserInput;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -26,19 +26,21 @@ extern "C" {
     fn download(filename: &str, text: &str);
 }
 
-pub struct FilteredViewer<'a> {
+pub struct FilteredViewer {
     preprocess_params: PreprocessParams,
     process: ProcessParams,
     postprocess: PostProcessParams,
     range: Range<f32>,
-    waveforms: NumassWaveformsFast<'a>,
+    /// Точка принадлежит вьюеру: вейвформы заимствуются из неё на время
+    /// операций (вместо утечки через `Box::leak`).
+    point: rsb_event::Point,
     processed: ProcessedPoint,
     raw_hidden_seeded: bool,
     indexes: Option<Vec<u64>>,
     current: usize,
 }
 
-impl<'a> FilteredViewer<'a> {
+impl FilteredViewer {
     pub async fn init_with_point(
         filepath: PathBuf,
         preprocess_params: PreprocessParams,
@@ -47,45 +49,53 @@ impl<'a> FilteredViewer<'a> {
         range: Range<f32>,
     ) -> Self {
         let point = load_point(&filepath).await;
-        let point = Box::leak::<'a>(Box::new(point)); // TODO: set lifetime properly
-        let waveforms = extract_waveforms(point);
+        let waveforms = extract_waveforms(&point);
         let processed = apply_waveforms(&waveforms, &preprocess_params.steps);
+        let indexes = Self::matching_frames(&processed, &process, &postprocess, &range, &waveforms);
 
-        let mut viewer = Self {
+        Self {
             preprocess_params,
             process,
             postprocess,
             range,
-            waveforms,
+            point,
             processed,
             raw_hidden_seeded: false,
-            indexes: None,
+            indexes: Some(indexes),
             current: 0,
-        };
-
-        viewer.update_indexes();
-        viewer
+        }
     }
 
     fn reprocess(&mut self) {
-        self.processed = apply_waveforms(&self.waveforms, &self.preprocess_params.steps);
-        self.update_indexes();
+        let waveforms = extract_waveforms(&self.point);
+        let processed = apply_waveforms(&waveforms, &self.preprocess_params.steps);
+        let indexes = Self::matching_frames(
+            &processed,
+            &self.process,
+            &self.postprocess,
+            &self.range,
+            &waveforms,
+        );
+
+        self.processed = processed;
+        self.indexes = Some(indexes);
+        self.current = 0;
     }
 
-    fn update_indexes(&mut self) {
-        self.current = 0;
+    /// Времена кадров, в которых есть хотя бы одно событие с амплитудой в `range`.
+    fn matching_frames(
+        processed: &ProcessedPoint,
+        process: &ProcessParams,
+        postprocess: &PostProcessParams,
+        range: &Range<f32>,
+        waveforms: &NumassWaveformsFast<'_>,
+    ) -> Vec<u64> {
+        let mut indexes = vec![];
 
-        let mut new_indexes = vec![];
-
-        for (time, frame) in &self.waveforms {
+        for (time, frame) in waveforms {
             let events = post_process_frame(
-                extract_frame(
-                    &self.processed[time],
-                    frame,
-                    &self.process.algorithm,
-                    &mut None,
-                ),
-                &self.postprocess,
+                extract_frame(&processed[time], frame, &process.algorithm, &mut None),
+                postprocess,
                 None,
             );
 
@@ -94,32 +104,49 @@ impl<'a> FilteredViewer<'a> {
                     channel, amplitude, ..
                 } = event
                 {
-                    let amplitude = if self.process.convert_to_kev {
-                        convert_to_kev(&amplitude, channel, &self.process.algorithm)
+                    let amplitude = if process.convert_to_kev {
+                        convert_to_kev(&amplitude, channel, &process.algorithm)
                     } else {
                         amplitude
                     };
-                    if self.range.contains(&amplitude) {
-                        new_indexes.push(*time);
+                    if range.contains(&amplitude) {
+                        indexes.push(*time);
                         break;
                     }
                 }
             }
         }
 
-        self.indexes = Some(new_indexes);
+        indexes
+    }
+
+    /// Сырые вейвформы каналов кадра с данным временем (без копирования).
+    fn frame_at(&self, time: u64) -> NumassFrameFast<'_> {
+        let mut frame = BTreeMap::new();
+
+        for channel in &self.point.channels {
+            for block in &channel.blocks {
+                for point_frame in &block.frames {
+                    if correct_frame_time(point_frame.time) == time {
+                        frame.insert(channel.id as u8, frame_to_waveform(point_frame));
+                    }
+                }
+            }
+        }
+
+        frame
     }
 
     fn plot_processed_frame(&self, plot_ui: &mut PlotUi<'_>, time: u64) {
-        let frame = self.waveforms.get(&time).unwrap();
+        let frame = self.frame_at(time);
         let processed = &self.processed[&time];
 
-        draw_raw_frame(frame, plot_ui);
+        draw_raw_frame(&frame, plot_ui);
         draw_processed_frame(processed, plot_ui);
 
         let mut events = extract_frame(
             processed,
-            frame,
+            &frame,
             &self.process.algorithm,
             &mut Some(plot_ui),
         );
@@ -155,7 +182,7 @@ impl<'a> FilteredViewer<'a> {
     }
 }
 
-impl eframe::App for FilteredViewer<'_> {
+impl eframe::App for FilteredViewer {
     #[allow(unused_variables)]
     fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
         ctx.set_visuals(Visuals::dark());
