@@ -571,7 +571,7 @@ fn extract_long_diff(
             if let Some(ui) = ui {
                 ui.line(
                     Line::new(
-                        format!("range ch# {}", channel + 1),
+                        format!("range ch #{}", channel + 1),
                         vec![[0.0, head as f64], [last_idx as f64, head as f64]],
                     )
                     .color(color_for_index(channel as usize))
@@ -579,7 +579,7 @@ fn extract_long_diff(
                 );
                 ui.line(
                     Line::new(
-                        format!("range ch# {}", channel + 1),
+                        format!("range ch #{}", channel + 1),
                         vec![[0.0, tail as f64], [last_idx as f64, tail as f64]],
                     )
                     .color(color_for_index(channel as usize))
@@ -677,7 +677,7 @@ fn draw_process_events(events: &[NumassEvent], ui: &mut PlotUi) {
                 amplitude,
                 size,
             } => {
-                let name = format!("ev#{idx} ch# {}", channel + 1);
+                let name = format!("ev #{idx} ch #{}", channel + 1);
                 let color = color_for_index(*channel as usize);
                 ui.vline(VLine::new(name.clone(), *pos as f64 / 8.0).color(color));
                 ui.vline(VLine::new(name.clone(), (*pos + *size * 8) as f64 / 8.0).color(color));
@@ -698,18 +698,16 @@ fn draw_process_events(events: &[NumassEvent], ui: &mut PlotUi) {
             FrameEvent::Overflow { channel, size } => {
                 let color = color_for_index(*channel as usize);
                 let style = egui_plot::LineStyle::Dashed { length: 10.0 };
+                let name = format!("overflow ch #{}", channel + 1);
                 ui.vline(
-                    VLine::new(format!("OVERFLOW ch# {channel}"), *pos as f64 / 8.0)
+                    VLine::new(name.clone(), *pos as f64 / 8.0)
                         .color(color)
                         .style(style),
                 );
                 ui.vline(
-                    VLine::new(
-                        format!("OVERFLOW ch# {channel}"),
-                        (*pos + *size * 8) as f64 / 8.0,
-                    )
-                    .color(color)
-                    .style(style),
+                    VLine::new(name, (*pos + *size * 8) as f64 / 8.0)
+                        .color(color)
+                        .style(style),
                 );
             }
             FrameEvent::Frame { .. } => {}

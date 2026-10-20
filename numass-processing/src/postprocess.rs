@@ -380,7 +380,7 @@ pub fn post_process_frame(
                 },
             ) = events[idx]
             {
-                let name = format!("ch# {channel} merged");
+                let name = format!("merged ch #{}", channel + 1);
                 ui.points(
                     Points::new(name, vec![[pos as f64 / 8.0, amplitude as f64]])
                         .color(color_for_index(channel as usize))
@@ -427,7 +427,7 @@ fn draw_postprocess_events(events: &[NumassEvent], ui: &mut Option<&mut PlotUi>)
         {
             ui.points(
                 Points::new(
-                    format!("post#{idx} ch# {}", channel + 1),
+                    format!("post #{idx} ch #{}", channel + 1),
                     vec![[*pos as f64 / 8.0, *amplitude as f64]],
                 )
                 .color(color_for_index(*channel as usize))

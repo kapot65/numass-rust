@@ -500,7 +500,7 @@ pub fn draw_raw_frame(frame: &NumassFrameFast<'_>, ui: &mut PlotUi) {
     for (channel, waveform) in frame {
         let points: Vec<[f64; 2]> = ProcessedWaveform::from(*waveform).into();
         ui.line(
-            Line::new(format!("ch# {}", channel + 1), points)
+            Line::new(format!("ch #{}", channel + 1), points)
                 .color(color_for_index(*channel as usize))
                 .style(LineStyle::Dashed { length: 10.0 }),
         );
@@ -517,7 +517,7 @@ pub fn draw_processed_frame(frame: &ProcessedFrame, ui: &mut PlotUi) {
             .map(|(idx, amplitude)| [(idx + samples.delay) as f64, *amplitude as f64])
             .collect::<Vec<_>>();
         ui.line(
-            Line::new(format!("pre ch# {}", channel + 1), points)
+            Line::new(format!("pre ch #{}", channel + 1), points)
                 .color(color_for_index(*channel as usize)),
         );
     }

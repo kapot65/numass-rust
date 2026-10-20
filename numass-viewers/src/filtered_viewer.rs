@@ -252,7 +252,7 @@ impl eframe::App for FilteredViewer<'_> {
                     } else {
                         self.raw_hidden_seeded = true;
                         Legend::default()
-                            .hidden_items((0..7).map(|ch| egui::Id::new(format!("ch# {}", ch + 1))))
+                            .hidden_items((0..7).map(|ch| egui::Id::new(format!("ch #{}", ch + 1))))
                     };
 
                     egui_plot::Plot::new("waveforms")
