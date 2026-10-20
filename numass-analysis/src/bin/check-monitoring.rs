@@ -16,7 +16,7 @@ use numass_processing::{
     preprocess::PreprocessParams,
     process::{ProcessParams, TRAPEZOID_DEFAULT, extract_events},
     storage::load_point,
-    types::FrameEvent,
+    types::{FrameEvent, second},
 };
 
 use tokio::sync::Mutex;
@@ -129,7 +129,7 @@ async fn main() {
                     })
                     .sum::<usize>();
 
-                let acq_duration = (preprocess.effective_time() / 1_000_000_000) as f32;
+                let acq_duration = preprocess.effective_time().get::<second>() as f32;
 
                 if let NumassMeta::Reply(Reply::AcquirePoint { start_time, .. }) = meta {
                     count_rates.lock().await.insert(

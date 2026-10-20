@@ -8,8 +8,8 @@ use numass_processing::{
     preprocess::PreprocessParams,
     process::{ProcessParams, extract_events},
     storage::{load_meta, load_point},
-    types::FrameEvent,
-    utils::color_for_index,
+    types::{FrameEvent, Time, millisecond, nanosecond, nanoseconds, time_ns},
+    utils::{color_for_index, format_time},
     widgets::UserInput,
 };
 
@@ -19,7 +19,7 @@ use tokio::spawn;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::spawn_local as spawn;
 
-type Chunk = Vec<(u8, i64, f32)>;
+type Chunk = Vec<(u8, Time, f32)>;
 
 pub struct BundleViewer {
     point: Arc<Mutex<Option<rsb_event::Point>>>, // TODO: redownload point instead of storing?
@@ -40,15 +40,15 @@ fn point_to_chunks(
     preprocess: PreprocessParams,
     process: ProcessParams,
     postprocess: PostProcessParams,
-    limit_ns: u64,
+    limit: Time,
 ) -> Vec<Chunk> {
+    let limit_ns = time_ns(limit);
     let (events, _) = post_process(
         extract_events(meta, point, &preprocess, &process),
         &postprocess,
     );
 
-    let mut chunks = vec![];
-    chunks.push(vec![]);
+    let mut chunks = vec![vec![]];
 
     for (time, timed_event) in events {
         for (offset, event) in timed_event {
@@ -63,7 +63,7 @@ fn point_to_chunks(
                     chunks.push(vec![])
                 }
 
-                chunks[chunk_num].push((channel, (time % limit_ns) as i64, amplitude));
+                chunks[chunk_num].push((channel, nanoseconds((time % limit_ns) as f64), amplitude));
             }
         }
     }
@@ -92,7 +92,7 @@ impl BundleViewer {
         let point = Arc::clone(&viewer.point);
         let meta = Arc::clone(&viewer.meta);
         let chunks = Arc::clone(&viewer.chunks);
-        let limit_ns = viewer.limit_ms * 1_000_000;
+        let limit = Time::new::<millisecond>(viewer.limit_ms as f64);
         let process = viewer.process.to_owned();
         let preprocess = viewer.preprocess.to_owned();
         let post_process = viewer.post_process.to_owned();
@@ -111,7 +111,7 @@ impl BundleViewer {
                 preprocess,
                 process,
                 post_process,
-                limit_ns,
+                limit,
             );
         });
 
@@ -125,7 +125,7 @@ impl BundleViewer {
         preprocess: PreprocessParams,
         process: ProcessParams,
         post_process: PostProcessParams,
-        limit_ns: u64,
+        limit: Time,
     ) {
         *chunks.lock() = None;
 
@@ -136,7 +136,7 @@ impl BundleViewer {
                 preprocess,
                 process,
                 post_process,
-                limit_ns,
+                limit,
             ));
             *chunks.lock() = chunks_local;
         }
@@ -187,7 +187,7 @@ impl eframe::App for BundleViewer {
                 let meta = Arc::clone(&self.meta);
                 let point = Arc::clone(&self.point);
                 let chunks = Arc::clone(&self.chunks);
-                let limit_ns = self.limit_ms * 1_000_000;
+                let limit = Time::new::<millisecond>(self.limit_ms as f64);
                 let process = self.process.to_owned();
                 let preprocess = self.preprocess.to_owned();
                 let post_process = self.post_process.to_owned();
@@ -200,7 +200,7 @@ impl eframe::App for BundleViewer {
                         preprocess,
                         process,
                         post_process,
-                        limit_ns,
+                        limit,
                     );
                 });
             }
@@ -225,9 +225,11 @@ impl eframe::App for BundleViewer {
                 ui.style_mut().spacing.slider_width = width - 450.0;
 
                 ui.horizontal(|ui| {
+                    // Слайдер листает чанки: показываем время начала чанка, а не его номер.
+                    let chunk_len = Time::new::<millisecond>(self.limit_ms as f64);
                     ui.add(
                         egui::Slider::new(&mut self.current_chunk, 0..=chunks.len() - 1)
-                            .suffix("00 ms") // TODO: change to custom formatter
+                            .custom_formatter(move |value, _| format_time(chunk_len * value))
                             .step_by(1.0),
                     );
                     if ui.button("<").clicked() && self.current_chunk > 0 {
@@ -238,9 +240,17 @@ impl eframe::App for BundleViewer {
                     }
                 });
 
+                let amplitude_label = if self.process.convert_to_kev {
+                    "Amplitude, keV"
+                } else {
+                    "Amplitude, ADC"
+                };
+
                 egui_plot::Plot::new("waveforms")
                     .legend(Legend::default())
-                    .x_axis_formatter(|mark, _| format!("{:.3} ms", mark.value))
+                    .x_axis_label("Time")
+                    .y_axis_label(amplitude_label)
+                    .x_axis_formatter(|mark, _| format_time(nanoseconds(mark.value)))
                     .show(ui, |plot_ui| {
                         let mut channel_points = BTreeMap::new();
 
@@ -248,7 +258,7 @@ impl eframe::App for BundleViewer {
                             channel_points
                                 .entry(ch_num)
                                 .or_insert(vec![])
-                                .push([offset as f64 / 1_000_000.0, amp as f64]);
+                                .push([offset.get::<nanosecond>(), amp as f64]);
                         }
 
                         for (ch_num, points) in channel_points {

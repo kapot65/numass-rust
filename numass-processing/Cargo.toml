@@ -33,6 +33,7 @@ pyo3-stub-gen = { version = "0.23.1", optional = true, default-features = false,
 pyo3-stub-gen-derive = { version = "0.23.1", optional = true }
 
 protobuf = "3.2.0"
+uom = { version = "0.38.0", default-features = false, features = ["autoconvert", "f64", "si", "std", "serde"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { version = "1.21.2", features = ["full"] }

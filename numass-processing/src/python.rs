@@ -544,6 +544,9 @@ fn convert_to_kev(amplitude: f32, ch_id: u8, algorithm: Algorithm) -> f32 {
 
 /// `Preprocess::from_point` словарём. В биндингах `Preprocess` — только dict.
 ///
+/// Времена в словаре (`acquisition_time`, `frame_len`) — числа в секундах:
+/// базовая единица uom, в которой serde сериализует [`Time`].
+///
 /// `meta` читается как `NumassMeta`. Без ответа `aquired_point` функция
 /// возвращает ошибку: в Rust в этом месте паника.
 #[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyfunction)]

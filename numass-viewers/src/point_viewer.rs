@@ -5,8 +5,8 @@ use egui_plot::{GridMark, Legend};
 use numass_processing::{
     numass::protos::rsb_event,
     storage::load_point,
-    types::{ProcessedWaveform, RawWaveform},
-    utils::{EguiLine, color_for_index, correct_frame_time},
+    types::{ProcessedWaveform, RawWaveform, Time, millisecond, nanoseconds, time_ns},
+    utils::{EguiLine, color_for_index, correct_frame_time, format_time},
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -22,7 +22,7 @@ enum AppState {
     Interactive,
 }
 
-type Chunk = Vec<(u8, i64, ProcessedWaveform)>;
+type Chunk = Vec<(u8, Time, ProcessedWaveform)>;
 
 pub struct PointViewer {
     chunks: Arc<Mutex<Option<Vec<Chunk>>>>,
@@ -30,28 +30,40 @@ pub struct PointViewer {
     state: Arc<Mutex<AppState>>,
 }
 
-fn point_to_chunks(point: rsb_event::Point, limit_ns: u64) -> Vec<Chunk> {
-    let mut chunks = vec![];
-    chunks.push(vec![]);
+/// Кадры точки с исправленными таймстампами: (время, канал, кадр).
+fn frames_with_times(
+    point: &rsb_event::Point,
+) -> Vec<(u64, u8, &rsb_event::point::channel::block::Frame)> {
+    let mut frames = vec![];
 
-    for channel in point.channels {
-        for block in channel.blocks {
-            for frame in block.frames {
-                let chunk_num = (correct_frame_time(frame.time) / limit_ns) as usize;
-
-                while chunks.len() < chunk_num + 1 {
-                    chunks.push(vec![])
-                }
-
-                let waveform = ProcessedWaveform::from(&RawWaveform::from(&frame));
-
-                chunks[chunk_num].push((
-                    channel.id as u8,
-                    (correct_frame_time(frame.time) % limit_ns) as i64,
-                    waveform,
-                ));
+    for channel in &point.channels {
+        for block in &channel.blocks {
+            for frame in &block.frames {
+                frames.push((correct_frame_time(frame.time), channel.id as u8, frame));
             }
         }
+    }
+
+    frames
+}
+
+/// Раскладывает кадры по чанкам длиной `limit`.
+fn point_to_chunks(point: rsb_event::Point, limit: Time) -> Vec<Chunk> {
+    let limit_ns = time_ns(limit);
+    let frames = frames_with_times(&point);
+
+    let mut chunks = vec![vec![]];
+    for (time, channel, frame) in frames {
+        let chunk_num = (time / limit_ns) as usize;
+        while chunks.len() < chunk_num + 1 {
+            chunks.push(vec![])
+        }
+
+        chunks[chunk_num].push((
+            channel,
+            nanoseconds((time % limit_ns) as f64),
+            ProcessedWaveform::from(&RawWaveform::from(frame)),
+        ));
     }
 
     chunks
@@ -88,7 +100,7 @@ impl PointViewer {
 
         spawn(async move {
             let point = load_point(&filepath).await;
-            *chunks.lock() = Some(point_to_chunks(point, 1_000_000));
+            *chunks.lock() = Some(point_to_chunks(point, Time::new::<millisecond>(1.0)));
             *state.lock() = AppState::FirstLoad;
         });
 
@@ -147,9 +159,12 @@ impl eframe::App for PointViewer {
                         ui.style_mut().spacing.slider_width = width - 150.0;
 
                         ui.horizontal(|ui| {
+                            // чанки по 1 мс: показываем время начала чанка, а не номер
                             ui.add(
                                 egui::Slider::new(&mut self.current_chunk, 0..=chunks.len() - 1)
-                                    .suffix(" ms")
+                                    .custom_formatter(|value, _| {
+                                        format_time(Time::new::<millisecond>(value))
+                                    })
                                     .step_by(1.0),
                             );
                             if ui.button("<").clicked() {
@@ -164,7 +179,11 @@ impl eframe::App for PointViewer {
 
                         egui_plot::Plot::new("waveforms")
                             .legend(Legend::default())
-                            .x_axis_formatter(|GridMark { value, .. }, _| format!("{value:.3} μs"))
+                            .x_axis_label("Time")
+                            .y_axis_label("Amplitude, ADC")
+                            .x_axis_formatter(|GridMark { value, .. }, _| {
+                                format_time(nanoseconds(value))
+                            })
                             .show(ui, |plot_ui| {
                                 for (ch_num, offset, waveform) in chunks[self.current_chunk].clone()
                                 {
@@ -193,7 +212,7 @@ mod tests {
         mask.iter()
             .map(|&non_empty| {
                 if non_empty {
-                    vec![(0, 0, ProcessedWaveform(vec![0.0]))]
+                    vec![(0, nanoseconds(0.0), ProcessedWaveform(vec![0.0]))]
                 } else {
                     vec![]
                 }

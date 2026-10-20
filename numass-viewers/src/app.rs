@@ -13,6 +13,7 @@ use numass_processing::{
     histogram::PointHistogram,
     preprocess::Preprocess,
     storage::LoadState,
+    types::time_ns,
     utils::construct_filename,
     viewer::{EMPTY_POINT, ViewerState},
     widgets::UserInput,
@@ -555,9 +556,9 @@ impl DataViewerApp {
             } = cache
             {
                 let effective_time = if processing_params.post_process.cut_bad_blocks {
-                    preprocess.effective_time() as f32 * 1e-9
+                    time_ns(preprocess.effective_time()) as f32 * 1e-9
                 } else {
-                    preprocess.acquisition_time as f32 * 1e-9
+                    time_ns(preprocess.acquisition_time) as f32 * 1e-9
                 };
 
                 let count_rate = *counts as f32 / effective_time;
@@ -604,9 +605,9 @@ impl DataViewerApp {
             } = cache
             {
                 let effective_time = if processing_params.post_process.cut_bad_blocks {
-                    preprocess.effective_time() as f32 * 1e-9
+                    time_ns(preprocess.effective_time()) as f32 * 1e-9
                 } else {
-                    preprocess.acquisition_time as f32 * 1e-9
+                    time_ns(preprocess.acquisition_time) as f32 * 1e-9
                 };
 
                 let count_rate = *counts as f32 / effective_time;
@@ -949,14 +950,16 @@ impl eframe::App for DataViewerApp {
                                             preprocess.start_time.and_utc().timestamp_millis()
                                                 as f64,
                                             *counts as f64
-                                                / (preprocess.effective_time() as f64 * 1e-9),
+                                                / (time_ns(preprocess.effective_time()) as f64
+                                                    * 1e-9),
                                         ])
                                     } else {
                                         Some([
                                             preprocess.start_time.and_utc().timestamp_millis()
                                                 as f64,
                                             *counts as f64
-                                                / (preprocess.acquisition_time as f64 * 1e-9),
+                                                / (time_ns(preprocess.acquisition_time) as f64
+                                                    * 1e-9),
                                         ])
                                     }
                                 } else {
@@ -987,13 +990,15 @@ impl eframe::App for DataViewerApp {
                                         Some([
                                             preprocess.hv as f64,
                                             *counts as f64
-                                                / (preprocess.effective_time() as f64 * 1e-9),
+                                                / (time_ns(preprocess.effective_time()) as f64
+                                                    * 1e-9),
                                         ])
                                     } else {
                                         Some([
                                             preprocess.hv as f64,
                                             *counts as f64
-                                                / (preprocess.acquisition_time as f64 * 1e-9),
+                                                / (time_ns(preprocess.acquisition_time) as f64
+                                                    * 1e-9),
                                         ])
                                     }
                                 } else {
@@ -1022,14 +1027,16 @@ impl eframe::App for DataViewerApp {
                                                 PlotPoint::new(
                                                     preprocess.hv,
                                                     *counts as f64
-                                                        / preprocess.effective_time() as f64
+                                                        / time_ns(preprocess.effective_time())
+                                                            as f64
                                                         * 1e-9,
                                                 )
                                             } else {
                                                 PlotPoint::new(
                                                     preprocess.hv,
                                                     *counts as f64
-                                                        / preprocess.acquisition_time as f64
+                                                        / time_ns(preprocess.acquisition_time)
+                                                            as f64
                                                         * 1e-9,
                                                 )
                                             };
@@ -1072,7 +1079,7 @@ impl eframe::App for DataViewerApp {
                             plot_ui.hline(
                                 HLine::new(
                                     "selection",
-                                    counts as f64 / (acquisition_time as f64 * 1e-9),
+                                    counts as f64 / (time_ns(acquisition_time) as f64 * 1e-9),
                                 )
                                 .color(Color32::WHITE),
                             );

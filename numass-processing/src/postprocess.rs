@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     constants::DETECTOR_BORDERS,
     preprocess::{CUTOFF_BIN_SIZE, Preprocess},
-    types::{FrameEvent, NumassEvent, NumassEvents},
+    types::{FrameEvent, NumassEvent, NumassEvents, time_ns},
 };
 
 #[cfg(feature = "egui")]
@@ -69,6 +69,11 @@ impl From<[bool; 7]> for ChannelIgnore {
 pub struct PostProcessParams {
     /// remove events inside [bad_blocks](crate::preprocess::Preprocess::bad_blocks) timestamps
     pub cut_bad_blocks: bool,
+    /// Порог слияния соседних кадров: если расстояние между кадрами меньше
+    /// (в наносекундах), их события объединяются в один кадр.
+    ///
+    /// Тип — целое число, а не [`Time`](crate::types::Time): поле уходит в
+    /// pyo3-биндинги и query-string REST без изменений wire-формата.
     pub merge_frames: Option<u16>,
     pub merge_splits_first: bool,
     pub merge_close_events: bool,
@@ -103,7 +108,7 @@ fn merge_close_frames(
     while idx > 0 {
         let frames_delta = amplitudes[idx].0 - amplitudes[idx - 1].0;
         if frames_delta < merge_len as u64 {
-            let frame_offset = frames_delta - preprocess.frame_len;
+            let frame_offset = frames_delta - time_ns(preprocess.frame_len);
 
             let amplitudes_2 = amplitudes[idx].1.clone(); // clone to avoid borrowing issues
             amplitudes[idx - 1].1.extend(
@@ -281,8 +286,8 @@ fn merge_splits(
                         "".to_owned(),
                         vec![
                             // TODO: check first arg
-                            [pos1 as f64 / 8.0, amplitude as f64],
-                            [pos2 as f64 / 8.0, amplitude2 as f64],
+                            [pos1 as f64, amplitude as f64],
+                            [pos2 as f64, amplitude2 as f64],
                         ],
                     )
                     .color(color_for_index(channel2 as usize))
@@ -382,7 +387,7 @@ pub fn post_process_frame(
             {
                 let name = format!("merged ch #{}", channel + 1);
                 ui.points(
-                    Points::new(name, vec![[pos as f64 / 8.0, amplitude as f64]])
+                    Points::new(name, vec![[pos as f64, amplitude as f64]])
                         .color(color_for_index(channel as usize))
                         .shape(MarkerShape::Circle)
                         .filled(false)
@@ -398,8 +403,8 @@ pub fn post_process_frame(
                         String::new(),
                         vec![
                             // TODO: add name
-                            [pos1 as f64 / 8.0, amplitude as f64],
-                            [pos2 as f64 / 8.0, amplitude2 as f64],
+                            [pos1 as f64, amplitude as f64],
+                            [pos2 as f64, amplitude2 as f64],
                         ],
                     )
                     .color(color_for_index(channel2 as usize))
@@ -428,7 +433,7 @@ fn draw_postprocess_events(events: &[NumassEvent], ui: &mut Option<&mut PlotUi>)
             ui.points(
                 Points::new(
                     format!("post #{idx} ch #{}", channel + 1),
-                    vec![[*pos as f64 / 8.0, *amplitude as f64]],
+                    vec![[*pos as f64, *amplitude as f64]],
                 )
                 .color(color_for_index(*channel as usize))
                 .shape(MarkerShape::Square)

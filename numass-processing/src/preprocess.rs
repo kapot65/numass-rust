@@ -13,7 +13,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     histogram::PointHistogram,
-    types::{NumassFrameFast, NumassWaveforms, NumassWaveformsFast},
+    types::{
+        NumassFrameFast, NumassWaveforms, NumassWaveformsFast, Time, bin_time, nanosecond,
+        nanoseconds, time_ns,
+    },
     utils::correct_frame_time,
 };
 
@@ -50,11 +53,11 @@ pub struct Preprocess {
     /// Время начала набора точки
     pub start_time: NaiveDateTime,
 
-    /// время набора точки в наносекундах
-    pub acquisition_time: u64,
+    /// время набора точки; на проводе — число в секундах (базовая единица uom)
+    pub acquisition_time: Time,
 
-    /// длина кадра в наносекундах
-    pub frame_len: u64,
+    /// длина кадра; на проводе — число в секундах (базовая единица uom)
+    pub frame_len: Time,
 
     /// номера блоков, которые нужно исключить из анализа
     /// размер блока равен [CUTOFF_BIN_SIZE](crate::preprocess::CUTOFF_BIN_SIZE)
@@ -64,13 +67,16 @@ pub struct Preprocess {
 impl Preprocess {
     /// Извлекает параметры точки из метаданных и кадра.
     pub fn from_point(meta: Option<NumassMeta>, point: &rsb_event::Point) -> Self {
+        // метаданные хранят время набора в секундах
+        use crate::types::second;
+
         let (acquisition_time, start_time) = if let Some(NumassMeta::Reply(Reply::AcquirePoint {
             acquisition_time,
             start_time,
             ..
         })) = meta
         {
-            ((acquisition_time * 1e9) as u64, start_time)
+            (Time::new::<second>(f64::from(acquisition_time)), start_time)
         } else {
             panic!("acquisition_time/start_time not found in metadata")
         };
@@ -92,8 +98,10 @@ impl Preprocess {
         let bad_blocks = if hv > CHECK_HV_THRESHOLD {
             BTreeSet::new()
         } else {
+            // ось гистограммы плотности триггеров — наносекунды
+            let acquisition_ns = time_ns(acquisition_time);
             let mut trigger_density_local =
-                PointHistogram::new_step(0.0..(acquisition_time as f32), CHECK_BIN_SIZE as f32);
+                PointHistogram::new_step(0.0..acquisition_ns as f32, CHECK_BIN_SIZE as f32);
 
             for channel in &point.channels {
                 for block in &channel.blocks {
@@ -109,7 +117,7 @@ impl Preprocess {
                 .iter()
                 .enumerate()
                 .for_each(|(idx, count)| {
-                    if ((idx + 1) as u64 * CHECK_BIN_SIZE) <= acquisition_time && *count == 0.0 {
+                    if (idx + 1) as u64 * CHECK_BIN_SIZE <= acquisition_ns && *count == 0.0 {
                         let block_idx = (idx as u64 * CHECK_BIN_SIZE) / CUTOFF_BIN_SIZE;
                         bad_blocks.insert(block_idx as usize);
                     }
@@ -118,20 +126,21 @@ impl Preprocess {
             bad_blocks
         };
 
-        let frame_len = ((point
-            .channels
-            .first()
-            .unwrap()
-            .blocks
-            .first()
-            .unwrap()
-            .frames
-            .first()
-            .unwrap()
-            .data
-            .len()
-            / 2)
-            * 8) as u64;
+        let frame_len = bin_time(
+            point
+                .channels
+                .first()
+                .unwrap()
+                .blocks
+                .first()
+                .unwrap()
+                .frames
+                .first()
+                .unwrap()
+                .data
+                .len()
+                / 2,
+        );
 
         Self {
             acquisition_time,
@@ -142,11 +151,11 @@ impl Preprocess {
         }
     }
 
-    /// calculate effective time of acquisition after removing bad blocks (in nanoseconds)
-    /// `acquisition_time - bad_blocks_count as u64 * CUTOFF_BIN_SIZE`
-    pub fn effective_time(&self) -> u64 {
-        let bad_blocks_count = self.bad_blocks.len();
-        self.acquisition_time - bad_blocks_count as u64 * CUTOFF_BIN_SIZE
+    /// Эффективное время набора точки: [`acquisition_time`](Self::acquisition_time)
+    /// без вырезанных плохих блоков.
+    pub fn effective_time(&self) -> Time {
+        let removed_ns = self.bad_blocks.len() as u64 * CUTOFF_BIN_SIZE;
+        self.acquisition_time - nanoseconds(removed_ns as f64)
     }
 }
 
@@ -514,7 +523,12 @@ pub fn draw_processed_frame(frame: &ProcessedFrame, ui: &mut PlotUi) {
             .samples
             .iter()
             .enumerate()
-            .map(|(idx, amplitude)| [(idx + samples.delay) as f64, *amplitude as f64])
+            .map(|(idx, amplitude)| {
+                [
+                    bin_time(idx + samples.delay).get::<nanosecond>(),
+                    *amplitude as f64,
+                ]
+            })
             .collect::<Vec<_>>();
         ui.line(
             Line::new(format!("pre ch #{}", channel + 1), points)
@@ -526,6 +540,34 @@ pub fn draw_processed_frame(frame: &ProcessedFrame, ui: &mut PlotUi) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preprocess_serde_uses_base_unit_seconds() {
+        use crate::types::second;
+
+        let preprocess = Preprocess {
+            hv: 16e3,
+            start_time: chrono::DateTime::from_timestamp(0, 0).unwrap().naive_utc(),
+            acquisition_time: Time::new::<second>(30.0),
+            frame_len: bin_time(4096),
+            bad_blocks: BTreeSet::new(),
+        };
+
+        // uom сериализует время числом в базовой единице — секундах
+        let value = serde_json::to_value(&preprocess).unwrap();
+        assert_eq!(value["acquisition_time"], serde_json::json!(30.0));
+        assert_eq!(
+            value["frame_len"],
+            serde_json::json!(bin_time(4096).get::<second>())
+        );
+
+        let decoded: Preprocess = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            time_ns(decoded.acquisition_time),
+            time_ns(preprocess.acquisition_time)
+        );
+        assert_eq!(time_ns(decoded.frame_len), time_ns(preprocess.frame_len));
+    }
 
     fn one_frame(waveform: &[i16]) -> (NumassWaveformsFast<'_>, ProcessedFrame) {
         let frame = BTreeMap::from([(0u8, waveform)]);

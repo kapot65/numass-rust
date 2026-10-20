@@ -16,8 +16,11 @@ use tokio::sync::Mutex;
 
 use numass_analysis::CorrectionCoeffs;
 use numass_processing::{
-    postprocess::PostProcessParams, preprocess::PreprocessParams, process::ProcessParams,
-    storage::process_point, types::FrameEvent,
+    postprocess::PostProcessParams,
+    preprocess::PreprocessParams,
+    process::ProcessParams,
+    storage::process_point,
+    types::{FrameEvent, second},
 };
 
 #[cfg(target_family = "unix")]
@@ -245,7 +248,7 @@ async fn main() {
                     });
 
                     if post_processing.merge_close_events && post_processing.cut_bad_blocks {
-                        out_point.time += (preprocess.effective_time() / 1_000_000_000) as f64;
+                        out_point.time += preprocess.effective_time().get::<second>();
                     } else {
                         out_point.time += 30.0; // TODO: remove hardcode
                     }

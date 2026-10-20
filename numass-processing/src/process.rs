@@ -24,7 +24,10 @@ use crate::{
         Preprocess, PreprocessParams, ProcessedFrame, ProcessedPoint, apply_waveforms,
         extract_waveforms,
     },
-    types::{FrameEvent, NumassEvent, NumassEvents, NumassFrameFast, NumassWaveformsFast},
+    types::{
+        FrameEvent, NumassEvent, NumassEvents, NumassFrameFast, NumassWaveformsFast, TICK_NS,
+        bin_time, nanosecond, nanoseconds,
+    },
 };
 
 #[repr(C)]
@@ -379,7 +382,7 @@ fn extract_max(input: &FrameIn<'_>) -> Vec<NumassEvent> {
                 .max_by(|first, second| first.1.partial_cmp(second.1).unwrap())
                 .unwrap();
             (
-                (index + delay) as u16 * 8,
+                (index + delay) as u16 * TICK_NS,
                 FrameEvent::Event {
                     channel,
                     amplitude: *amplitude,
@@ -406,7 +409,7 @@ fn extract_likhovid(input: &FrameIn<'_>, left: u16, right: u16) -> Vec<NumassEve
             let crop = &samples[start..end];
             let amplitude = crop.iter().sum::<f32>() / crop.len() as f32;
             (
-                (index + delay) as u16 * 8,
+                (index + delay) as u16 * TICK_NS,
                 FrameEvent::Event {
                     channel,
                     amplitude,
@@ -426,7 +429,7 @@ fn extract_first_peak(input: &FrameIn<'_>, threshold: i16, left: u16) -> Vec<Num
                 let start = pos.saturating_sub(left);
                 let amplitude = samples[start..].iter().sum::<f32>() / 50.0;
                 (
-                    (pos + delay) as u16 * 8,
+                    (pos + delay) as u16 * TICK_NS,
                     FrameEvent::Event {
                         channel,
                         amplitude,
@@ -495,7 +498,7 @@ fn extract_trapezoid(
 
                 if event_end - index >= min_length {
                     events.push((
-                        (index + delay) as u16 * 8,
+                        (index + delay) as u16 * TICK_NS,
                         FrameEvent::Event {
                             channel,
                             amplitude: energy / delay as f32,
@@ -512,7 +515,7 @@ fn extract_trapezoid(
 
     if let Some((reset_start, reset_end)) = reset {
         events.push((
-            reset_start as u16 * 8,
+            reset_start as u16 * TICK_NS,
             FrameEvent::Reset {
                 size: (reset_end - reset_start) as u16,
             },
@@ -546,7 +549,7 @@ fn overflow_event(
 ) -> NumassEvent {
     let end = reset.map(|(reset_start, _)| reset_start).unwrap_or(raw_len);
     (
-        idx as u16 * 8,
+        idx as u16 * TICK_NS,
         FrameEvent::Overflow {
             channel,
             size: end.abs_diff(idx) as u16,
@@ -569,21 +572,17 @@ fn extract_long_diff(
 
             #[cfg(feature = "egui")]
             if let Some(ui) = ui {
+                let x_end = bin_time(last_idx).get::<nanosecond>();
+                let name = format!("range ch #{}", channel + 1);
                 ui.line(
-                    Line::new(
-                        format!("range ch #{}", channel + 1),
-                        vec![[0.0, head as f64], [last_idx as f64, head as f64]],
-                    )
-                    .color(color_for_index(channel as usize))
-                    .style(egui_plot::LineStyle::Dashed { length: 10.0 }),
+                    Line::new(name.clone(), vec![[0.0, head as f64], [x_end, head as f64]])
+                        .color(color_for_index(channel as usize))
+                        .style(egui_plot::LineStyle::Dashed { length: 10.0 }),
                 );
                 ui.line(
-                    Line::new(
-                        format!("range ch #{}", channel + 1),
-                        vec![[0.0, tail as f64], [last_idx as f64, tail as f64]],
-                    )
-                    .color(color_for_index(channel as usize))
-                    .style(egui_plot::LineStyle::Dashed { length: 10.0 }),
+                    Line::new(name, vec![[0.0, tail as f64], [x_end, tail as f64]])
+                        .color(color_for_index(channel as usize))
+                        .style(egui_plot::LineStyle::Dashed { length: 10.0 }),
                 );
             }
 
@@ -600,7 +599,7 @@ fn extract_long_diff(
 
     if let Some((reset_start, reset_end)) = reset {
         events.push((
-            reset_start as u16 * 8,
+            reset_start as u16 * TICK_NS,
             FrameEvent::Reset {
                 size: (reset_end - reset_start) as u16,
             },
@@ -669,6 +668,12 @@ where
 }
 
 #[cfg(feature = "egui")]
+/// Конец события: позиция (нс) плюс длина в отсчётах АЦП (бин → время).
+fn event_end(pos: u16, size: u16) -> f64 {
+    (nanoseconds(pos as f64) + bin_time(size as usize)).get::<nanosecond>()
+}
+
+#[cfg(feature = "egui")]
 fn draw_process_events(events: &[NumassEvent], ui: &mut PlotUi) {
     for (idx, (pos, event)) in events.iter().enumerate() {
         match event {
@@ -679,10 +684,10 @@ fn draw_process_events(events: &[NumassEvent], ui: &mut PlotUi) {
             } => {
                 let name = format!("ev #{idx} ch #{}", channel + 1);
                 let color = color_for_index(*channel as usize);
-                ui.vline(VLine::new(name.clone(), *pos as f64 / 8.0).color(color));
-                ui.vline(VLine::new(name.clone(), (*pos + *size * 8) as f64 / 8.0).color(color));
+                ui.vline(VLine::new(name.clone(), *pos as f64).color(color));
+                ui.vline(VLine::new(name.clone(), event_end(*pos, *size)).color(color));
                 ui.points(
-                    Points::new(name, vec![[*pos as f64 / 8.0, *amplitude as f64]])
+                    Points::new(name, vec![[*pos as f64, *amplitude as f64]])
                         .color(color)
                         .shape(MarkerShape::Diamond)
                         .filled(false)
@@ -690,22 +695,20 @@ fn draw_process_events(events: &[NumassEvent], ui: &mut PlotUi) {
                 );
             }
             FrameEvent::Reset { size } => {
-                ui.vline(VLine::new("RESET", *pos as f64 / 8.0).color(Color32::WHITE));
-                ui.vline(
-                    VLine::new("RESET", (*pos + *size * 8) as f64 / 8.0).color(Color32::WHITE),
-                );
+                ui.vline(VLine::new("RESET", *pos as f64).color(Color32::WHITE));
+                ui.vline(VLine::new("RESET", event_end(*pos, *size)).color(Color32::WHITE));
             }
             FrameEvent::Overflow { channel, size } => {
                 let color = color_for_index(*channel as usize);
                 let style = egui_plot::LineStyle::Dashed { length: 10.0 };
                 let name = format!("overflow ch #{}", channel + 1);
                 ui.vline(
-                    VLine::new(name.clone(), *pos as f64 / 8.0)
+                    VLine::new(name.clone(), *pos as f64)
                         .color(color)
                         .style(style),
                 );
                 ui.vline(
-                    VLine::new(name, (*pos + *size * 8) as f64 / 8.0)
+                    VLine::new(name, event_end(*pos, *size))
                         .color(color)
                         .style(style),
                 );
@@ -723,7 +726,7 @@ mod tests {
     use crate::process::{
         Algorithm, HWResetParams, ProcessParams, convert_to_kev, extract_frame, extract_processed,
     };
-    use crate::types::FrameEvent;
+    use crate::types::{FrameEvent, TICK_NS};
 
     #[test]
     fn average_reads_mean_of_standardized_frame() {
@@ -849,7 +852,8 @@ mod tests {
             .iter()
             .find(|(_, event)| matches!(event, FrameEvent::Event { .. }))
             .unwrap();
-        assert_eq!(*pos, (1 + 1 + 1 + 1) * 8);
+        // позиция события — в наносекундах: (индекс + задержка) * TICK_NS
+        assert_eq!(*pos, (1 + 1 + 1 + 1) * TICK_NS);
         match event {
             FrameEvent::Event {
                 amplitude, size, ..

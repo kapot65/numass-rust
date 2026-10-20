@@ -5,6 +5,47 @@ use std::collections::BTreeMap;
 use numass::protos::rsb_event;
 use serde::{Deserialize, Serialize};
 
+/// Время (длительность) с проверкой единиц на уровне типов ([`uom`]).
+///
+/// Все длительности в API крейта имеют этот тип: нельзя сложить наносекунды
+/// с миллисекундами или забыть коэффициент — перевод в конкретные единицы
+/// происходит только через `Time::new::<...>()` / `.get::<...>()`.
+///
+/// Сериализуется (serde) числом в базовой единице uom — **секундах**.
+pub use uom::si::f64::Time;
+/// Единицы времени для `Time::new::<...>()` / `.get::<...>()`.
+pub use uom::si::time::{microsecond, millisecond, nanosecond, second};
+
+/// Длительность одного отсчёта АЦП (бина вейвформы) в наносекундах.
+///
+/// АЦП работает на 125 МГц: 1e9 / 125 = 8 нс.
+/// Все времена на осциллограммах — в наносекундах: `бин * TICK_NS`
+/// (перевод — через [`bin_time`]).
+pub const TICK_NS: u16 = 8;
+
+/// Время в наносекундах: единицы оси x осциллограмм и таймстампов кадров.
+///
+/// Обратное преобразование для отрисовки — `.get::<nanosecond>()`.
+pub fn nanoseconds(value: f64) -> Time {
+    Time::new::<nanosecond>(value)
+}
+
+/// Время от начала кадра до бина с индексом `bin`: `bin * TICK_NS`.
+///
+/// Единственная точка перевода «бины АЦП → время».
+pub fn bin_time(bin: usize) -> Time {
+    nanoseconds(bin as f64 * TICK_NS as f64)
+}
+
+/// Целое число наносекунд из [`Time`] — с округлением.
+///
+/// Базовая единица [`uom`] для времени — секунда, поэтому точный round-trip
+/// через f64 требует округления: без него можно получить `…9999999` вместо
+/// круглого числа при переводе в целые нс.
+pub fn time_ns(time: Time) -> u64 {
+    time.get::<nanosecond>().round() as u64
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessedWaveform(pub Vec<f32>);
 
@@ -51,11 +92,12 @@ impl std::hash::Hash for FrameEvent {
 pub struct RawWaveform(pub Vec<i16>);
 
 impl RawWaveform {
-    pub fn to_egui_line(&self, offset: i64) -> Vec<[f64; 2]> {
+    /// Точки для графика: x — время от начала кадра плюс `offset`.
+    pub fn to_egui_line(&self, offset: Time) -> Vec<[f64; 2]> {
         self.0
             .iter()
             .enumerate()
-            .map(|(x, y)| [(x as i64 + offset) as f64, (*y as f64)])
+            .map(|(x, y)| [(bin_time(x) + offset).get::<nanosecond>(), *y as f64])
             .collect::<Vec<_>>()
     }
 }
@@ -66,7 +108,7 @@ impl From<RawWaveform> for Vec<[f64; 2]> {
             .0
             .iter()
             .enumerate()
-            .map(|(x, y)| [x as f64, *y as f64])
+            .map(|(x, y)| [bin_time(x).get::<nanosecond>(), *y as f64])
             .collect::<Vec<_>>()
     }
 }
@@ -111,7 +153,7 @@ impl From<ProcessedWaveform> for Vec<[f64; 2]> {
             .0
             .iter()
             .enumerate()
-            .map(|(x, y)| [x as f64, *y as f64])
+            .map(|(x, y)| [bin_time(x).get::<nanosecond>(), *y as f64])
             .collect::<Vec<_>>()
     }
 }

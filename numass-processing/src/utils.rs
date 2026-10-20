@@ -14,8 +14,9 @@ use {
 
 use crate::{
     histogram::{HistogramParams, PointHistogram},
-    types::{FrameEvent, NumassEvents},
+    types::{FrameEvent, NumassEvents, Time, microsecond, millisecond, nanosecond, second},
 };
+use uom::si::Unit;
 
 pub fn events_to_histogram(amplitudes: NumassEvents, histogram: HistogramParams) -> PointHistogram {
     let mut histogram = PointHistogram::from(histogram);
@@ -60,6 +61,38 @@ pub fn construct_filename(name: &str, pref_ext: Option<&str>) -> String {
     }
 
     format!("{run}{set}{name}")
+}
+
+/// Форматирует время с автоматическим подбором SI-приставки
+/// (ns, µs, ms, s) — единый вид всех временных подписей на графиках.
+///
+/// Число и обозначение единицы — из представления uom: пересчёт —
+/// [`Time::get`], обозначение — [`uom::si::Unit::abbreviation`].
+/// Незначащие нули отбрасываются: `4 µs`, `180 ms`.
+pub fn format_time(value: Time) -> String {
+    let ns = value.get::<nanosecond>();
+    let (scaled, unit) = if ns.abs() < 1e3 {
+        (ns, nanosecond::abbreviation())
+    } else if ns.abs() < 1e6 {
+        (value.get::<microsecond>(), microsecond::abbreviation())
+    } else if ns.abs() < 1e9 {
+        (value.get::<millisecond>(), millisecond::abbreviation())
+    } else {
+        (value.get::<second>(), second::abbreviation())
+    };
+
+    let mut text = format!("{scaled:.3}");
+    while text.ends_with('0') {
+        text.pop();
+    }
+    if text.ends_with('.') {
+        text.pop();
+    }
+    if text == "-0" {
+        text = "0".to_owned();
+    }
+
+    format!("{text} {unit}")
 }
 
 /// Корретировка времени прихода триггера
@@ -108,17 +141,21 @@ pub fn color_for_index_str(idx: usize) -> impl Color {
 
 #[cfg(feature = "egui")]
 pub trait EguiLine: Into<Vec<[f64; 2]>> {
+    /// Рисует вейвформу линией. Ось x — время от начала кадра;
+    /// `offset` сдвигает все точки по времени.
     fn draw_egui(
         self,
         plot_ui: &mut PlotUi,
         name: Option<&str>,
         color: Option<Color32>,
         thickness: Option<f32>,
-        offset: Option<i64>,
+        offset: Option<Time>,
     ) {
         let mut points: Vec<[f64; 2]> = self.into();
         if let Some(offset) = offset {
-            points.iter_mut().for_each(|[x, _]| *x += offset as f64)
+            points
+                .iter_mut()
+                .for_each(|[x, _]| *x += offset.get::<nanosecond>())
         }
 
         let mut line = Line::new(name.unwrap_or_default(), points);
@@ -138,3 +175,31 @@ impl EguiLine for RawWaveform {}
 
 #[cfg(feature = "egui")]
 impl EguiLine for ProcessedWaveform {}
+
+#[cfg(test)]
+mod tests {
+    use super::format_time;
+    use crate::types::{TICK_NS, Time, bin_time, nanoseconds, second, time_ns};
+
+    #[test]
+    fn format_time_picks_si_prefix() {
+        assert_eq!(format_time(nanoseconds(500.0)), "500 ns");
+        assert_eq!(format_time(nanoseconds(4000.0)), "4 µs");
+        assert_eq!(format_time(nanoseconds(-3125.0)), "-3.125 µs");
+        assert_eq!(format_time(nanoseconds(1.8e8)), "180 ms");
+        assert_eq!(format_time(Time::new::<second>(30.0)), "30 s");
+    }
+
+    #[test]
+    fn format_time_trims_zeros() {
+        assert_eq!(format_time(nanoseconds(0.0)), "0 ns");
+        assert_eq!(format_time(nanoseconds(2e6)), "2 ms");
+        assert_eq!(format_time(nanoseconds(1.5e6)), "1.5 ms");
+    }
+
+    #[test]
+    fn bin_time_is_tick_per_bin() {
+        assert_eq!(time_ns(bin_time(0)), 0);
+        assert_eq!(time_ns(bin_time(5)), 5 * TICK_NS as u64);
+    }
+}

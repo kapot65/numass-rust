@@ -725,7 +725,7 @@ dependencies = [
  "mach",
  "nix 0.19.1",
  "num-traits",
- "uom",
+ "uom 0.30.0",
  "winapi",
 ]
 
@@ -4155,6 +4155,7 @@ checksum = "c89e69e7e0f03bea5ef08013795c25018e101932225a656383bd384495ecc367"
 dependencies = [
  "num-integer",
  "num-traits",
+ "serde",
 ]
 
 [[package]]
@@ -4164,6 +4165,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73f88a1307638156682bada9d7604135552957b7818057dcef22705b4d509495"
 dependencies = [
  "num-traits",
+ "serde",
 ]
 
 [[package]]
@@ -4200,6 +4202,7 @@ checksum = "f83d14da390562dca69fc84082e73e548e1ad308d24accdedd2720017cb37824"
 dependencies = [
  "num-integer",
  "num-traits",
+ "serde",
 ]
 
 [[package]]
@@ -4311,6 +4314,7 @@ dependencies = [
  "serde_json",
  "serde_qs",
  "tokio",
+ "uom 0.38.0",
  "urlencoding",
  "xmltree",
 ]
@@ -8250,6 +8254,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e76503e636584f1e10b9b3b9498538279561adcef5412927ba00c2b32c4ce5ed"
 dependencies = [
  "num-traits",
+ "typenum",
+]
+
+[[package]]
+name = "uom"
+version = "0.38.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a739f83872836c82a4f2527d4e54b37007b3de68cafe7edde95fd695968bf4b9"
+dependencies = [
+ "num-bigint",
+ "num-complex",
+ "num-rational",
+ "num-traits",
+ "serde_core",
  "typenum",
 ]
 
