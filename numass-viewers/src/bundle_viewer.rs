@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
+use crate::ChunkedData;
 use egui::{Visuals, mutex::Mutex};
 use egui_plot::{Legend, Points};
 use numass_processing::{
@@ -9,7 +10,7 @@ use numass_processing::{
     process::{ProcessParams, extract_events},
     storage::{load_meta, load_point},
     types::{FrameEvent, Time, millisecond, nanosecond, nanoseconds, time_ns},
-    utils::{color_for_index, format_time},
+    utils::{acquisition_time, color_for_index, format_time, repair_frame_times, timestamps_bound},
     widgets::UserInput,
 };
 
@@ -30,10 +31,17 @@ pub struct BundleViewer {
     post_process: PostProcessParams,
     limit_ms: u64,
 
-    chunks: Arc<Mutex<Option<Vec<Chunk>>>>,
+    data: Arc<Mutex<Option<ChunkedData<Chunk>>>>,
     current_chunk: usize,
 }
 
+/// Раскладывает события по чанкам длиной `limit`.
+///
+/// Времена кадров (ключи событий, `BTreeMap` — по возрастанию) проходят
+/// тот же ремонт, что и кадры point-viewer: [`repair_frame_times`] ставит
+/// сегменты сбоя следом за валидной шкалой вместо отбрасывания. События
+/// кадров с невосстановимым временем не рисуются и попадают в `dropped`.
+/// Без `acquisition_time` (нет мета) границы и ремонта нет.
 fn point_to_chunks(
     meta: Option<NumassMeta>,
     point: rsb_event::Point,
@@ -41,22 +49,40 @@ fn point_to_chunks(
     process: ProcessParams,
     postprocess: PostProcessParams,
     limit: Time,
-) -> Vec<Chunk> {
+) -> ChunkedData<Chunk> {
     let limit_ns = time_ns(limit);
+    let bound_ns = acquisition_time(meta.clone()).map(timestamps_bound);
     let (events, _) = post_process(
         extract_events(meta, point, &preprocess, &process),
         &postprocess,
     );
 
-    let mut chunks = vec![vec![]];
+    let frame_times: Vec<u64> = events.keys().copied().collect();
+    let frame_times = match bound_ns {
+        Some(bound) => repair_frame_times(&frame_times, bound),
+        // без метаданных времена не проверяем — как раньше
+        None => frame_times.iter().map(|&time| Some(time)).collect(),
+    };
 
-    for (time, timed_event) in events {
+    let mut chunks = vec![vec![]];
+    let mut dropped = 0;
+
+    for ((_, timed_event), frame_time) in events.into_iter().zip(frame_times) {
+        let Some(frame_time) = frame_time else {
+            // Время кадра невосстановимо: его события не рисуем.
+            dropped += timed_event
+                .iter()
+                .filter(|(_, event)| matches!(event, FrameEvent::Event { .. }))
+                .count();
+            continue;
+        };
+
         for (offset, event) in timed_event {
             if let FrameEvent::Event {
                 channel, amplitude, ..
             } = event
             {
-                let time = time + offset as u64;
+                let time = frame_time + offset as u64;
                 let chunk_num = (time / limit_ns) as usize;
 
                 while chunks.len() < chunk_num + 1 {
@@ -68,7 +94,7 @@ fn point_to_chunks(
         }
     }
 
-    chunks
+    ChunkedData { chunks, dropped }
 }
 
 impl BundleViewer {
@@ -85,13 +111,13 @@ impl BundleViewer {
             process,
             post_process,
             limit_ms: 100,
-            chunks: Arc::new(Mutex::new(None)),
+            data: Arc::new(Mutex::new(None)),
             current_chunk: 0,
         };
 
         let point = Arc::clone(&viewer.point);
         let meta = Arc::clone(&viewer.meta);
-        let chunks = Arc::clone(&viewer.chunks);
+        let data = Arc::clone(&viewer.data);
         let limit = Time::new::<millisecond>(viewer.limit_ms as f64);
         let process = viewer.process.to_owned();
         let preprocess = viewer.preprocess.to_owned();
@@ -107,7 +133,7 @@ impl BundleViewer {
             BundleViewer::recalculate_chunks(
                 meta,
                 point,
-                chunks,
+                data,
                 preprocess,
                 process,
                 post_process,
@@ -121,16 +147,16 @@ impl BundleViewer {
     fn recalculate_chunks(
         meta: Arc<Mutex<Option<NumassMeta>>>,
         point: Arc<Mutex<Option<rsb_event::Point>>>,
-        chunks: Arc<Mutex<Option<Vec<Chunk>>>>,
+        data: Arc<Mutex<Option<ChunkedData<Chunk>>>>,
         preprocess: PreprocessParams,
         process: ProcessParams,
         post_process: PostProcessParams,
         limit: Time,
     ) {
-        *chunks.lock() = None;
+        *data.lock() = None;
 
         if let Some(point) = &*point.lock() {
-            let chunks_local = Some(point_to_chunks(
+            let data_local = Some(point_to_chunks(
                 meta.lock().clone(),
                 point.clone(),
                 preprocess,
@@ -138,7 +164,7 @@ impl BundleViewer {
                 post_process,
                 limit,
             ));
-            *chunks.lock() = chunks_local;
+            *data.lock() = data_local;
         }
     }
 }
@@ -149,7 +175,8 @@ impl eframe::App for BundleViewer {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         ctx.set_visuals(Visuals::dark());
 
-        if let Some(chunks) = &*self.chunks.lock() {
+        if let Some(data) = &*self.data.lock() {
+            let chunks = &data.chunks;
             ctx.input(|i| {
                 if i.key_pressed(eframe::egui::Key::ArrowRight)
                     && self.current_chunk < chunks.len() - 1
@@ -186,7 +213,7 @@ impl eframe::App for BundleViewer {
 
                 let meta = Arc::clone(&self.meta);
                 let point = Arc::clone(&self.point);
-                let chunks = Arc::clone(&self.chunks);
+                let data = Arc::clone(&self.data);
                 let limit = Time::new::<millisecond>(self.limit_ms as f64);
                 let process = self.process.to_owned();
                 let preprocess = self.preprocess.to_owned();
@@ -196,7 +223,7 @@ impl eframe::App for BundleViewer {
                     BundleViewer::recalculate_chunks(
                         meta,
                         point,
-                        chunks,
+                        data,
                         preprocess,
                         process,
                         post_process,
@@ -207,7 +234,8 @@ impl eframe::App for BundleViewer {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            if let Some(chunks) = &*self.chunks.lock() {
+            if let Some(data) = &*self.data.lock() {
+                let chunks = &data.chunks;
                 #[cfg(not(target_arch = "wasm32"))]
                 let width = {
                     let mut x = 0.0;
@@ -239,6 +267,13 @@ impl eframe::App for BundleViewer {
                         self.current_chunk += 1;
                     }
                 });
+
+                // События кадров с невосстановимым временем не рисуются —
+                // показываем, сколько их отброшено.
+                ui.weak(format!(
+                    "{} events dropped: unrecoverable timestamps",
+                    data.dropped
+                ));
 
                 let amplitude_label = if self.process.convert_to_kev {
                     "Amplitude, keV"
