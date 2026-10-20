@@ -14,8 +14,11 @@ use {
 
 use crate::{
     histogram::{HistogramParams, PointHistogram},
-    types::{FrameEvent, NumassEvents, Time, microsecond, millisecond, nanosecond, second},
+    types::{
+        FrameEvent, NumassEvents, Time, microsecond, millisecond, nanosecond, second, time_ns,
+    },
 };
+use numass::{NumassMeta, Reply};
 use uom::si::Unit;
 
 pub fn events_to_histogram(amplitudes: NumassEvents, histogram: HistogramParams) -> PointHistogram {
@@ -109,6 +112,94 @@ pub fn correct_frame_time(time: u64) -> u64 {
     }
 }
 
+/// Время набора точки из метаданных, если ответ `acquire_point` есть.
+///
+/// В метаданных оно хранится в секундах.
+pub fn acquisition_time(meta: Option<NumassMeta>) -> Option<Time> {
+    match meta {
+        Some(NumassMeta::Reply(Reply::AcquirePoint {
+            acquisition_time, ..
+        })) => Some(Time::new::<second>(f64::from(acquisition_time))),
+        _ => None,
+    }
+}
+
+/// Верхняя граница валидных таймстампов кадра в наносекундах: конец набора
+/// плюс секундный запас на ход часов.
+///
+/// Таймстампы дальше — мусорные: к ним примешана константа, которую не знает
+/// [`correct_frame_time`]. Без границы такие кадры раздувают число чанков
+/// (индекс = `таймстамп / limit`) до capacity overflow.
+pub fn timestamps_bound(acquisition_time: Time) -> u64 {
+    time_ns(acquisition_time + Time::new::<second>(1.0))
+}
+
+/// «Ремонтирует» времена кадров, к которым примешалась неизвестная константа,
+/// вместо того чтобы их отбрасывать.
+///
+/// Возвращает для каждого времени его положение от начала точки (нс) или
+/// `None` для безнадёжного мусора.
+///
+/// Модель сбоя — как в [`correct_frame_time`]: начиная с определенного
+/// триггера к времени кадров прибавляется константа, и кадры продолжают
+/// идти с обычными интервалами. Поэтому кадры в пределах `bound` от начала
+/// шкалы считаются валидными и идут как есть, а остальные образуют сегменты
+/// (кадры с интервалами не больше `bound`), и каждый сегмент ставится сразу
+/// за концом предыдущей шкалы — внутренние интервалы сохраняются. Сегмент
+/// длиннее `bound` — не сдвиг константой, а мусор: такой хвост отбрасывается.
+pub fn repair_frame_times(times: &[u64], bound: u64) -> Vec<Option<u64>> {
+    let Some(t0) = times.iter().min().copied() else {
+        return Vec::new();
+    };
+
+    let mut repaired = vec![None; times.len()];
+
+    // Валидная шкала — кадры в пределах bound от начала.
+    let mut timeline_end = 0;
+    for (slot, &time) in repaired.iter_mut().zip(times) {
+        let relative = time - t0;
+        if relative <= bound {
+            *slot = Some(relative);
+            timeline_end = timeline_end.max(relative);
+        }
+    }
+
+    // Сломанные кадры по возрастанию времени.
+    let mut broken: Vec<(usize, u64)> = times
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, &time)| (time - t0 > bound).then_some((idx, time - t0)))
+        .collect();
+    broken.sort_unstable_by_key(|&(_, time)| time);
+
+    let Some(&(_, first_time)) = broken.first() else {
+        return repaired;
+    };
+
+    let mut anchor = timeline_end;
+    let mut segment_start = first_time;
+    let mut prev = first_time;
+    for &(idx, time) in &broken {
+        // Разрыв больше bound — начался новый сегмент сбоя: якорь — конец
+        // уже набранной шкалы.
+        if time - prev > bound {
+            segment_start = time;
+            anchor = timeline_end;
+        }
+        prev = time;
+
+        if time - segment_start > bound {
+            continue; // не сдвиг константой, а мусор внутри сегмента
+        }
+
+        let placed = anchor + (time - segment_start);
+        repaired[idx] = Some(placed);
+        timeline_end = timeline_end.max(placed);
+    }
+
+    repaired
+}
+
 /// Parabolic event amplitude correction correction
 pub fn correct_amp(y0: f32, y1: f32, y2: f32) -> (f32, f32) {
     (
@@ -178,7 +269,7 @@ impl EguiLine for ProcessedWaveform {}
 
 #[cfg(test)]
 mod tests {
-    use super::format_time;
+    use super::{format_time, repair_frame_times};
     use crate::types::{TICK_NS, Time, bin_time, nanoseconds, second, time_ns};
 
     #[test]
@@ -201,5 +292,43 @@ mod tests {
     fn bin_time_is_tick_per_bin() {
         assert_eq!(time_ns(bin_time(0)), 0);
         assert_eq!(time_ns(bin_time(5)), 5 * TICK_NS as u64);
+    }
+
+    #[test]
+    fn repair_frame_times_anchors_broken_segment_after_valid_timeline() {
+        let times = [0, 100, 200, 1_000_000, 1_000_150];
+        let repaired = repair_frame_times(&times, 1_000);
+
+        // валидные кадры идут как есть
+        assert_eq!(repaired[..3], [Some(0), Some(100), Some(200)]);
+        // сломанный сегмент — сразу за валидной шкалой, интервалы сохранены
+        assert_eq!(repaired[3], Some(200));
+        assert_eq!(repaired[4], Some(350));
+    }
+
+    #[test]
+    fn repair_frame_times_each_segment_gets_own_anchor() {
+        // два разных сегмента сбоя: каждый ставится за концом предыдущего
+        let times = [0, 1_000_000, 5_000_000, 5_000_500, 9_000_000, 9_000_500];
+        let repaired = repair_frame_times(&times, 2_000_000);
+
+        assert_eq!(repaired[0], Some(0));
+        assert_eq!(repaired[1], Some(1_000_000));
+        assert_eq!(repaired[2], Some(1_000_000));
+        assert_eq!(repaired[3], Some(1_000_500));
+        assert_eq!(repaired[4], Some(1_000_500));
+        assert_eq!(repaired[5], Some(1_001_000));
+    }
+
+    #[test]
+    fn repair_frame_times_drops_garbage_beyond_segment_span() {
+        // интервалы 500 ≤ bound → один сегмент, но его длина 1200 > bound:
+        // хвост — не сдвиг константой, а мусор
+        let repaired = repair_frame_times(&[0, 1_000_000, 1_000_500, 1_001_200], 1_000);
+
+        assert_eq!(repaired[0], Some(0));
+        assert_eq!(repaired[1], Some(0));
+        assert_eq!(repaired[2], Some(500));
+        assert_eq!(repaired[3], None);
     }
 }

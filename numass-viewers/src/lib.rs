@@ -16,6 +16,16 @@ pub mod filtered_viewer;
 pub mod point_viewer;
 pub mod trigger_viewer;
 
+/// Данные, разложенные по чанкам, плюс статистика отброшенного.
+///
+/// `dropped` — сколько кадров/событий не отрисовано из-за невосстановимого
+/// времени: мусорного таймстампа, который не «ремонтирует"
+/// `numass_processing::utils::repair_frame_times`.
+pub(crate) struct ChunkedData<T> {
+    pub(crate) chunks: Vec<T>,
+    pub(crate) dropped: usize,
+}
+
 /// Program version, taken from the crate metadata at build time.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

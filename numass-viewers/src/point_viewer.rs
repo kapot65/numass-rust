@@ -1,12 +1,16 @@
 use std::{path::PathBuf, sync::Arc};
 
+use crate::ChunkedData;
 use egui::{Visuals, mutex::Mutex};
 use egui_plot::{GridMark, Legend};
 use numass_processing::{
     numass::protos::rsb_event,
-    storage::load_point,
+    storage::{load_meta, load_point},
     types::{ProcessedWaveform, RawWaveform, Time, millisecond, nanoseconds, time_ns},
-    utils::{EguiLine, color_for_index, correct_frame_time, format_time},
+    utils::{
+        EguiLine, acquisition_time, color_for_index, correct_frame_time, format_time,
+        repair_frame_times, timestamps_bound,
+    },
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -25,7 +29,7 @@ enum AppState {
 type Chunk = Vec<(u8, Time, ProcessedWaveform)>;
 
 pub struct PointViewer {
-    chunks: Arc<Mutex<Option<Vec<Chunk>>>>,
+    data: Arc<Mutex<Option<ChunkedData<Chunk>>>>,
     current_chunk: usize,
     state: Arc<Mutex<AppState>>,
 }
@@ -48,12 +52,36 @@ fn frames_with_times(
 }
 
 /// Раскладывает кадры по чанкам длиной `limit`.
-fn point_to_chunks(point: rsb_event::Point, limit: Time) -> Vec<Chunk> {
+///
+/// Кадры с мусорным таймстампом не теряются: [`repair_frame_times`]
+/// «ремонтирует» их по модели сбоя из [`correct_frame_time`] (константа,
+/// примешанная начиная с определенного триггера) и ставит следом за
+/// валидной шкалой. Невосстановимые кадры отбрасываются и попадают в
+/// `dropped`. Без `acquisition_time` границы и ремонта нет.
+fn point_to_chunks(
+    point: rsb_event::Point,
+    limit: Time,
+    acquisition: Option<Time>,
+) -> ChunkedData<Chunk> {
     let limit_ns = time_ns(limit);
     let frames = frames_with_times(&point);
+    let times: Vec<u64> = frames.iter().map(|(time, ..)| *time).collect();
+
+    let times = match acquisition.map(timestamps_bound) {
+        Some(bound) => repair_frame_times(&times, bound),
+        // без метаданных времена не проверяем — как раньше
+        None => times.iter().map(|&time| Some(time)).collect(),
+    };
 
     let mut chunks = vec![vec![]];
-    for (time, channel, frame) in frames {
+    let mut dropped = 0;
+
+    for ((_, channel, frame), time) in frames.into_iter().zip(times) {
+        let Some(time) = time else {
+            dropped += 1;
+            continue;
+        };
+
         let chunk_num = (time / limit_ns) as usize;
         while chunks.len() < chunk_num + 1 {
             chunks.push(vec![])
@@ -66,7 +94,7 @@ fn point_to_chunks(point: rsb_event::Point, limit: Time) -> Vec<Chunk> {
         ));
     }
 
-    chunks
+    ChunkedData { chunks, dropped }
 }
 
 /// Ближайший непустой чанк перед `current` (не включая его).
@@ -90,17 +118,22 @@ fn next_non_empty_chunk(chunks: &[Chunk], current: usize) -> usize {
 impl PointViewer {
     pub fn init_with_point(filepath: PathBuf) -> Self {
         let viewer = PointViewer {
-            chunks: Arc::new(Mutex::new(None)),
+            data: Arc::new(Mutex::new(None)),
             current_chunk: 0,
             state: Arc::new(Mutex::new(AppState::Initializing)),
         };
 
-        let chunks = Arc::clone(&viewer.chunks);
+        let data = Arc::clone(&viewer.data);
         let state = Arc::clone(&viewer.state);
 
         spawn(async move {
             let point = load_point(&filepath).await;
-            *chunks.lock() = Some(point_to_chunks(point, Time::new::<millisecond>(1.0)));
+            let acquisition = acquisition_time(load_meta(&filepath).await);
+            *data.lock() = Some(point_to_chunks(
+                point,
+                Time::new::<millisecond>(1.0),
+                acquisition,
+            ));
             *state.lock() = AppState::FirstLoad;
         });
 
@@ -125,7 +158,8 @@ impl eframe::App for PointViewer {
                 *self.state.lock() = AppState::Interactive;
             }
             AppState::Interactive => {
-                if let Some(chunks) = self.chunks.lock().as_ref() {
+                if let Some(data) = self.data.lock().as_ref() {
+                    let chunks = &data.chunks;
                     // consume_key, чтобы сфокусированный (через Tab) слайдер
                     // не обрабатывал стрелки повторно.
                     ctx.input_mut(|i| {
@@ -177,6 +211,13 @@ impl eframe::App for PointViewer {
                             }
                         });
 
+                        // Кадры с невосстановимым временем не рисуются —
+                        // показываем, сколько их отброшено.
+                        ui.weak(format!(
+                            "{} frames dropped: unrecoverable timestamps",
+                            data.dropped
+                        ));
+
                         egui_plot::Plot::new("waveforms")
                             .legend(Legend::default())
                             .x_axis_label("Time")
@@ -206,6 +247,142 @@ impl eframe::App for PointViewer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use numass_processing::types::second;
+
+    /// Точка с одним каналом и кадрами с данными таймстампами (нс).
+    fn point_with_times(times: &[u64]) -> rsb_event::Point {
+        use rsb_event::point::{
+            Channel,
+            channel::{Block, block::Frame},
+        };
+
+        rsb_event::Point {
+            channels: vec![Channel {
+                id: 1,
+                blocks: vec![Block {
+                    time: 0,
+                    frames: times
+                        .iter()
+                        .map(|&time| Frame {
+                            time,
+                            data: vec![0, 0],
+                            ..Default::default()
+                        })
+                        .collect(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
+    /// Мусорный таймстамп, который correct_frame_time не исправляет:
+    /// порог исправления — 0xf000_0000_0000_0000, эта константа ниже.
+    const GARBAGE_TIME: u64 = 0x8000_0000_0000_0000;
+
+    #[test]
+    fn garbage_timestamps_are_repaired_not_dropped() {
+        // Раньше кадр с таким таймстампом поднимал chunk_num до ~10^13
+        // (capacity overflow на wasm32), а первый фикс отбрасывал его совсем.
+        let point = point_with_times(&[
+            0,
+            1_500_000,
+            // известная константа — correct_frame_time исправляет
+            0xffff_fff9_03da_0000 + 2_500_000,
+            // неизвестная — «ремонтируется», кадр рисуем
+            GARBAGE_TIME,
+        ]);
+        let data = point_to_chunks(
+            point,
+            Time::new::<millisecond>(1.0),
+            Some(Time::new::<second>(30.0)),
+        );
+
+        // все 4 кадра нарисованы; сломанный встал сразу за валидной шкалой
+        assert_eq!(data.chunks.len(), 3);
+        assert_eq!(data.chunks.iter().map(Vec::len).sum::<usize>(), 4);
+        assert_eq!(data.chunks[2].len(), 2);
+        assert_eq!(data.dropped, 0);
+    }
+
+    #[test]
+    fn each_broken_segment_gets_its_own_anchor() {
+        const GARBAGE_TIME_2: u64 = 0xc000_0000_0000_0000;
+        let point = point_with_times(&[
+            0,
+            1_000_000,
+            GARBAGE_TIME,
+            GARBAGE_TIME + 500_000,
+            GARBAGE_TIME_2,
+            GARBAGE_TIME_2 + 500_000,
+        ]);
+        let data = point_to_chunks(
+            point,
+            Time::new::<millisecond>(1.0),
+            Some(Time::new::<second>(30.0)),
+        );
+
+        // оба сегмента сбоя нарисованы, каждый — за концом предыдущей шкалы
+        assert_eq!(data.chunks.len(), 3);
+        assert_eq!(data.chunks.iter().map(Vec::len).sum::<usize>(), 6);
+        assert_eq!(data.dropped, 0);
+    }
+
+    #[test]
+    fn unrecoverable_frames_are_counted() {
+        // сегмент сбоя «дрейфует» шагами меньше bound (31 с), но суммарный
+        // сдвиг хвоста (40 с) его превышает: хвост — мусор внутри сегмента
+        let point = point_with_times(&[
+            0,
+            1_000_000,
+            GARBAGE_TIME,
+            GARBAGE_TIME + 20_000_000_000,
+            GARBAGE_TIME + 40_000_000_000,
+        ]);
+        let data = point_to_chunks(
+            point,
+            Time::new::<millisecond>(1.0),
+            Some(Time::new::<second>(30.0)),
+        );
+
+        assert_eq!(data.dropped, 1);
+        assert_eq!(data.chunks.iter().map(Vec::len).sum::<usize>(), 4);
+    }
+
+    #[test]
+    fn shifted_timestamps_are_normalized_to_first_frame() {
+        // ко всем временам примешана неизвестная константа:
+        // чанки идут от начала точки, кадры не теряются
+        let point = point_with_times(&[
+            GARBAGE_TIME,
+            GARBAGE_TIME + 500_000,
+            GARBAGE_TIME + 1_500_000,
+        ]);
+        let data = point_to_chunks(
+            point,
+            Time::new::<millisecond>(1.0),
+            Some(Time::new::<second>(30.0)),
+        );
+
+        assert_eq!(data.chunks.len(), 2);
+        assert_eq!(data.chunks[0].len(), 2);
+        assert_eq!(data.chunks[1].len(), 1);
+        assert_eq!(data.dropped, 0);
+    }
+
+    #[test]
+    fn empty_point_yields_single_empty_chunk() {
+        let data = point_to_chunks(
+            rsb_event::Point::default(),
+            Time::new::<millisecond>(1.0),
+            Some(Time::new::<second>(30.0)),
+        );
+
+        assert_eq!(data.chunks.len(), 1);
+        assert!(data.chunks[0].is_empty());
+        assert_eq!(data.dropped, 0);
+    }
 
     /// Чанк с одним кадром, если `non_empty`, иначе пустой.
     fn make_chunks(mask: &[bool]) -> Vec<Chunk> {
