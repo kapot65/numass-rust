@@ -57,6 +57,24 @@ fn point_to_chunks(point: rsb_event::Point, limit_ns: u64) -> Vec<Chunk> {
     chunks
 }
 
+/// Ближайший непустой чанк перед `current` (не включая его).
+/// Если непустых чанков перед ним нет, возвращает `current`.
+fn prev_non_empty_chunk(chunks: &[Chunk], current: usize) -> usize {
+    chunks[..current]
+        .iter()
+        .rposition(|chunk| !chunk.is_empty())
+        .unwrap_or(current)
+}
+
+/// Ближайший непустой чанк после `current` (не включая его).
+/// Если непустых чанков после него нет, возвращает `current`.
+fn next_non_empty_chunk(chunks: &[Chunk], current: usize) -> usize {
+    chunks[current + 1..]
+        .iter()
+        .position(|chunk| !chunk.is_empty())
+        .map_or(current, |index| index + current + 1)
+}
+
 impl PointViewer {
     pub fn init_with_point(filepath: PathBuf) -> Self {
         let viewer = PointViewer {
@@ -96,14 +114,14 @@ impl eframe::App for PointViewer {
             }
             AppState::Interactive => {
                 if let Some(chunks) = self.chunks.lock().as_ref() {
-                    ctx.input(|i| {
-                        if i.key_pressed(eframe::egui::Key::ArrowRight)
-                            && self.current_chunk < chunks.len() - 1
-                        {
-                            self.current_chunk += 1;
+                    // consume_key, чтобы сфокусированный (через Tab) слайдер
+                    // не обрабатывал стрелки повторно.
+                    ctx.input_mut(|i| {
+                        if i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight) {
+                            self.current_chunk = next_non_empty_chunk(chunks, self.current_chunk);
                         }
-                        if i.key_pressed(eframe::egui::Key::ArrowLeft) && self.current_chunk > 0 {
-                            self.current_chunk -= 1;
+                        if i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowLeft) {
+                            self.current_chunk = prev_non_empty_chunk(chunks, self.current_chunk);
                         }
                     });
 
@@ -134,11 +152,13 @@ impl eframe::App for PointViewer {
                                     .suffix(" ms")
                                     .step_by(1.0),
                             );
-                            if ui.button("<").clicked() && self.current_chunk > 0 {
-                                self.current_chunk -= 1;
+                            if ui.button("<").clicked() {
+                                self.current_chunk =
+                                    prev_non_empty_chunk(chunks, self.current_chunk);
                             }
-                            if ui.button(">").clicked() && self.current_chunk < chunks.len() - 1 {
-                                self.current_chunk += 1;
+                            if ui.button(">").clicked() {
+                                self.current_chunk =
+                                    next_non_empty_chunk(chunks, self.current_chunk);
                             }
                         });
 
@@ -161,5 +181,52 @@ impl eframe::App for PointViewer {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Чанк с одним кадром, если `non_empty`, иначе пустой.
+    fn make_chunks(mask: &[bool]) -> Vec<Chunk> {
+        mask.iter()
+            .map(|&non_empty| {
+                if non_empty {
+                    vec![(0, 0, ProcessedWaveform(vec![0.0]))]
+                } else {
+                    vec![]
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn next_skips_empty_chunks() {
+        let chunks = make_chunks(&[true, false, false, true, false]);
+        assert_eq!(next_non_empty_chunk(&chunks, 0), 3);
+        assert_eq!(next_non_empty_chunk(&chunks, 1), 3);
+        assert_eq!(next_non_empty_chunk(&chunks, 3), 3);
+        assert_eq!(next_non_empty_chunk(&chunks, 4), 4);
+    }
+
+    #[test]
+    fn prev_skips_empty_chunks() {
+        let chunks = make_chunks(&[false, true, false, false, true]);
+        assert_eq!(prev_non_empty_chunk(&chunks, 4), 1);
+        assert_eq!(prev_non_empty_chunk(&chunks, 3), 1);
+        assert_eq!(prev_non_empty_chunk(&chunks, 1), 1);
+        assert_eq!(prev_non_empty_chunk(&chunks, 0), 0);
+    }
+
+    #[test]
+    fn stays_when_no_non_empty_neighbor() {
+        let chunks = make_chunks(&[false, false, false]);
+        assert_eq!(next_non_empty_chunk(&chunks, 1), 1);
+        assert_eq!(prev_non_empty_chunk(&chunks, 1), 1);
+
+        let single = make_chunks(&[false]);
+        assert_eq!(next_non_empty_chunk(&single, 0), 0);
+        assert_eq!(prev_non_empty_chunk(&single, 0), 0);
     }
 }
