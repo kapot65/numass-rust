@@ -10,6 +10,8 @@ use {
     numass_processing::storage::FSRepr,
     numass_processing::storage::LoadState,
     numass_processing::storage::load_meta,
+    numass_processing::types::{Time, second},
+    numass_processing::utils::format_time,
     serde::{Deserialize, Serialize},
     std::collections::BTreeMap,
     std::io::BufRead,
@@ -472,9 +474,10 @@ impl eframe::App for FaradeyViewerApp {
             match self.plot_mode {
                 PlotMode::Lines => {
                     let plot = Plot::new("Lines Plot")
-                        .x_axis_label("Time, ms")
+                        .x_axis_label("Time")
                         .y_axis_label("Current, fA")
                         .legend(Legend::default())
+                        .x_axis_formatter(|mark, _| format_time(Time::new::<second>(mark.value)))
                         .height(height - 35.0);
 
                     plot.show(ui, |plot_ui| {

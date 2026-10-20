@@ -11,8 +11,10 @@ use egui_plot::{Legend, Plot};
 use numass_processing::histogram::PointHistogram;
 use numass_processing::preprocess::{PreprocessParams, apply_frame, draw_processed_frame};
 use numass_processing::process::{Algorithm, ProcessParams, extract_frame};
-use numass_processing::types::{FrameEvent, NumassFrame, NumassFrameFast, ProcessedWaveform};
-use numass_processing::utils::{EguiLine, color_for_index};
+use numass_processing::types::{
+    FrameEvent, NumassFrame, NumassFrameFast, ProcessedWaveform, nanoseconds,
+};
+use numass_processing::utils::{EguiLine, color_for_index, format_time};
 use numass_processing::widgets::UserInput;
 use numass_tqdc::mlink::MlinkMessage;
 use numass_tqdc::mstream::{ADCDataBlock, MStreamTriggerAndUserData};
@@ -365,8 +367,9 @@ impl eframe::App for MyEguiApp {
             .show(ctx, |ui| {
                 Plot::new("waveforms")
                     .legend(Legend::default())
-                    .x_axis_label("sample")
-                    .y_axis_label("ADC")
+                    .x_axis_label("Time")
+                    .y_axis_label("Amplitude, ADC")
+                    .x_axis_formatter(|mark, _| format_time(nanoseconds(mark.value)))
                     .show(ui, |plot_ui| {
                         channels.into_iter().for_each(|(ch_num, waveform)| {
                             waveform.draw_egui(

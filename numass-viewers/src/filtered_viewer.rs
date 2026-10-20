@@ -12,8 +12,8 @@ use numass_processing::{
     },
     process::{ProcessParams, convert_to_kev, extract_frame},
     storage::load_point,
-    types::{FrameEvent, NumassFrameFast, NumassWaveformsFast},
-    utils::correct_frame_time,
+    types::{FrameEvent, NumassFrameFast, NumassWaveformsFast, nanoseconds},
+    utils::{correct_frame_time, format_time},
     widgets::{HISTOGRAM_MAX, HISTOGRAM_MIN, UserInput},
 };
 
@@ -267,7 +267,7 @@ impl eframe::App for FilteredViewer {
                     }
 
                     if let Some(indexes) = self.indexes.as_ref() {
-                        ui.label(format!("{:.3} ms", indexes[self.current] as f64 / 1e6));
+                        ui.label(format_time(nanoseconds(indexes[self.current] as f64)));
                     }
                 })
             });
@@ -284,9 +284,9 @@ impl eframe::App for FilteredViewer {
 
                     egui_plot::Plot::new("waveforms")
                         .legend(legend)
-                        .x_axis_formatter(|mark, _| {
-                            format!("{:.3} μs", (mark.value * 8.0) / 1000.0)
-                        })
+                        .x_axis_label("Time")
+                        .y_axis_label("Amplitude")
+                        .x_axis_formatter(|mark, _| format_time(nanoseconds(mark.value)))
                         .show(ui, |plot_ui| {
                             if indexes.is_empty() {
                                 return;

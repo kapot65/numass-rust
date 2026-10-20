@@ -7,7 +7,8 @@ use numass_processing::{
     numass::{NumassMeta, Reply, protos::rsb_event},
     preprocess::{CUTOFF_BIN_SIZE, Preprocess},
     storage::{load_meta, load_point},
-    utils::correct_frame_time,
+    types::{Time, millisecond, nanosecond, nanoseconds, second},
+    utils::{correct_frame_time, format_time},
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -64,8 +65,8 @@ impl TriggerViewer {
                 TriggerViewer::calc_density(
                     point,
                     trigger_density,
-                    limit_ms,
-                    (acquisition_time * 1e9) as u64,
+                    Time::new::<millisecond>(limit_ms as f64),
+                    Time::new::<second>(f64::from(acquisition_time)),
                 )
                 .await;
             } else {
@@ -79,18 +80,21 @@ impl TriggerViewer {
     /// Calculates the density of triggers over time.
     ///
     /// # Arguments
-    /// * `bin_size` - A size of each time bin in nanoseconds.
-    /// * `acquisition_time` - Total acquisition time in nanoseconds.
+    /// * `bin_size` - A size of each time bin.
+    /// * `acquisition_time` - Total acquisition time.
     ///
     async fn calc_density(
         point: Arc<Mutex<Option<rsb_event::Point>>>,
         trigger_density: Arc<Mutex<Option<PointHistogram>>>,
-        bin_size: u64,
-        acquisition_time: u64,
+        bin_size: Time,
+        acquisition_time: Time,
     ) {
         if let Some(point) = point.lock().as_ref() {
-            let mut trigger_density_local =
-                PointHistogram::new_step(0.0..(acquisition_time as f32), (bin_size as f32) * 1e6);
+            // ось плотности триггеров — наносекунды
+            let mut trigger_density_local = PointHistogram::new_step(
+                0.0..acquisition_time.get::<nanosecond>() as f32,
+                bin_size.get::<nanosecond>() as f32,
+            );
 
             for channel in &point.channels {
                 for block in &channel.blocks {
@@ -134,8 +138,8 @@ impl eframe::App for TriggerViewer {
                         TriggerViewer::calc_density(
                             point,
                             trigger_density,
-                            limit_ms,
-                            (acquisition_time * 1e9) as u64,
+                            Time::new::<millisecond>(limit_ms as f64),
+                            Time::new::<second>(f64::from(acquisition_time)),
                         )
                         .await;
                     } else {
@@ -149,7 +153,10 @@ impl eframe::App for TriggerViewer {
                 acquisition_time, ..
             })) = self.meta.lock().as_ref()
             {
-                ui.label(format!("acquisition_time: {acquisition_time}"));
+                ui.label(format!(
+                    "acquisition_time: {}",
+                    format_time(Time::new::<second>(f64::from(*acquisition_time)))
+                ));
             }
         });
 
@@ -157,7 +164,8 @@ impl eframe::App for TriggerViewer {
             egui::CentralPanel::default().show(ctx, |ui| {
                 egui_plot::Plot::new("triggers")
                     .legend(Legend::default())
-                    .x_axis_formatter(|GridMark { value, .. }, _| format!("{:.3} s", value * 1e-9))
+                    .x_axis_label("Time")
+                    .x_axis_formatter(|GridMark { value, .. }, _| format_time(nanoseconds(value)))
                     .show(ui, |plot_ui| {
                         if self.per_channel {
                             trigger_density.draw_egui_each_channel(plot_ui, None);
