@@ -158,12 +158,16 @@ impl UserInput for PreprocessParams {
                                 и host (функции, зарегистрированные при сборке VM).
                                 ",
                                 );
-                            ui.add(
-                                egui::TextEdit::multiline(source)
-                                    .code_editor()
-                                    .desired_rows(12)
-                                    .desired_width(f32::INFINITY),
-                            );
+                            let theme = if ui.visuals().dark_mode {
+                                egui_code_editor::ColorTheme::GRUVBOX
+                            } else {
+                                egui_code_editor::ColorTheme::GRUVBOX_LIGHT
+                            };
+                            egui_code_editor::CodeEditor::default()
+                                .id_source("preprocess-script")
+                                .with_rows(12)
+                                .with_theme(theme)
+                                .show(ui, source, &egui_code_editor::Syntax::lua());
                         }
                     },
                 );

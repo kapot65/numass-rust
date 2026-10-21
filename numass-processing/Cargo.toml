@@ -21,6 +21,7 @@ numass = { workspace = true }
 egui = { version = "0.36", optional = true }
 egui_plot = { version = "0.37", optional = true }
 egui_extras = { version = "0.36", features = ["image", "svg"], optional = true }
+egui_code_editor = { version = "0.4.2", optional = true }
 plotly = { version = "0.8.3", optional = true }
 rgb_hsv = { version = "1.0.1", optional = true }
 clap = { version = "4", features = ["derive"], optional = true }
@@ -54,7 +55,7 @@ xmltree = { version = "0.12", default-features = false }
 [features]
 default = []
 clap = ["dep:clap"]
-egui = ["dep:egui", "dep:egui_plot", "dep:egui_extras"]
+egui = ["dep:egui", "dep:egui_plot", "dep:egui_extras", "dep:egui_code_editor"]
 plotly = ["dep:plotly", "dep:rgb_hsv"]
 polars = ["dep:polars"]
 # Весь Python-binding код, включая to_polars. Maturin включает только эту фичу.
