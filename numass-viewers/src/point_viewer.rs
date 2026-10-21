@@ -160,14 +160,15 @@ impl PointViewer {
 
 impl eframe::App for PointViewer {
     #[allow(unused_variables)]
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
         ctx.set_visuals(Visuals::dark());
 
         let state = self.state.lock().clone();
 
         match state {
             AppState::Initializing => {
-                egui::CentralPanel::default().show(ctx, |ui| {
+                egui::CentralPanel::default().show(ui, |ui| {
                     ui.spinner();
                 });
             }
@@ -188,17 +189,13 @@ impl eframe::App for PointViewer {
                         }
                     });
 
-                    egui::TopBottomPanel::bottom("version").show(ctx, |ui| {
+                    egui::Panel::bottom("version").show(ui, |ui| {
                         crate::version_label(ui);
                     });
 
-                    egui::CentralPanel::default().show(ctx, |ui| {
+                    egui::CentralPanel::default().show(ui, |ui| {
                         #[cfg(not(target_arch = "wasm32"))]
-                        let width = {
-                            let mut x = 0.0;
-                            ctx.input(|i| x = i.screen_rect().width());
-                            x
-                        };
+                        let width = ctx.viewport_rect().width();
                         #[cfg(target_arch = "wasm32")]
                         let width = eframe::web_sys::window()
                             .unwrap()

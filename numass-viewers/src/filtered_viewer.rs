@@ -184,7 +184,8 @@ impl FilteredViewer {
 
 impl eframe::App for FilteredViewer {
     #[allow(unused_variables)]
-    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut eframe::egui::Ui, frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
         ctx.set_visuals(Visuals::dark());
 
         let indexes_len = self.indexes.as_ref().map(|indexes| indexes.len());
@@ -198,20 +199,20 @@ impl eframe::App for FilteredViewer {
             }
         });
 
-        eframe::egui::SidePanel::left("parameters").show(ctx, |ui| {
-            eframe::egui::TopBottomPanel::bottom("version").show_inside(ui, |ui| {
+        eframe::egui::Panel::left("parameters").show(ui, |ui| {
+            eframe::egui::Panel::bottom("version").show(ui, |ui| {
                 crate::version_label(ui);
             });
 
-            self.preprocess_params = self.preprocess_params.input(ui, ctx);
+            self.preprocess_params = self.preprocess_params.input(ui, &ctx);
 
             ui.separator();
 
-            self.process = self.process.input(ui, ctx);
+            self.process = self.process.input(ui, &ctx);
 
             ui.separator();
 
-            self.postprocess = self.postprocess.input(ui, ctx);
+            self.postprocess = self.postprocess.input(ui, &ctx);
 
             ui.separator();
             let mut min = self.range.start;
@@ -230,20 +231,16 @@ impl eframe::App for FilteredViewer {
             .as_ref()
             .is_none_or(|indexes| indexes.is_empty())
         {
-            eframe::egui::CentralPanel::default().show(ctx, |ui| {
+            eframe::egui::CentralPanel::default().show(ui, |ui| {
                 ui.centered_and_justified(|ui| {
                     ui.label("No data to display");
                 });
             });
         } else {
-            eframe::egui::TopBottomPanel::top("position").show(ctx, |ui| {
+            eframe::egui::Panel::top("position").show(ui, |ui| {
                 ui.horizontal(|ui| {
                     #[cfg(not(target_arch = "wasm32"))]
-                    let width = {
-                        let mut x = 0.0;
-                        ctx.input(|i| x = i.screen_rect().width());
-                        x
-                    };
+                    let width = ctx.viewport_rect().width();
                     #[cfg(target_arch = "wasm32")]
                     let width = eframe::web_sys::window()
                         .unwrap()
@@ -272,7 +269,7 @@ impl eframe::App for FilteredViewer {
                 })
             });
 
-            eframe::egui::CentralPanel::default().show(ctx, |ui| {
+            eframe::egui::CentralPanel::default().show(ui, |ui| {
                 if let Some(indexes) = self.indexes.as_ref() {
                     let legend = if self.raw_hidden_seeded {
                         Legend::default()

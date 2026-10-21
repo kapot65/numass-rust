@@ -18,9 +18,9 @@ serde_json = "1.0.91"
 serde_qs = "0.13.0"
 numass = { workspace = true }
 
-egui = { version = "0.31.1", optional = true }
-egui_plot = { version = "0.32.1", optional = true }
-egui_extras = { version =  "0.31.1", features = ["image", "svg"], optional = true }
+egui = { version = "0.36", optional = true }
+egui_plot = { version = "0.37", optional = true }
+egui_extras = { version = "0.36", features = ["image", "svg"], optional = true }
 plotly = { version = "0.8.3", optional = true }
 rgb_hsv = { version = "1.0.1", optional = true }
 clap = { version = "4", features = ["derive"], optional = true }

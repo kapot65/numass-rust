@@ -297,15 +297,16 @@ struct MyEguiApp {
 }
 
 impl eframe::App for MyEguiApp {
-    fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
         ctx.request_repaint_after(std::time::Duration::from_millis(1000 / 60));
 
         let channels = self.channels.lock().clone();
 
         if self.params_open {
-            egui::SidePanel::left("processing_params")
-                .default_width(350.0)
-                .show(ctx, |ui| {
+            egui::Panel::left("processing_params")
+                .default_size(350.0)
+                .show(ui, |ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
                         if ui
                             .add(egui::Button::new("<").frame(false))
@@ -317,11 +318,11 @@ impl eframe::App for MyEguiApp {
                     });
                     ui.separator();
 
-                    self.preprocess_edit = self.preprocess_edit.input(ui, ctx);
+                    self.preprocess_edit = self.preprocess_edit.input(ui, &ctx);
 
                     ui.separator();
 
-                    self.process_params_edit = self.process_params_edit.input(ui, ctx);
+                    self.process_params_edit = self.process_params_edit.input(ui, &ctx);
 
                     ui.separator();
 
@@ -348,10 +349,10 @@ impl eframe::App for MyEguiApp {
                     ui.label(format!("packets: {packet_rate:>8.2} Hz"));
                 });
         } else {
-            egui::SidePanel::left("processing_params_collapsed")
-                .exact_width(28.0)
+            egui::Panel::left("processing_params_collapsed")
+                .exact_size(28.0)
                 .resizable(false)
-                .show(ctx, |ui| {
+                .show(ui, |ui| {
                     if ui
                         .add(egui::Button::new(">").frame(false))
                         .on_hover_text("Show processing params")
@@ -362,9 +363,9 @@ impl eframe::App for MyEguiApp {
                 });
         }
 
-        egui::SidePanel::left("waveforms")
-            .default_width(500.0)
-            .show(ctx, |ui| {
+        egui::Panel::left("waveforms")
+            .default_size(500.0)
+            .show(ui, |ui| {
                 Plot::new("waveforms")
                     .legend(Legend::default())
                     .x_axis_label("Time")
@@ -397,7 +398,7 @@ impl eframe::App for MyEguiApp {
                     });
             });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("clear").clicked() {
                     self.histogram.lock().clear();

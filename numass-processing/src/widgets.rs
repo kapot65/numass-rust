@@ -29,7 +29,7 @@ pub trait UserInput {
 /// `header_extra` is always visible, on the same row as the title.
 fn collapsing<R>(
     ui: &mut egui::Ui,
-    id: impl std::hash::Hash,
+    id: impl std::hash::Hash + std::fmt::Debug,
     title: &str,
     default_open: bool,
     header_extra: impl FnOnce(&mut egui::Ui) -> R,
@@ -410,7 +410,7 @@ impl UserInput for PostProcessParams {
                 );
 
             block_closed(ui, "merge mapping", |ui| {
-                let image = if ctx.style().visuals.dark_mode {
+                let image = if ctx.global_style().visuals.dark_mode {
                     egui::include_image!("../resources/detector_dark.svg")
                 } else {
                     egui::include_image!("../resources/detector_light.svg")
