@@ -106,11 +106,12 @@ impl PointHistogram {
         self.channels.clear();
     }
 
+    /// Нижняя граница включается (как в [`Self::add_batch`]), верхняя — нет.
     pub fn add(&mut self, ch_num: u8, amplitude: f32) {
         let min = self.range.start;
         let max = self.range.end;
 
-        if amplitude > min && amplitude < max {
+        if amplitude >= min && amplitude < max {
             let y = self
                 .channels
                 .entry(ch_num)
@@ -295,5 +296,23 @@ impl PointHistogram {
 
             plot.add_trace(line);
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PointHistogram;
+
+    #[test]
+    fn add_includes_lower_boundary() {
+        // первый кадр точки после нормализации времен стоит ровно на нуле —
+        // он не должен молча выпадать из гистограммы (как в add_batch)
+        let mut histogram = PointHistogram::new(0.0..100.0, 10);
+        histogram.add(0, 0.0);
+        histogram.add(0, 100.0);
+
+        let channel = histogram.channels.get(&0).unwrap();
+        assert_eq!(channel[0], 1.0);
+        assert_eq!(channel.iter().sum::<f32>(), 1.0);
     }
 }
