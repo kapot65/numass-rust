@@ -14,15 +14,17 @@ use serde::{Deserialize, Serialize};
 use crate::{
     histogram::PointHistogram,
     types::{
-        NumassFrameFast, NumassWaveforms, NumassWaveformsFast, Time, bin_time, nanosecond,
-        nanoseconds, time_ns,
+        NumassFrameFast, NumassWaveforms, NumassWaveformsFast, Time, bin_time, nanoseconds, time_ns,
     },
     utils::correct_frame_time,
 };
 
 #[cfg(feature = "egui")]
 use {
-    crate::{types::ProcessedWaveform, utils::color_for_index},
+    crate::{
+        types::{ProcessedWaveform, nanosecond},
+        utils::color_for_index,
+    },
     egui_plot::{Line, LineStyle, PlotUi},
 };
 

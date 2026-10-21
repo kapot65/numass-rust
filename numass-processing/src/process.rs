@@ -6,7 +6,10 @@
 
 #[cfg(feature = "egui")]
 use {
-    crate::utils::color_for_index,
+    crate::{
+        types::{bin_time, nanosecond, nanoseconds},
+        utils::color_for_index,
+    },
     egui::Color32,
     egui_plot::{HLine, Line, MarkerShape, PlotUi, Points, VLine},
 };
@@ -24,10 +27,7 @@ use crate::{
         PreprocessParams, ProcessedFrame, ProcessedPoint, StaticPointParams, apply_waveforms,
         extract_waveforms,
     },
-    types::{
-        FrameEvent, NumassEvent, NumassEvents, NumassFrameFast, NumassWaveformsFast, TICK_NS,
-        bin_time, nanosecond, nanoseconds,
-    },
+    types::{FrameEvent, NumassEvent, NumassEvents, NumassFrameFast, NumassWaveformsFast, TICK_NS},
 };
 
 #[repr(C)]
