@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
-use crate::ChunkedData;
+use crate::{ChunkedData, TimestampStats};
 use egui::{Visuals, mutex::Mutex};
 use egui_plot::{Legend, Points};
 use numass_processing::{
@@ -10,7 +10,10 @@ use numass_processing::{
     process::{ProcessParams, extract_events},
     storage::{load_meta, load_point},
     types::{FrameEvent, Time, millisecond, nanosecond, nanoseconds, time_ns},
-    utils::{acquisition_time, color_for_index, format_time, repair_frame_times, timestamps_bound},
+    utils::{
+        RepairedTimes, acquisition_time, color_for_index, format_time, repair_frame_times,
+        timestamps_bound,
+    },
     widgets::UserInput,
 };
 
@@ -40,7 +43,8 @@ pub struct BundleViewer {
 /// Времена кадров (ключи событий, `BTreeMap` — по возрастанию) проходят
 /// тот же ремонт, что и кадры point-viewer: [`repair_frame_times`] ставит
 /// сегменты сбоя следом за валидной шкалой вместо отбрасывания. События
-/// кадров с невосстановимым временем не рисуются и попадают в `dropped`.
+/// кадров с невосстановимым временем не рисуются и попадают в
+/// `stats.dropped`; сколько поправлено и с какой поправкой — `stats`.
 /// Без `acquisition_time` (нет мета) границы и ремонта нет.
 fn point_to_chunks(
     meta: Option<NumassMeta>,
@@ -58,19 +62,35 @@ fn point_to_chunks(
     );
 
     let frame_times: Vec<u64> = events.keys().copied().collect();
-    let frame_times = match bound_ns {
-        Some(bound) => repair_frame_times(&frame_times, bound),
+    let (frame_times, mut stats) = match bound_ns {
+        Some(bound) => {
+            let RepairedTimes {
+                times,
+                repaired,
+                shifts_ns,
+            } = repair_frame_times(&frame_times, bound);
+            (
+                times,
+                TimestampStats {
+                    repaired,
+                    shifts_ns,
+                    dropped: 0,
+                },
+            )
+        }
         // без метаданных времена не проверяем — как раньше
-        None => frame_times.iter().map(|&time| Some(time)).collect(),
+        None => (
+            frame_times.iter().map(|&time| Some(time)).collect(),
+            TimestampStats::default(),
+        ),
     };
 
     let mut chunks = vec![vec![]];
-    let mut dropped = 0;
 
     for ((_, timed_event), frame_time) in events.into_iter().zip(frame_times) {
         let Some(frame_time) = frame_time else {
             // Время кадра невосстановимо: его события не рисуем.
-            dropped += timed_event
+            stats.dropped += timed_event
                 .iter()
                 .filter(|(_, event)| matches!(event, FrameEvent::Event { .. }))
                 .count();
@@ -94,7 +114,7 @@ fn point_to_chunks(
         }
     }
 
-    ChunkedData { chunks, dropped }
+    ChunkedData { chunks, stats }
 }
 
 impl BundleViewer {
@@ -268,12 +288,9 @@ impl eframe::App for BundleViewer {
                     }
                 });
 
-                // События кадров с невосстановимым временем не рисуются —
-                // показываем, сколько их отброшено.
-                ui.weak(format!(
-                    "{} events dropped: unrecoverable timestamps",
-                    data.dropped
-                ));
+                if let Some(label) = data.stats.label("event") {
+                    ui.weak(label);
+                }
 
                 let amplitude_label = if self.process.convert_to_kev {
                     "Amplitude, keV"

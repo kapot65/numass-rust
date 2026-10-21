@@ -1,6 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
-use crate::ChunkedData;
+use crate::{ChunkedData, TimestampStats};
 use egui::{Visuals, mutex::Mutex};
 use egui_plot::{GridMark, Legend};
 use numass_processing::{
@@ -8,8 +8,8 @@ use numass_processing::{
     storage::{load_meta, load_point},
     types::{ProcessedWaveform, RawWaveform, Time, millisecond, nanoseconds, time_ns},
     utils::{
-        EguiLine, acquisition_time, color_for_index, correct_frame_time, format_time,
-        repair_frame_times, timestamps_bound,
+        EguiLine, RepairedTimes, acquisition_time, color_for_index, correct_frame_time,
+        format_time, repair_frame_times, timestamps_bound,
     },
 };
 
@@ -56,8 +56,9 @@ fn frames_with_times(
 /// Кадры с мусорным таймстампом не теряются: [`repair_frame_times`]
 /// «ремонтирует» их по модели сбоя из [`correct_frame_time`] (константа,
 /// примешанная начиная с определенного триггера) и ставит следом за
-/// валидной шкалой. Невосстановимые кадры отбрасываются и попадают в
-/// `dropped`. Без `acquisition_time` границы и ремонта нет.
+/// валидной шкалой. Статистика — сколько поправлено (`stats.repaired`,
+/// `stats.shifts_ns`) и сколько кадров отброшено как мусор (`stats.dropped`).
+/// Без `acquisition_time` границы и ремонта нет.
 fn point_to_chunks(
     point: rsb_event::Point,
     limit: Time,
@@ -67,18 +68,34 @@ fn point_to_chunks(
     let frames = frames_with_times(&point);
     let times: Vec<u64> = frames.iter().map(|(time, ..)| *time).collect();
 
-    let times = match acquisition.map(timestamps_bound) {
-        Some(bound) => repair_frame_times(&times, bound),
+    let (times, mut stats) = match acquisition.map(timestamps_bound) {
+        Some(bound) => {
+            let RepairedTimes {
+                times,
+                repaired,
+                shifts_ns,
+            } = repair_frame_times(&times, bound);
+            (
+                times,
+                TimestampStats {
+                    repaired,
+                    shifts_ns,
+                    dropped: 0,
+                },
+            )
+        }
         // без метаданных времена не проверяем — как раньше
-        None => times.iter().map(|&time| Some(time)).collect(),
+        None => (
+            times.iter().map(|&time| Some(time)).collect(),
+            TimestampStats::default(),
+        ),
     };
 
     let mut chunks = vec![vec![]];
-    let mut dropped = 0;
 
     for ((_, channel, frame), time) in frames.into_iter().zip(times) {
         let Some(time) = time else {
-            dropped += 1;
+            stats.dropped += 1;
             continue;
         };
 
@@ -94,7 +111,7 @@ fn point_to_chunks(
         ));
     }
 
-    ChunkedData { chunks, dropped }
+    ChunkedData { chunks, stats }
 }
 
 /// Ближайший непустой чанк перед `current` (не включая его).
@@ -211,12 +228,9 @@ impl eframe::App for PointViewer {
                             }
                         });
 
-                        // Кадры с невосстановимым временем не рисуются —
-                        // показываем, сколько их отброшено.
-                        ui.weak(format!(
-                            "{} frames dropped: unrecoverable timestamps",
-                            data.dropped
-                        ));
+                        if let Some(label) = data.stats.label("frame") {
+                            ui.weak(label);
+                        }
 
                         egui_plot::Plot::new("waveforms")
                             .legend(Legend::default())
@@ -303,7 +317,10 @@ mod tests {
         assert_eq!(data.chunks.len(), 3);
         assert_eq!(data.chunks.iter().map(Vec::len).sum::<usize>(), 4);
         assert_eq!(data.chunks[2].len(), 2);
-        assert_eq!(data.dropped, 0);
+        assert_eq!(data.stats.dropped, 0);
+        // сломанный кадр поправлен: сдвинут на (константа − зазор)
+        assert_eq!(data.stats.repaired, 1);
+        assert_eq!(data.stats.shifts_ns, [GARBAGE_TIME - 2_500_000]);
     }
 
     #[test]
@@ -326,7 +343,13 @@ mod tests {
         // оба сегмента сбоя нарисованы, каждый — за концом предыдущей шкалы
         assert_eq!(data.chunks.len(), 3);
         assert_eq!(data.chunks.iter().map(Vec::len).sum::<usize>(), 6);
-        assert_eq!(data.dropped, 0);
+        assert_eq!(data.stats.dropped, 0);
+        assert_eq!(data.stats.repaired, 4);
+        // поправка своя у каждого сегмента
+        assert_eq!(
+            data.stats.shifts_ns,
+            [GARBAGE_TIME - 1_000_000, GARBAGE_TIME_2 - 1_500_000]
+        );
     }
 
     #[test]
@@ -346,7 +369,9 @@ mod tests {
             Some(Time::new::<second>(30.0)),
         );
 
-        assert_eq!(data.dropped, 1);
+        assert_eq!(data.stats.dropped, 1);
+        assert_eq!(data.stats.repaired, 2);
+        assert_eq!(data.stats.shifts_ns, [GARBAGE_TIME - 1_000_000]);
         assert_eq!(data.chunks.iter().map(Vec::len).sum::<usize>(), 4);
     }
 
@@ -368,7 +393,9 @@ mod tests {
         assert_eq!(data.chunks.len(), 2);
         assert_eq!(data.chunks[0].len(), 2);
         assert_eq!(data.chunks[1].len(), 1);
-        assert_eq!(data.dropped, 0);
+        assert_eq!(data.stats.dropped, 0);
+        // ничего не ломалось — сводка не показывается
+        assert_eq!(data.stats.label("frame"), None);
     }
 
     #[test]
@@ -381,7 +408,7 @@ mod tests {
 
         assert_eq!(data.chunks.len(), 1);
         assert!(data.chunks[0].is_empty());
-        assert_eq!(data.dropped, 0);
+        assert_eq!(data.stats.dropped, 0);
     }
 
     /// Чанк с одним кадром, если `non_empty`, иначе пустой.

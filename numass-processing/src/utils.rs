@@ -137,11 +137,22 @@ pub fn timestamps_bound(acquisition_time: Time) -> u64 {
     time_ns(acquisition_time + Time::new::<second>(1.0))
 }
 
+/// Результат [`repair_frame_times`].
+#[derive(Debug)]
+pub struct RepairedTimes {
+    /// Положение каждого кадра от начала точки в наносекундах или `None`
+    /// для безнадёжного мусора.
+    pub times: Vec<Option<u64>>,
+    /// Сколько таймстампов поправлено (сдвинуто на поправку).
+    pub repaired: usize,
+    /// Постоянный шаг в наносекундах, вычисаемый из всех таймстампов
+    /// сегмента сбоя; по одному на сегмент — каждый следующий сегмент
+    /// заякоривается за концом предыдущей шкалы.
+    pub shifts_ns: Vec<u64>,
+}
+
 /// «Ремонтирует» времена кадров, к которым примешалась неизвестная константа,
 /// вместо того чтобы их отбрасывать.
-///
-/// Возвращает для каждого времени его положение от начала точки (нс) или
-/// `None` для безнадёжного мусора.
 ///
 /// Модель сбоя — как в [`correct_frame_time`]: начиная с определенного
 /// триггера к времени кадров прибавляется константа, и кадры продолжают
@@ -150,9 +161,13 @@ pub fn timestamps_bound(acquisition_time: Time) -> u64 {
 /// (кадры с интервалами не больше `bound`), и каждый сегмент ставится сразу
 /// за концом предыдущей шкалы — внутренние интервалы сохраняются. Сегмент
 /// длиннее `bound` — не сдвиг константой, а мусор: такой хвост отбрасывается.
-pub fn repair_frame_times(times: &[u64], bound: u64) -> Vec<Option<u64>> {
+pub fn repair_frame_times(times: &[u64], bound: u64) -> RepairedTimes {
     let Some(t0) = times.iter().min().copied() else {
-        return Vec::new();
+        return RepairedTimes {
+            times: Vec::new(),
+            repaired: 0,
+            shifts_ns: Vec::new(),
+        };
     };
 
     let mut repaired = vec![None; times.len()];
@@ -176,8 +191,15 @@ pub fn repair_frame_times(times: &[u64], bound: u64) -> Vec<Option<u64>> {
     broken.sort_unstable_by_key(|&(_, time)| time);
 
     let Some(&(_, first_time)) = broken.first() else {
-        return repaired;
+        return RepairedTimes {
+            times: repaired,
+            repaired: 0,
+            shifts_ns: Vec::new(),
+        };
     };
+
+    let mut repaired_count = 0;
+    let mut shifts = Vec::new();
 
     let mut anchor = timeline_end;
     let mut segment_start = first_time;
@@ -197,10 +219,20 @@ pub fn repair_frame_times(times: &[u64], bound: u64) -> Vec<Option<u64>> {
 
         let placed = anchor + (time - segment_start);
         repaired[idx] = Some(placed);
+        repaired_count += 1;
+        // поправка внутри сегмента постоянна (сдвиг его первого кадра);
+        // разные сегменты могут совпадать только случайно — не раздуваем
+        if shifts.last() != Some(&(segment_start - anchor)) {
+            shifts.push(segment_start - anchor);
+        }
         timeline_end = timeline_end.max(placed);
     }
 
-    repaired
+    RepairedTimes {
+        times: repaired,
+        repaired: repaired_count,
+        shifts_ns: shifts,
+    }
 }
 
 /// Parabolic event amplitude correction correction
@@ -311,10 +343,13 @@ mod tests {
         let repaired = repair_frame_times(&times, 1_000);
 
         // валидные кадры идут как есть
-        assert_eq!(repaired[..3], [Some(0), Some(100), Some(200)]);
+        assert_eq!(repaired.times[..3], [Some(0), Some(100), Some(200)]);
         // сломанный сегмент — сразу за валидной шкалой, интервалы сохранены
-        assert_eq!(repaired[3], Some(200));
-        assert_eq!(repaired[4], Some(350));
+        assert_eq!(repaired.times[3], Some(200));
+        assert_eq!(repaired.times[4], Some(350));
+        // оба таймстампа поправлены на одну и ту же поправку ~1 ms
+        assert_eq!(repaired.repaired, 2);
+        assert_eq!(repaired.shifts_ns, [1_000_000 - 200]);
     }
 
     #[test]
@@ -323,12 +358,15 @@ mod tests {
         let times = [0, 1_000_000, 5_000_000, 5_000_500, 9_000_000, 9_000_500];
         let repaired = repair_frame_times(&times, 2_000_000);
 
-        assert_eq!(repaired[0], Some(0));
-        assert_eq!(repaired[1], Some(1_000_000));
-        assert_eq!(repaired[2], Some(1_000_000));
-        assert_eq!(repaired[3], Some(1_000_500));
-        assert_eq!(repaired[4], Some(1_000_500));
-        assert_eq!(repaired[5], Some(1_001_000));
+        assert_eq!(repaired.times[0], Some(0));
+        assert_eq!(repaired.times[1], Some(1_000_000));
+        assert_eq!(repaired.times[2], Some(1_000_000));
+        assert_eq!(repaired.times[3], Some(1_000_500));
+        assert_eq!(repaired.times[4], Some(1_000_500));
+        assert_eq!(repaired.times[5], Some(1_001_000));
+        assert_eq!(repaired.repaired, 4);
+        // поправка своя у каждого сегмента: он заякорен за своей шкалой
+        assert_eq!(repaired.shifts_ns, [4_000_000, 9_000_000 - 1_000_500]);
     }
 
     #[test]
@@ -337,9 +375,11 @@ mod tests {
         // хвост — не сдвиг константой, а мусор
         let repaired = repair_frame_times(&[0, 1_000_000, 1_000_500, 1_001_200], 1_000);
 
-        assert_eq!(repaired[0], Some(0));
-        assert_eq!(repaired[1], Some(0));
-        assert_eq!(repaired[2], Some(500));
-        assert_eq!(repaired[3], None);
+        assert_eq!(repaired.times[0], Some(0));
+        assert_eq!(repaired.times[1], Some(0));
+        assert_eq!(repaired.times[2], Some(500));
+        assert_eq!(repaired.times[3], None);
+        assert_eq!(repaired.repaired, 2);
+        assert_eq!(repaired.shifts_ns, [1_000_000]);
     }
 }
