@@ -73,7 +73,10 @@ pub fn construct_filename(name: &str, pref_ext: Option<&str>) -> String {
 /// [`Time::get`], обозначение — [`uom::si::Unit::abbreviation`].
 /// Незначащие нули отбрасываются: `4 µs`, `180 ms`.
 pub fn format_time(value: Time) -> String {
-    let ns = value.get::<nanosecond>();
+    // округляем до целых наносекунд: конверсии uom (в секунды и обратно)
+    // вносят float-погрешность, и значение ровно на границе приставки
+    // (например 1e6 нс) может уехать чуть ниже и выбрать неверную приставку
+    let ns = value.get::<nanosecond>().round();
     let (scaled, unit) = if ns.abs() < 1e3 {
         (ns, nanosecond::abbreviation())
     } else if ns.abs() < 1e6 {
@@ -279,6 +282,14 @@ mod tests {
         assert_eq!(format_time(nanoseconds(-3125.0)), "-3.125 µs");
         assert_eq!(format_time(nanoseconds(1.8e8)), "180 ms");
         assert_eq!(format_time(Time::new::<second>(30.0)), "30 s");
+    }
+
+    #[test]
+    fn format_time_uses_next_prefix_at_exact_boundary() {
+        // 1e3/1e6/1e9 нс после конверсий uom могут уехать чуть ниже границы
+        assert_eq!(format_time(nanoseconds(1e3)), "1 µs");
+        assert_eq!(format_time(nanoseconds(1e6)), "1 ms");
+        assert_eq!(format_time(nanoseconds(1e9)), "1 s");
     }
 
     #[test]
