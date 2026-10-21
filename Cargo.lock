@@ -1202,6 +1202,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "coarsetime"
+version = "0.1.38"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eae63702c5627c75addbfb1ea9d1b3842205a6ffd43e4cce884a2a9eb1828fd7"
+dependencies = [
+ "libc",
+ "wasix",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "codespan-reporting"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2473,6 +2484,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "generator"
+version = "0.8.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1be81b31c9ce4caf7f3178eeb90662bb1864d3ad363ec6bdada3201adff19c37"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc",
+ "log",
+ "rustversion",
+ "windows-link",
+ "windows-result 0.4.1",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2962,6 +2988,7 @@ dependencies = [
  "equivalent",
  "foldhash 0.2.0",
  "rayon",
+ "rustc-std-workspace-alloc",
  "serde",
  "serde_core",
 ]
@@ -3019,6 +3046,16 @@ name = "hexf-parse"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dfa686283ad6dd069f105e5ab091b04c62850d3e4cf5d67debad1933f55023df"
+
+[[package]]
+name = "hipstr"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07a5072958d04f9147e517881d929d3f4706612712f8f4cfcd247f2b716d5262"
+dependencies = [
+ "loom",
+ "serde",
+]
 
 [[package]]
 name = "home"
@@ -3773,6 +3810,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
+name = "loom"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "419e0dc8046cb947daa77eb95ae174acfbddb7673b4151f56d1eed8e93fbfaca"
+dependencies = [
+ "cfg-if",
+ "generator",
+ "scoped-tls",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "lru"
 version = "0.16.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3829,6 +3879,15 @@ name = "maplit"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e2e65a1a2e43cfcb47a895c4c8b10d1f4a61097f9f254f183aee60cad9c651d"
+
+[[package]]
+name = "matchers"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
+dependencies = [
+ "regex-automata",
+]
 
 [[package]]
 name = "matchit"
@@ -3982,6 +4041,12 @@ dependencies = [
  "num-traits",
  "pxfm",
 ]
+
+[[package]]
+name = "museair"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e07cb15b6e86f28d77f1c9a79ae9f1f12670941f8cc81bacefb4038ef987314e"
 
 [[package]]
 name = "naga"
@@ -4314,6 +4379,7 @@ dependencies = [
  "serde_json",
  "serde_qs",
  "tokio",
+ "ulua",
  "uom 0.38.0",
  "urlencoding",
  "xmltree",
@@ -6594,6 +6660,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6b1e7f9a428571be2dc5bc0505c13fb6bf936822b894ec87abf8a08a4e51742d"
 
 [[package]]
+name = "rustc-std-workspace-alloc"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9d441c3b2ebf55cebf796bfdc265d67fa09db17b7bb6bd4be75c509e1e8fec3"
+
+[[package]]
 name = "rustc_version"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7449,6 +7521,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "strum"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
+dependencies = [
+ "strum_macros 0.28.0",
+]
+
+[[package]]
 name = "strum_macros"
 version = "0.25.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8021,10 +8102,14 @@ version = "0.3.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319"
 dependencies = [
+ "matchers",
  "nu-ansi-term",
+ "once_cell",
+ "regex-automata",
  "sharded-slab",
  "smallvec",
  "thread_local",
+ "tracing",
  "tracing-core",
  "tracing-log",
 ]
@@ -8082,6 +8167,174 @@ dependencies = [
  "memoffset",
  "tempfile",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "ulua"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9d7ac430ef1617907967234d71ca18d45c1065fe59d83b46eef8b58d60ab884"
+dependencies = [
+ "ulua-analysis",
+ "ulua-ast",
+ "ulua-bytecode",
+ "ulua-common",
+ "ulua-compiler",
+ "ulua-config",
+ "ulua-require",
+ "ulua-rt",
+ "ulua-vm",
+]
+
+[[package]]
+name = "ulua-analysis"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6431ca0530c930778f2beaad274f561f66af688f0fc8d14be938dfbb667b3e4e"
+dependencies = [
+ "bitflags 2.13.2",
+ "coarsetime",
+ "hipstr",
+ "memchr",
+ "parking_lot",
+ "strum 0.28.0",
+ "thiserror 2.0.21",
+ "ulua-ast",
+ "ulua-bytecode",
+ "ulua-common",
+ "ulua-compiler",
+ "ulua-config",
+ "ulua-vm",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "ulua-ast"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd452a2a330095a65d8b1ecebfadc6a49ba7fcea0bae72fdf86573a24655b157"
+dependencies = [
+ "itoa",
+ "memchr",
+ "strum 0.28.0",
+ "thiserror 2.0.21",
+ "ulua-common",
+]
+
+[[package]]
+name = "ulua-bytecode"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c09dc464490239eb5ab065a8fbf3b814c00e459cea88bfd25a9e1e0ec5ab435"
+dependencies = [
+ "foldhash 0.2.0",
+ "hashbrown 0.17.1",
+ "strum 0.28.0",
+ "ulua-common",
+]
+
+[[package]]
+name = "ulua-code-gen"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11b4957a4568cba9c909d6cf8e337ff27d1268bbdaa3cbb7e8b673cb3558d31d"
+dependencies = [
+ "strum 0.28.0",
+ "ulua-common",
+ "ulua-vm",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "ulua-common"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1255140a341f4beec8b8d88525df76c48c82fb69f96ddf0027c236326ef8bec"
+dependencies = [
+ "fast-float2",
+ "foldhash 0.2.0",
+ "hashbrown 0.17.1",
+ "indexmap 2.14.2",
+ "memchr",
+ "parking_lot",
+ "smallvec",
+ "strum 0.28.0",
+]
+
+[[package]]
+name = "ulua-compiler"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06cbb25a7902eb20a928cdb4dc8c546dd7d1376d7be21ef8638f969e946a965b"
+dependencies = [
+ "memchr",
+ "museair",
+ "thiserror 2.0.21",
+ "ulua-ast",
+ "ulua-bytecode",
+ "ulua-common",
+]
+
+[[package]]
+name = "ulua-config"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "920db273ed802f9ac82342f2b78763c15e770c8671f78be43d4e38cf37aabc46"
+dependencies = [
+ "hipstr",
+ "strum 0.28.0",
+ "thiserror 2.0.21",
+ "ulua-ast",
+ "ulua-bytecode",
+ "ulua-common",
+ "ulua-compiler",
+ "ulua-vm",
+]
+
+[[package]]
+name = "ulua-require"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f7e3bf0fa4abb5d5f1e5a963dced5364f1e5f301334bd53ea83e86ee62e1eba"
+dependencies = [
+ "coarsetime",
+ "memchr",
+ "ulua-common",
+ "ulua-config",
+ "ulua-vm",
+]
+
+[[package]]
+name = "ulua-rt"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4cc296e9e2222f5a749418bfc42bdee46e99c2595035f82ab29857750f62a8f9"
+dependencies = [
+ "serde",
+ "strum 0.28.0",
+ "thiserror 2.0.21",
+ "ulua-analysis",
+ "ulua-ast",
+ "ulua-bytecode",
+ "ulua-code-gen",
+ "ulua-common",
+ "ulua-compiler",
+ "ulua-config",
+ "ulua-vm",
+]
+
+[[package]]
+name = "ulua-vm"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4f88b80c330f87c7c842629420e068121a473852642046d79aa71f2067607cd2"
+dependencies = [
+ "coarsetime",
+ "itoa",
+ "jiff",
+ "memchr",
+ "strum 0.28.0",
+ "ulua-common",
 ]
 
 [[package]]
@@ -8426,6 +8679,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b67efb37e106e55ce722a510d6b5f9c17f083e5fc79afc2badeb12cc313d9487"
 dependencies = [
  "wit-bindgen",
+]
+
+[[package]]
+name = "wasix"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae86f02046da16a333a9129d31451423e1657737ecdafed4193838a5f54c5cfe"
+dependencies = [
+ "wasi 0.11.1+wasi-snapshot-preview1",
 ]
 
 [[package]]

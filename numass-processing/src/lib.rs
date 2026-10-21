@@ -7,6 +7,7 @@ pub mod viewer; // TODO: move to numass-processing with viewer feature
 pub mod postprocess;
 pub mod preprocess;
 pub mod process;
+pub mod script;
 pub mod storage;
 #[cfg(feature = "polars")]
 pub mod to_polars;

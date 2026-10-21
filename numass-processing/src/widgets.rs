@@ -4,9 +4,9 @@ use crate::{
     histogram::HistogramParams,
     postprocess::PostProcessParams,
     preprocess::{
-        Baseline, CHECK_BIN_SIZE, CHECK_HV_THRESHOLD, CUTOFF_BIN_SIZE, FIR_CENTER, FIR_LEFT,
-        FIR_RIGHT, HEAD_BINS, POINT_BASELINE_MAX, POINT_BASELINE_MIN, POINT_BASELINE_STEP,
-        PreprocessParams, PreprocessStep,
+        AVERAGE_SCRIPT, Baseline, CHECK_BIN_SIZE, CHECK_HV_THRESHOLD, CUTOFF_BIN_SIZE, FIR_CENTER,
+        FIR_LEFT, FIR_RIGHT, HEAD_BINS, POINT_BASELINE_MAX, POINT_BASELINE_MIN,
+        POINT_BASELINE_STEP, PreprocessParams, PreprocessStep,
     },
     process::{
         Algorithm, FIRSTPEAK_DEFAULT, HWResetParams, LIKHOVID_DEFAULT, LONGDIFF_DEFAULT,
@@ -75,6 +75,7 @@ fn step_title(step: &PreprocessStep) -> &'static str {
         PreprocessStep::Baseline(Baseline::Point { .. }) => "baseline point",
         PreprocessStep::Invert {} => "invert",
         PreprocessStep::Merge {} => "merge",
+        PreprocessStep::Script { .. } => "script",
     }
 }
 
@@ -147,6 +148,23 @@ impl UserInput for PreprocessParams {
                         }
                         PreprocessStep::Invert {} => {}
                         PreprocessStep::Merge {} => {}
+                        PreprocessStep::Script { source } => {
+                            ui.label("Luau: `function(frame)`; `frame[ch].samples` — отсчёты с индексацией от 1.")
+                                .on_hover_text(
+                                    "
+                                Скрипт возвращает function(frame) и меняет кадр на месте.
+                                Ключ кадра — id канала (0-based), у канала поля samples и delay.
+                                Глобалы: point (hv, acquisition_time, frame_len, start_time, bad_blocks)
+                                и host (функции, зарегистрированные при сборке VM).
+                                ",
+                                );
+                            ui.add(
+                                egui::TextEdit::multiline(source)
+                                    .code_editor()
+                                    .desired_rows(12)
+                                    .desired_width(f32::INFINITY),
+                            );
+                        }
                     },
                 );
                 if removed {
@@ -184,6 +202,11 @@ impl UserInput for PreprocessParams {
                 }
                 if ui.button("+ merge").clicked() {
                     steps.push(PreprocessStep::Merge {});
+                }
+                if ui.button("+ script").clicked() {
+                    steps.push(PreprocessStep::Script {
+                        source: AVERAGE_SCRIPT.to_owned(),
+                    });
                 }
             });
         });

@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     histogram::PointHistogram,
+    script::{PreprocessHost, ScriptRuntime},
     types::{
         NumassFrameFast, NumassWaveforms, NumassWaveformsFast, Time, bin_time, nanoseconds, time_ns,
     },
@@ -203,7 +204,61 @@ pub enum PreprocessStep {
     /// Слить вейвформы всех каналов кадра в одну: отсчёты складываются
     /// бин за бин. Итог остаётся под номером наименьшего канала кадра.
     Merge {},
+    /// Luau-скрипт. Мутирует тот же кадр, что FIR и baseline.
+    ///
+    /// Скрипт возвращает `function(frame)`. На время вызова доступны
+    /// глобалы `point` (таблица `StaticPointParams` или `nil`, если
+    /// метаданных нет) и `host` (таблица функций хоста `ScriptHost`).
+    /// Формат кадра описан в `AVERAGE_SCRIPT`.
+    Script { source: String },
 }
+
+/// Текст скрипта для шага [`PreprocessStep::Script`] — аналог
+/// [`PreprocessParams::average`].
+///
+/// Скрипт вычитает среднее первых [`HEAD_BINS`] отсчётов и инвертирует
+/// сигнал. Арифметика выполняется в Luau, без отдельной обвязки на каждую
+/// операцию.
+///
+/// Формат кадра:
+/// - ключ — id канала, 0-based, как в остальном пайплайне;
+/// - `frame[ch].samples` — массив, индексация с 1, `#` возвращает длину;
+/// - `frame[ch].delay` — сдвиг относительно сырого кадра.
+///
+/// Отсчёты записываются в таблицу на время вызова и после него читаются
+/// обратно в тот же кадр.
+///
+/// Глобал `point` содержит поля `hv`, `acquisition_time`, `frame_len`
+/// (в секундах), `start_time` и `bad_blocks` — список номеров блоков.
+/// Без метаданных точки `point` равен `nil`; изменения `point` в скрипте
+/// не возвращаются в Rust.
+///
+/// Глобал `host` содержит функции, зарегистрированные при сборке VM
+/// (см. [`ScriptHost`](crate::script::ScriptHost)).
+pub const AVERAGE_SCRIPT: &str = r#"-- Аналог PreprocessParams::average: Baseline::Head + Invert.
+-- HEAD_BINS совпадает с константой Rust. Если отсчётов в кадре меньше
+-- HEAD_BINS, среднее считается по всем отсчётам.
+local HEAD_BINS = 30
+
+-- frame — таблица кадра с индексацией отсчётов от 1.
+-- point и host — глобалы.
+return function(frame)
+    for _, channel in frame do
+        local samples = channel.samples
+        local count = math.min(HEAD_BINS, #samples)
+        local sum = 0
+        for index = 1, count do
+            sum += samples[index]
+        end
+        local baseline = if count > 0 then sum / count else 0
+
+        -- Вычесть голову и инвертировать: -(sample - baseline).
+        for index = 1, #samples do
+            samples[index] = baseline - samples[index]
+        end
+    end
+end
+"#;
 
 /// Упорядоченный список шагов waveform → waveform.
 #[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyclass)]
@@ -283,22 +338,37 @@ pub type ProcessedFrame = BTreeMap<u8, ChannelSamples>;
 pub type ProcessedPoint = BTreeMap<u64, ProcessedFrame>;
 
 /// Материализует сырые кадры в `f32` и проводит каждый шаг ровно один раз.
+///
+/// Скриптовый шаг видит `point == nil`. Для прогона с метаданными —
+/// [`apply_waveforms_with`].
 pub fn apply_waveforms(
     waveforms: &NumassWaveformsFast<'_>,
     steps: &[PreprocessStep],
+) -> ProcessedPoint {
+    apply_waveforms_with(waveforms, steps, None)
+}
+
+/// Как [`apply_waveforms`], но скрипт получает параметры точки.
+///
+/// Точка раскладывается в таблицу один раз на прогон, не на кадр.
+pub fn apply_waveforms_with(
+    waveforms: &NumassWaveformsFast<'_>,
+    steps: &[PreprocessStep],
+    point: Option<&StaticPointParams>,
 ) -> ProcessedPoint {
     let mut buffers = waveforms
         .iter()
         .map(|(time, frame)| (*time, materialize(frame)))
         .collect::<ProcessedPoint>();
-    apply_steps(&mut buffers, steps);
+    apply_steps(&mut buffers, steps, point);
     buffers
 }
 
 /// Та же цепочка на одном кадре. `Baseline::Point` видит только этот кадр.
+/// Скрипт видит `point == nil`.
 pub fn apply_frame(frame: &NumassFrameFast<'_>, steps: &[PreprocessStep]) -> ProcessedFrame {
     let mut buffers = BTreeMap::from([(0, materialize(frame))]);
-    apply_steps(&mut buffers, steps);
+    apply_steps(&mut buffers, steps, None);
     buffers.remove(&0).unwrap()
 }
 
@@ -317,13 +387,21 @@ fn materialize(frame: &NumassFrameFast<'_>) -> ProcessedFrame {
         .collect()
 }
 
-fn apply_steps(buffers: &mut ProcessedPoint, steps: &[PreprocessStep]) {
+fn apply_steps(
+    buffers: &mut ProcessedPoint,
+    steps: &[PreprocessStep],
+    point: Option<&StaticPointParams>,
+) {
     for step in steps {
-        apply_step(buffers, step);
+        apply_step(buffers, step, point);
     }
 }
 
-fn apply_step(buffers: &mut ProcessedPoint, step: &PreprocessStep) {
+fn apply_step(
+    buffers: &mut ProcessedPoint,
+    step: &PreprocessStep,
+    point: Option<&StaticPointParams>,
+) {
     match step {
         PreprocessStep::Fir {
             left,
@@ -385,6 +463,16 @@ fn apply_step(buffers: &mut ProcessedPoint, step: &PreprocessStep) {
             for frame in buffers.values_mut() {
                 merge_frame(frame);
             }
+        }
+        // VM создаётся на один вызов шага и остаётся в текущем потоке.
+        // Хост не хранит состояния, поэтому синхронизация между точками
+        // не требуется.
+        PreprocessStep::Script { source } => {
+            let runtime = ScriptRuntime::compile(source, &PreprocessHost)
+                .unwrap_or_else(|err| panic!("preprocess script: {err}"));
+            runtime
+                .apply(buffers, point)
+                .unwrap_or_else(|err| panic!("preprocess script: {err}"));
         }
     }
 }
@@ -705,5 +793,65 @@ mod tests {
                 .iter()
                 .all(|value| (*value - 40.0).abs() < 1e-4)
         );
+    }
+
+    #[test]
+    fn script_matches_head_then_invert() {
+        let mut waveform = vec![100i16; 30];
+        waveform.extend([80i16; 10]);
+        let frame = BTreeMap::from([(0u8, waveform.as_slice())]);
+        let waveforms = BTreeMap::from([(0u64, frame)]);
+
+        let scripted = apply_waveforms(
+            &waveforms,
+            &[PreprocessStep::Script {
+                source: AVERAGE_SCRIPT.to_owned(),
+            }],
+        );
+        let builtin = apply_waveforms(&waveforms, &PreprocessParams::average().steps);
+
+        assert_eq!(scripted[&0][&0].samples, builtin[&0][&0].samples);
+        assert_eq!(scripted[&0][&0].delay, builtin[&0][&0].delay);
+    }
+
+    #[test]
+    fn script_sees_point_and_writes_back_frame() {
+        use crate::types::second;
+
+        let waveform = [1i16, 2, 3, 4];
+        let frame = BTreeMap::from([(1u8, waveform.as_slice())]);
+        let waveforms = BTreeMap::from([(7u64, frame)]);
+        let mut bad_blocks = BTreeSet::new();
+        bad_blocks.insert(3);
+        let point = StaticPointParams {
+            hv: 14_000.0,
+            start_time: chrono::DateTime::from_timestamp(0, 0).unwrap().naive_utc(),
+            acquisition_time: Time::new::<second>(20.0),
+            frame_len: bin_time(4),
+            bad_blocks,
+        };
+        // `point` — обычная таблица, собранная один раз на вызов. Тест
+        // проверяет её поля и запись в отсчёты канала.
+        let source = r#"
+            return function(frame)
+                assert(point.hv == 14000)
+                assert(point.acquisition_time == 20)
+                assert(point.bad_blocks[1] == 3)
+                local channel = frame[1]
+                channel.samples[1] = point.hv
+            end
+        "#;
+
+        let processed = apply_waveforms_with(
+            &waveforms,
+            &[PreprocessStep::Script {
+                source: source.to_owned(),
+            }],
+            Some(&point),
+        );
+
+        let samples = &processed[&7][&1].samples;
+        assert_eq!(samples[0], 14_000.0);
+        assert_eq!(&samples[1..], &[2.0, 3.0, 4.0]);
     }
 }
