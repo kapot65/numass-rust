@@ -237,7 +237,7 @@ class HWResetParams:
 @typing.final
 class HistParams:
     r"""
-    Preprocess, extraction algorithm, and optional postprocess.
+    StaticPointParams, extraction algorithm, and optional postprocess.
     """
     @property
     def preprocess(self) -> PreprocessParams: ...
@@ -278,17 +278,31 @@ class PostProcessParams:
     @property
     def cut_bad_blocks(self) -> builtins.bool:
         r"""
-        remove events inside [bad_blocks](crate::preprocess::Preprocess::bad_blocks) timestamps
+        remove events inside [bad_blocks](crate::preprocess::StaticPointParams::bad_blocks) timestamps
         """
     @cut_bad_blocks.setter
     def cut_bad_blocks(self, value: builtins.bool) -> None:
         r"""
-        remove events inside [bad_blocks](crate::preprocess::Preprocess::bad_blocks) timestamps
+        remove events inside [bad_blocks](crate::preprocess::StaticPointParams::bad_blocks) timestamps
         """
     @property
-    def merge_frames(self) -> builtins.int | None: ...
+    def merge_frames(self) -> builtins.int | None:
+        r"""
+        Порог слияния соседних кадров: если расстояние между кадрами меньше
+        (в наносекундах), их события объединяются в один кадр.
+        
+        Тип — целое число, а не [`Time`](crate::types::Time): поле уходит в
+        pyo3-биндинги и query-string REST без изменений wire-формата.
+        """
     @merge_frames.setter
-    def merge_frames(self, value: builtins.int | None) -> None: ...
+    def merge_frames(self, value: builtins.int | None) -> None:
+        r"""
+        Порог слияния соседних кадров: если расстояние между кадрами меньше
+        (в наносекундах), их события объединяются в один кадр.
+        
+        Тип — целое число, а не [`Time`](crate::types::Time): поле уходит в
+        pyo3-биндинги и query-string REST без изменений wire-формата.
+        """
     @property
     def merge_splits_first(self) -> builtins.bool: ...
     @merge_splits_first.setter
@@ -511,7 +525,10 @@ def extract_waveforms(point: Point) -> Waveforms:
 
 def from_point(point: Point, meta: dict[str, typing.Any]) -> dict[str, typing.Any]:
     r"""
-    `Preprocess::from_point` словарём. В биндингах `Preprocess` — только dict.
+    `StaticPointParams::from_point` словарём. В биндингах `StaticPointParams` — только dict.
+    
+    Времена в словаре (`acquisition_time`, `frame_len`) — числа в секундах:
+    базовая единица uom, в которой serde сериализует [`Time`].
     
     `meta` читается как `NumassMeta`. Без ответа `aquired_point` функция
     возвращает ошибку: в Rust в этом месте паника.
@@ -531,7 +548,7 @@ def post_process(events: NumassEvents, preprocess: dict[str, typing.Any], params
     r"""
     Те же аргументы, что `postprocess::post_process`, без egui.
     
-    `preprocess` — словарь из `from_point`. Перед шагом он читается как `Preprocess`.
+    `static_params` — словарь из `from_point`. Перед шагом он читается как `StaticPointParams`.
     """
 
 def post_process_frame(events: FrameEvents, params: PostProcessParams) -> FrameEvents:

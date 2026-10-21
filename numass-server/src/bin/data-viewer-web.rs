@@ -28,7 +28,7 @@ use dav_server::{DavHandler, DavMethodSet, localfs::LocalFs};
 use numass_processing::{
     numass::{self, protos::rsb_event},
     postprocess::post_process,
-    preprocess::Preprocess,
+    preprocess::StaticPointParams,
     process::{HistParams, extract_events},
     types::NumassEvents,
     viewer::ToROOTOptions,
@@ -151,10 +151,10 @@ async fn main() {
                     };
                     rmp_serde::to_vec(&out).unwrap()
                 } else {
-                    rmp_serde::to_vec::<Option<(NumassEvents, Preprocess)>>(&None).unwrap() // TODO: send error instead of None
+                    rmp_serde::to_vec::<Option<(NumassEvents, StaticPointParams)>>(&None).unwrap() // TODO: send error instead of None
                 }
             } else {
-                rmp_serde::to_vec::<Option<(NumassEvents, Preprocess)>>(&None).unwrap() // TODO: send error instead of None
+                rmp_serde::to_vec::<Option<(NumassEvents, StaticPointParams)>>(&None).unwrap() // TODO: send error instead of None
             };
 
 

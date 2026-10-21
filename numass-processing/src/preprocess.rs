@@ -46,7 +46,7 @@ pub const POINT_BASELINE_STEP: f32 = 0.5;
 /// Неизменяемые параметры точки. Считаются один раз и пробрасываются дальше.
 /// Базовая линия сюда не входит: она шаг предобработки кадра.
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct Preprocess {
+pub struct StaticPointParams {
     /// предполагаемая HV точки
     pub hv: f32,
 
@@ -64,7 +64,7 @@ pub struct Preprocess {
     pub bad_blocks: BTreeSet<usize>,
 }
 
-impl Preprocess {
+impl StaticPointParams {
     /// Извлекает параметры точки из метаданных и кадра.
     pub fn from_point(meta: Option<NumassMeta>, point: &rsb_event::Point) -> Self {
         // метаданные хранят время набора в секундах
@@ -545,7 +545,7 @@ mod tests {
     fn preprocess_serde_uses_base_unit_seconds() {
         use crate::types::second;
 
-        let preprocess = Preprocess {
+        let preprocess = StaticPointParams {
             hv: 16e3,
             start_time: chrono::DateTime::from_timestamp(0, 0).unwrap().naive_utc(),
             acquisition_time: Time::new::<second>(30.0),
@@ -561,7 +561,7 @@ mod tests {
             serde_json::json!(bin_time(4096).get::<second>())
         );
 
-        let decoded: Preprocess = serde_json::from_value(value).unwrap();
+        let decoded: StaticPointParams = serde_json::from_value(value).unwrap();
         assert_eq!(
             time_ns(decoded.acquisition_time),
             time_ns(preprocess.acquisition_time)

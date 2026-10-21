@@ -542,7 +542,7 @@ fn convert_to_kev(amplitude: f32, ch_id: u8, algorithm: Algorithm) -> f32 {
     crate::process::convert_to_kev(&amplitude, ch_id, &algorithm)
 }
 
-/// `Preprocess::from_point` словарём. В биндингах `Preprocess` — только dict.
+/// `StaticPointParams::from_point` словарём. В биндингах `StaticPointParams` — только dict.
 ///
 /// Времена в словаре (`acquisition_time`, `frame_len`) — числа в секундах:
 /// базовая единица uom, в которой serde сериализует [`Time`].
@@ -569,14 +569,14 @@ fn from_point(
             "acquisition_time/start_time not found in metadata",
         ));
     }
-    let preprocess = crate::preprocess::Preprocess::from_point(Some(meta), &point.inner);
-    let value = serde_json::to_value(&preprocess).map_err(serde_error)?;
+    let static_params = crate::preprocess::StaticPointParams::from_point(Some(meta), &point.inner);
+    let value = serde_json::to_value(&static_params).map_err(serde_error)?;
     json_to_py(py, &value)
 }
 
 /// Те же аргументы, что `postprocess::post_process`, без egui.
 ///
-/// `preprocess` — словарь из `from_point`. Перед шагом он читается как `Preprocess`.
+/// `static_params` — словарь из `from_point`. Перед шагом он читается как `StaticPointParams`.
 #[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyfunction)]
 #[cfg_attr(not(feature = "stubgen"), pyo3_stub_gen_derive::remove_gen_stub)]
 #[pyfunction]
@@ -587,9 +587,10 @@ fn post_process(
     preprocess: Py<PyDict>,
     params: PostProcessParams,
 ) -> PyResult<NumassEvents> {
-    let preprocess = parse_json_dict::<crate::preprocess::Preprocess>(py, preprocess.bind(py))?;
+    let static_params =
+        parse_json_dict::<crate::preprocess::StaticPointParams>(py, preprocess.bind(py))?;
     let (amplitudes, _) =
-        crate::postprocess::post_process((events.inner.clone(), preprocess), &params);
+        crate::postprocess::post_process((events.inner.clone(), static_params), &params);
     Ok(NumassEvents { inner: amplitudes })
 }
 

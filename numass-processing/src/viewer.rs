@@ -5,7 +5,7 @@
 use crate::{
     histogram::{HistogramParams, PointHistogram},
     postprocess::PostProcessParams,
-    preprocess::{Preprocess, PreprocessParams},
+    preprocess::{PreprocessParams, StaticPointParams},
     process::ProcessParams,
 };
 use serde::{Deserialize, Serialize};
@@ -107,7 +107,7 @@ pub struct PointState {
     pub opened: bool,
     pub modified: Option<SystemTime>,
     pub histogram: Option<PointHistogram>,
-    pub preprocess: Option<Preprocess>,
+    pub preprocess: Option<StaticPointParams>,
     pub counts: Option<usize>,
 }
 

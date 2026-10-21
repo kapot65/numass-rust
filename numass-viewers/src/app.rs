@@ -11,7 +11,7 @@ use egui_plot::{HLine, Legend, Plot, PlotPoint, Points, VLine};
 
 use numass_processing::{
     histogram::PointHistogram,
-    preprocess::Preprocess,
+    preprocess::StaticPointParams,
     storage::LoadState,
     types::time_ns,
     utils::construct_filename,
@@ -1068,7 +1068,7 @@ impl eframe::App for DataViewerApp {
                             && let PointState {
                                 counts: Some(counts),
                                 preprocess:
-                                    Some(Preprocess {
+                                    Some(StaticPointParams {
                                         acquisition_time,
                                         hv,
                                         ..

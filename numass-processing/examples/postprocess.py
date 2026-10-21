@@ -2,7 +2,7 @@
 
 Цепь: load_point → load_meta → from_point → extract_waveforms → apply_waveforms
 → extract_processed → post_process → to_polars().
-`from_point` отдаёт Preprocess словарём. `post_process` читает этот словарь как Preprocess.
+`from_point` отдаёт StaticPointParams словарём. `post_process` читает этот словарь как StaticPointParams.
 `merge_close_events` сливает соседние события кадра. `cut_bad_blocks` смотрит `bad_blocks`
 из словаря; на этой точке HV выше порога, и список пуст.
 После to_polars() это polars.DataFrame, шаги модуля на неё не вызываются.

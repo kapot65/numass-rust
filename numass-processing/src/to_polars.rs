@@ -12,7 +12,7 @@
 //!
 //! Конфигурации и параметры обработки ([`PreprocessParams`](crate::preprocess::PreprocessParams),
 //! [`Algorithm`](crate::process::Algorithm) и т.п.), метаданные точки
-//! ([`Preprocess`](crate::preprocess::Preprocess)) и гистограммы
+//! ([`StaticPointParams`](crate::preprocess::StaticPointParams)) и гистограммы
 //! ([`PointHistogram`](crate::histogram::PointHistogram)) намеренно не
 //! конвертируются: гистограммы нужны графике Rust. Сырая точка протокола
 //! (`rsb_event::Point`) тоже: сначала её нужно разобрать

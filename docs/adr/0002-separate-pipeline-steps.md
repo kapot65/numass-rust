@@ -61,12 +61,12 @@ pub trait UserInput {
   `Baseline`, `Invert`). Preprocess материализует кадры в `f32` и проводит каждый
   шаг один раз. `Baseline::Point` читает уже записанный буфер и фильтр заново не
   гоняет. Сырые `i16` остаются borrow-ом protobuf.
-- `Preprocess` — метаданные точки (`hv`, времена, `frame_len`, `bad_blocks`).
+- `StaticPointParams` — метаданные точки (`hv`, времена, `frame_len`, `bad_blocks`).
   Считается из метаданных и точки, без алгоритма и без базовой линии.
 - Process читает стандартизованный кадр (`samples`, `delay`) и сырые коды там,
   где порог задан в кодах АЦП (reset, overflow). `emulate_fir` process не вызывает.
   Сдвиг времени берётся из `delay`, который записал шаг FIR.
-- Postprocess использует из `Preprocess` только `bad_blocks` и `frame_len`.
+- Postprocess использует из `StaticPointParams` только `bad_blocks` и `frame_len`.
   `cut_bad_blocks` применяется и когда `merge_close_events = false`.
 
 `process` и `postprocess` друг о друге не знают. Process не выбирает цепочку

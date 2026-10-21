@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     numass::protos::rsb_event,
     postprocess::PostProcessParams,
-    preprocess::{Preprocess, PreprocessParams},
+    preprocess::{PreprocessParams, StaticPointParams},
     process::ProcessParams,
     types::NumassEvents,
 };
@@ -26,7 +26,7 @@ pub async fn process_point(
     preprocess: &PreprocessParams,
     process: &ProcessParams,
     postprocess: Option<&PostProcessParams>,
-) -> Option<(NumassMeta, Option<(NumassEvents, Preprocess)>)> {
+) -> Option<(NumassMeta, Option<(NumassEvents, StaticPointParams)>)> {
     let meta = load_meta(filepath).await;
 
     if let Some(NumassMeta::Reply(numass::Reply::AcquirePoint { .. })) = &meta {
@@ -67,7 +67,7 @@ pub async fn process_point(
             .unwrap();
             Some((
                 meta.unwrap(),
-                rmp_serde::from_slice::<Option<(NumassEvents, Preprocess)>>(&amplitudes_raw)
+                rmp_serde::from_slice::<Option<(NumassEvents, StaticPointParams)>>(&amplitudes_raw)
                     .unwrap(),
             ))
         }

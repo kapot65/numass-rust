@@ -21,7 +21,7 @@ use crate::{
     },
     postprocess::PostProcessParams,
     preprocess::{
-        Preprocess, PreprocessParams, ProcessedFrame, ProcessedPoint, apply_waveforms,
+        PreprocessParams, ProcessedFrame, ProcessedPoint, StaticPointParams, apply_waveforms,
         extract_waveforms,
     },
     types::{
@@ -185,7 +185,7 @@ impl Default for ProcessParams {
     }
 }
 
-/// Preprocess, extraction algorithm, and optional postprocess.
+/// StaticPointParams, extraction algorithm, and optional postprocess.
 #[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyclass)]
 #[cfg_attr(
     feature = "python",
@@ -277,8 +277,8 @@ pub fn extract_events(
     point: rsb_event::Point,
     preprocess: &PreprocessParams,
     process: &ProcessParams,
-) -> (NumassEvents, Preprocess) {
-    let meta_params = Preprocess::from_point(meta, &point);
+) -> (NumassEvents, StaticPointParams) {
+    let meta_params = StaticPointParams::from_point(meta, &point);
     let raw = extract_waveforms(&point);
     let processed = apply_waveforms(&raw, &preprocess.steps);
     (extract_processed(&processed, &raw, process), meta_params)

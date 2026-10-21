@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     constants::DETECTOR_BORDERS,
-    preprocess::{CUTOFF_BIN_SIZE, Preprocess},
+    preprocess::{CUTOFF_BIN_SIZE, StaticPointParams},
     types::{FrameEvent, NumassEvent, NumassEvents, time_ns},
 };
 
@@ -67,7 +67,7 @@ impl From<[bool; 7]> for ChannelIgnore {
 )]
 #[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize, Hash, Default)]
 pub struct PostProcessParams {
-    /// remove events inside [bad_blocks](crate::preprocess::Preprocess::bad_blocks) timestamps
+    /// remove events inside [bad_blocks](crate::preprocess::StaticPointParams::bad_blocks) timestamps
     pub cut_bad_blocks: bool,
     /// Порог слияния соседних кадров: если расстояние между кадрами меньше
     /// (в наносекундах), их события объединяются в один кадр.
@@ -98,7 +98,7 @@ fn ignore_channels(ignore_channels: &[bool; 7], amplitudes: &mut NumassEvents) {
 fn merge_close_frames(
     mut amplitudes: NumassEvents,
     merge_len: u16,
-    preprocess: &Preprocess,
+    static_params: &StaticPointParams,
 ) -> NumassEvents {
     let mut amplitudes = amplitudes.iter_mut().collect::<Vec<_>>();
 
@@ -108,7 +108,7 @@ fn merge_close_frames(
     while idx > 0 {
         let frames_delta = amplitudes[idx].0 - amplitudes[idx - 1].0;
         if frames_delta < merge_len as u64 {
-            let frame_offset = frames_delta - time_ns(preprocess.frame_len);
+            let frame_offset = frames_delta - time_ns(static_params.frame_len);
 
             let amplitudes_2 = amplitudes[idx].1.clone(); // clone to avoid borrowing issues
             amplitudes[idx - 1].1.extend(
@@ -137,9 +137,9 @@ fn merge_close_frames(
 
 /// Built-in postprocessing algorithm.
 pub fn post_process(
-    process_result: (NumassEvents, Preprocess),
+    process_result: (NumassEvents, StaticPointParams),
     params: &PostProcessParams,
-) -> (NumassEvents, Preprocess) {
+) -> (NumassEvents, StaticPointParams) {
     let (mut amplitudes, preprocess_params) = process_result;
 
     if let Some(frame_len) = params.merge_frames {

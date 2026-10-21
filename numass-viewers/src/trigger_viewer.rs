@@ -6,7 +6,7 @@ use egui_plot::{GridMark, Legend, VLine};
 use numass_processing::{
     histogram::PointHistogram,
     numass::{NumassMeta, Reply, protos::rsb_event},
-    preprocess::{CUTOFF_BIN_SIZE, Preprocess},
+    preprocess::{CUTOFF_BIN_SIZE, StaticPointParams},
     storage::{load_meta, load_point},
     types::{Time, millisecond, nanosecond, nanoseconds, second, time_ns},
     utils::{correct_frame_time, format_time, repair_frame_times, timestamps_bound},
@@ -23,7 +23,7 @@ pub struct TriggerViewer {
     point: Arc<Mutex<Option<rsb_event::Point>>>,
     trigger_density: Arc<Mutex<Option<PointHistogram>>>,
     stats: Arc<Mutex<TimestampStats>>,
-    preprocess: Arc<Mutex<Option<Preprocess>>>,
+    static_params: Arc<Mutex<Option<StaticPointParams>>>,
 
     /// bin size in ms
     bin_size: u64,
@@ -36,7 +36,7 @@ impl TriggerViewer {
             meta: Arc::new(Mutex::new(None)),
             point: Arc::new(Mutex::new(None)),
             stats: Arc::new(Mutex::new(TimestampStats::default())),
-            preprocess: Arc::new(Mutex::new(None)),
+            static_params: Arc::new(Mutex::new(None)),
 
             trigger_density: Arc::new(Mutex::new(None)),
             bin_size: 10,
@@ -47,7 +47,7 @@ impl TriggerViewer {
         let point = Arc::clone(&viewer.point);
         let trigger_density = Arc::clone(&viewer.trigger_density);
         let stats = Arc::clone(&viewer.stats);
-        let static_params = Arc::clone(&viewer.preprocess);
+        let static_params = Arc::clone(&viewer.static_params);
         let limit_ms = viewer.bin_size;
 
         spawn(async move {
@@ -57,7 +57,8 @@ impl TriggerViewer {
             let point_local = load_point(&filepath).await;
 
             // TODO: optimize to prevent double processing of point data
-            let static_params_local = Preprocess::from_point(meta_local.clone(), &point_local);
+            let static_params_local =
+                StaticPointParams::from_point(meta_local.clone(), &point_local);
             *static_params.lock() = Some(static_params_local);
 
             *point.lock() = Some(point_local);
@@ -220,8 +221,8 @@ impl eframe::App for TriggerViewer {
                             trigger_density.draw_egui(plot_ui, None, None, None)
                         }
 
-                        if let Some(Preprocess { bad_blocks, .. }) =
-                            &self.preprocess.lock().as_ref()
+                        if let Some(StaticPointParams { bad_blocks, .. }) =
+                            &self.static_params.lock().as_ref()
                         {
                             bad_blocks.iter().for_each(|idx| {
                                 plot_ui.vline(

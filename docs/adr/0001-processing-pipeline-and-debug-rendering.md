@@ -31,9 +31,9 @@
 flowchart TD
     A[protobuf Point<br/>вейвформы] --> B[preprocess<br/>глобальная обработка кадров]
     A1[метаданные точки] --> B
-    B -->|Preprocess + вейвформы| C[process<br/>waveforms to events]
-    C -->|события + Preprocess| D[postprocess<br/>events to events]
-    D -->|события + Preprocess| E[histogram / viewer / ROOT]
+    B -->|StaticPointParams + вейвформы| C[process<br/>waveforms to events]
+    C -->|события + StaticPointParams| D[postprocess<br/>events to events]
+    D -->|события + StaticPointParams| E[histogram / viewer / ROOT]
 ```
 
 ### 1. Препроцессинг — глобальная обработка кадров (waveform → waveform, с сохранением иерархии)
@@ -47,7 +47,7 @@ flowchart TD
   копируются и не меняются. Это ожидаемо: хранилище использует legacy-формат,
   начальный ремаппинг допустим, а сохранение структуры выполняется уже после
   него.
-- `Preprocess::from_point` не трансформирует вейвформы, а считает метаданные
+- `StaticPointParams::from_point` не трансформирует вейвформы, а считает метаданные
   точки: `baseline`, `bad_blocks`, `frame_len`, `hv`, времена.
 
 ### 2. Процессинг — извлечение событий (waveform → events)
@@ -76,23 +76,23 @@ flowchart TD
 
 ## Связность стадий
 
-Стадии связаны **через общий тип-контракт `Preprocess`** и представление
+Стадии связаны **через общий тип-контракт `StaticPointParams`** и представление
 «события + метаданные точки»:
 
-- `Preprocess` создаётся из метаданных точки и алгоритма; это единственная точка
+- `StaticPointParams` создаётся из метаданных точки и алгоритма; это единственная точка
   вычислений препроцессинга. От алгоритма зависит лишь решение, считать ли
   `baseline` (зашито на `Trapezoid`).
-- Процессинг получает `Preprocess` и использует из него только `baseline`
+- Процессинг получает `StaticPointParams` и использует из него только `baseline`
   (`Trapezoid`, `LongDiff`; `Average` считает базу локально), а **возвращает**
   его дальше.
 - Постпроцессинг использует из него `bad_blocks` (`cut_bad_blocks`) и
   `frame_len` (`merge_frames`).
 
 Связь процессинга с препроцессингом сильнее, чем следует из названий: из
-`preprocess.rs` импортируются не только `Preprocess`, но и ядро обработки —
+`preprocess.rs` импортируются не только `StaticPointParams`, но и ядро обработки —
 `emulate_fir` (трапецеидальный фильтр) и `extract_waveforms`/`frame_to_waveform`
 (zero-copy переразметка). Сами `process` и `postprocess` друг о друге не знают:
-их связывает только пробрасываемый `Preprocess` и общие типы событий.
+их связывает только пробрасываемый `StaticPointParams` и общие типы событий.
 
 ## Обработка ошибок
 
@@ -134,14 +134,14 @@ viewer — `Some(plot_ui)`. Алгоритмический код **не дуб�
 
 - Единая кодовая база для визуального тестирования и batch — невозможна
   рассинхронизация алгоритмов, а отладочный код отключается на этапе компиляции.
-- Чёткая граница через `Preprocess`: вычисляется один раз на точку,
+- Чёткая граница через `StaticPointParams`: вычисляется один раз на точку,
   переиспользуется процессингом и постпроцессингом.
 - Постпроцессинг — опциональный `events → events` с совпадающими типами, что
   даёт гибкую композицию.
 
 **Минусы / технический долг**
 
-- `Preprocess` перегружен: несёт и метаданные точки, и выведенные данные
+- `StaticPointParams` перегружен: несёт и метаданные точки, и выведенные данные
   (`baseline`, `bad_blocks`, `frame_len`). `baseline` жёстко привязан к
   `Trapezoid`.
 - Ядро `emulate_fir` и переразметка осциллограмм живут в `preprocess.rs`, хотя
@@ -152,7 +152,7 @@ viewer — `Some(plot_ui)`. Алгоритмический код **не дуб�
 
 ## Открытые вопросы / TODO
 
-- Вынести `baseline`-логику из жёсткого `match` в `Preprocess::from_point`.
+- Вынести `baseline`-логику из жёсткого `match` в `StaticPointParams::from_point`.
 - Прояснить место `emulate_fir` и `extract_waveforms`: оставить как общее ядро
   или выделить отдельный модуль.
 - `cut_bad_blocks` сейчас работает только при `merge_close_events = true`.
