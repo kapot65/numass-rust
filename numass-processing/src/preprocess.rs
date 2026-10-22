@@ -234,7 +234,16 @@ pub enum PreprocessStep {
 /// не возвращаются в Rust.
 ///
 /// Глобал `host` содержит функции, зарегистрированные при сборке VM
-/// (см. [`ScriptHost`](crate::script::ScriptHost)).
+/// (см. [`ScriptHost`](crate::script::ScriptHost)). Тяжёлые операции
+/// работают с скрытым буфером канала и сами обновляют таблицу-снимок:
+/// - `host.fir(channel, left, center, right)` — FIR-фильтр, аналог
+///   [`PreprocessStep::Fir`] (укорачивает канал на `width - 1` отсчётов
+///   и увеличивает `delay` на `width`);
+/// - `host.refresh(channel)` — обновить снимок из буфера вручную (для
+///   host-функций, которые этого не делают сами).
+///
+/// Удлинение канала скриптом не поддерживается: `commit` завершит шаг
+/// ошибкой. Обрезка (`samples[#samples] = nil`) — поддерживается.
 pub const AVERAGE_SCRIPT: &str = r#"-- Аналог PreprocessParams::average: Baseline::Head + Invert.
 -- HEAD_BINS совпадает с константой Rust. Если отсчётов в кадре меньше
 -- HEAD_BINS, среднее считается по всем отсчётам.
