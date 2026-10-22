@@ -429,7 +429,7 @@ class PreprocessStep:
         Luau-скрипт. Мутирует тот же кадр, что FIR и baseline.
         
         Скрипт возвращает `function(frame)`. На время вызова доступны
-        глобалы `point` (таблица `StaticPointParams` или `nil`, если
+        глобалы `static_params` (таблица `StaticPointParams` или `nil`, если
         метаданных нет) и `host` (таблица функций хоста `ScriptHost`).
         Формат кадра описан в `AVERAGE_SCRIPT`.
         """

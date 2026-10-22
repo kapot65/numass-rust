@@ -8,8 +8,8 @@
 //! Тяжёлая математика хоста ([`ScriptHost`]) работает с буфером напрямую,
 //! без обхода таблиц, и сама обновляет снимок.
 //!
-//! [`StaticPointParams`] передаётся глобалом `point`: таблица собирается
-//! один раз на прогон точки.
+//! [`StaticPointParams`] передаётся глобалом `static_params` (зеркало
+//! имени типа): таблица собирается один раз на прогон точки.
 //!
 //! VM создаётся для каждого вызова шага в потоке, выполнившем этот вызов.
 
@@ -81,73 +81,15 @@ fn f32_to_bytes(samples: &[f32]) -> Vec<u8> {
 
 /// Прелюдия: синхронизация таблицы-снимка и скрытого буфера канала.
 ///
-/// Компилируется тем же компилятором, что и пользовательский скрипт, поэтому
-/// циклы `buffer.readf32`/`buffer.writef32` попадают под JIT. Rust-обход
-/// таблицы через ulua-rt в ~13 раз медленнее такого цикла, так что
-/// копирование выполняется на стороне Luau.
-const PRELUDE: &str = r#"
-local function snap_channel(body)
-    local b = body.__buffer
-    local s = body.samples
-    local n = buffer.len(b) // 4
-    -- Срезать хвост снимка, если кадр стал короче.
-    for i = #s, n + 1, -1 do
-        s[i] = nil
-    end
-    for i = 1, n do
-        s[i] = buffer.readf32(b, (i - 1) * 4)
-    end
-end
+/// Обоснование Luau-стороны (JIT циклов `buffer.*`) — в шапке файла.
+const PRELUDE: &str = include_str!("scripts/prelude.luau");
 
-local function commit_channel(body)
-    local b = body.__buffer
-    local s = body.samples
-    for i = 1, #s do
-        buffer.writef32(b, (i - 1) * 4, s[i])
-    end
-end
-
-return {
-    snap_channel = snap_channel,
-    commit_channel = commit_channel,
-    refresh = snap_channel,
-}
-"#;
-
-/// Definitions API скриптов preprocess-шага: типы `point`, `host`, кадра и канала.
-///
-/// Единственный источник истины для тайпчека ([`check_script`]) и слов
-/// автодополнения редактора ([`completion_words`]): ручного словаря имён нет,
-/// имена берутся отсюда. Синхронизацию с рантаймом держат тесты
-/// `defs_cover_host_functions` (интроспекция `host`-таблицы VM) и
-/// `defs_cover_point_fields` (сериализация `StaticPointParams`).
-///
-/// Формат — definitions-синтаксис Luau (`declare`), принимаемый тайпчекером
-/// ulua; черновик и обоснование — docs/research/luau-lsp-editor.md (5.3, 6).
+/// Definitions API скриптов preprocess-шага: типы `static_params`, `host`,
+/// кадра и канала. Единственный источник истины для тайпчека ([`check_script`]) и
+/// автодополнения ([`completion_words`]); подробности — в шапке
+/// `scripts/defs.d.luau`.
 #[cfg(any(feature = "egui", test))]
-pub(crate) const SCRIPT_DEFS: &str = r#"
-export type Channel = {
-    samples: {number},
-    delay: number,
-}
-
-export type Frame = {
-    [number]: Channel,
-}
-
-declare point: {
-    hv: number,
-    start_time: string,
-    acquisition_time: number,
-    frame_len: number,
-    bad_blocks: {number},
-}
-
-declare host: {
-    fir: (channel: Channel, left: number, center: number, right: number) -> (),
-    refresh: (channel: Channel) -> (),
-}
-"#;
+pub(crate) const SCRIPT_DEFS: &str = include_str!("scripts/defs.d.luau");
 
 /// Разобранный [`SCRIPT_DEFS`]: глобалы с членами и объявленные типы.
 ///
@@ -166,7 +108,7 @@ pub(crate) struct DefsApi {
 
 #[cfg(any(feature = "egui", test))]
 impl DefsApi {
-    /// Члены глобала по имени (`host`, `point`, `Channel`).
+    /// Члены глобала по имени (`host`, `static_params`, `Channel`).
     #[cfg(test)]
     pub(crate) fn members_of(&self, global: &str) -> Vec<String> {
         self.globals
@@ -210,7 +152,7 @@ fn parse_defs(defs: &str) -> DefsApi {
 /// Слова автодополнения редактора скриптов.
 ///
 /// Механически извлекаются из [`SCRIPT_DEFS`] (docs/research/luau-lsp-editor.md,
-/// 6.1): члены `host`/`point`/extern-типов и сами имена. Bare-имена, а не
+/// 6.1): члены `host`/`static_params`/extern-типов и сами имена. Bare-имена, а не
 /// `host.fir`: Completer egui_code_editor достраивает слово по префиксу от
 /// последнего не-словесного символа, так что после `host.` вводится `f`.
 #[cfg(feature = "egui")]
@@ -312,7 +254,7 @@ impl ScriptRuntime {
     ///
     /// Скрипт обязан вернуть `function(frame)`. До вызова хост выставляет
     /// глобалы:
-    /// - `point` — таблица из [`StaticPointParams`] или `nil`;
+    /// - `static_params` — таблица из [`StaticPointParams`] или `nil`;
     /// - `host` — таблица функций [`ScriptHost`]; прелюдия добавляет в неё
     ///   `refresh(ch)` (буфер -> снимок), если хост не определил свою.
     pub fn compile(source: &str, host: &dyn ScriptHost) -> Result<Self, ScriptError> {
@@ -371,7 +313,7 @@ impl ScriptRuntime {
 
     /// Выполняет скрипт для каждого кадра точки.
     ///
-    /// Таблица `point` собирается один раз на вызов. Отсчёты кадра
+    /// Таблица `static_params` собирается один раз на вызов. Отсчёты кадра
     /// записываются в буферы рантайма, копируются в таблицы-снимки, а после
     /// вызова `commit` переносит правки скрипта обратно в буферы.
     pub fn apply(
@@ -383,7 +325,7 @@ impl ScriptRuntime {
             Some(point) => self.lua.to_value(point)?,
             None => ulua::Nil.into_lua(&self.lua)?,
         };
-        self.lua.globals().set("point", point)?;
+        self.lua.globals().set("static_params", point)?;
 
         for frame in frames.values_mut() {
             let table = self.fill(frame)?;
@@ -502,7 +444,7 @@ mod tests {
             calls: Rc::new(Cell::new(0)),
         };
         let runtime = ScriptRuntime::compile(
-            "return function(frame) frame[0].samples[1] = host.mark() end",
+            include_str!("scripts/tests/host_is_installed_once_per_vm.luau"),
             &host,
         )
         .unwrap();
@@ -528,16 +470,7 @@ mod tests {
     #[test]
     fn host_fir_refreshes_snapshot() {
         let runtime = ScriptRuntime::compile(
-            r#"
-return function(frame)
-    for _, channel in frame do
-        host.fir(channel, 1, 0, 1)
-        for i = 1, #channel.samples do
-            channel.samples[i] = channel.samples[i] * 2
-        end
-    end
-end
-"#,
+            include_str!("scripts/tests/host_fir_refreshes_snapshot.luau"),
             &PreprocessHost,
         )
         .unwrap();
@@ -569,7 +502,7 @@ end
     #[test]
     fn host_fir_matches_native_fir() {
         let runtime = ScriptRuntime::compile(
-            "return function(frame) for _, channel in frame do host.fir(channel, 6, 15, 6) end end",
+            include_str!("scripts/tests/host_fir_matches_native_fir.luau"),
             &PreprocessHost,
         )
         .unwrap();
@@ -598,7 +531,7 @@ end
     #[test]
     fn channel_length_change_between_points() {
         let runtime = ScriptRuntime::compile(
-            "return function(frame) for _, channel in frame do channel.samples[1] = -1 end end",
+            include_str!("scripts/tests/channel_length_change_between_points.luau"),
             &PreprocessHost,
         )
         .unwrap();
@@ -647,13 +580,7 @@ end
     #[test]
     fn script_can_trim_channel() {
         let runtime = ScriptRuntime::compile(
-            r#"
-return function(frame)
-    for _, channel in frame do
-        channel.samples[#channel.samples] = nil
-    end
-end
-"#,
+            include_str!("scripts/tests/script_can_trim_channel.luau"),
             &PreprocessHost,
         )
         .unwrap();
@@ -699,15 +626,7 @@ end
         }
 
         let runtime = ScriptRuntime::compile(
-            r#"
-return function(frame)
-    for _, channel in frame do
-        host.double(channel)
-        host.refresh(channel)
-        channel.samples[1] = channel.samples[1] + 100
-    end
-end
-"#,
+            include_str!("scripts/tests/host_refresh_updates_snapshot.luau"),
             &RawHost,
         )
         .unwrap();
@@ -731,7 +650,7 @@ end
     #[test]
     fn empty_frame_is_passed_through() {
         let runtime = ScriptRuntime::compile(
-            "return function(frame) for _, channel in frame do channel.samples[1] = 0 end end",
+            include_str!("scripts/tests/empty_frame_is_passed_through.luau"),
             &PreprocessHost,
         )
         .unwrap();
@@ -764,8 +683,8 @@ end
                 "return function(frame: Frame) host.fir(frame[1], \"x\", 1, 2) end",
             ),
             (
-                "unknown point field",
-                "return function(frame: Frame) return point.hvv end",
+                "unknown static_params field",
+                "return function(frame: Frame) return static_params.hvv end",
             ),
             (
                 "incomplete call (while typing)",
@@ -845,7 +764,7 @@ end
         );
     }
 
-    /// [`SCRIPT_DEFS`] покрывает поля `point`: ключи таблицы собираются той же
+    /// [`SCRIPT_DEFS`] покрывает поля `static_params`: ключи таблицы собираются той же
     /// сериализацией, которой рантайм выставляет глобал (ScriptRuntime::apply).
     /// Новое поле `StaticPointParams` без строки в definitions ломает этот тест.
     #[test]
@@ -871,11 +790,48 @@ end
             })
             .unwrap();
 
-        let declared = parse_defs(SCRIPT_DEFS).members_of("point");
+        let declared = parse_defs(SCRIPT_DEFS).members_of("static_params");
         assert_eq!(
             serialized,
             declared.into_iter().collect::<BTreeSet<String>>()
         );
+    }
+
+    /// Прелюдия и тестовые скрипты, использующие только объявленный в
+    /// SCRIPT_DEFS API, проходят тайпчек — аннотации в .luau-файлах валидны.
+    /// Скрипты с незадекларированными host-функциями (`host.mark`,
+    /// `host.double`) не проверяются: они вне definitions по построению.
+    #[test]
+    fn embedded_scripts_typecheck() {
+        for (name, source) in [
+            ("prelude", PRELUDE),
+            (
+                "host_fir_refreshes_snapshot",
+                include_str!("scripts/tests/host_fir_refreshes_snapshot.luau"),
+            ),
+            (
+                "host_fir_matches_native_fir",
+                include_str!("scripts/tests/host_fir_matches_native_fir.luau"),
+            ),
+            (
+                "channel_length_change_between_points",
+                include_str!("scripts/tests/channel_length_change_between_points.luau"),
+            ),
+            (
+                "script_can_trim_channel",
+                include_str!("scripts/tests/script_can_trim_channel.luau"),
+            ),
+            (
+                "empty_frame_is_passed_through",
+                include_str!("scripts/tests/empty_frame_is_passed_through.luau"),
+            ),
+        ] {
+            let diags = check_script(source);
+            assert!(
+                diags.is_empty(),
+                "{name}: unexpected diagnostics: {diags:?}"
+            );
+        }
     }
 
     /// Дефолтный скрипт (с аннотацией `frame: Frame`) проходит тайпчек:

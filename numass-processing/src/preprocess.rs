@@ -207,68 +207,17 @@ pub enum PreprocessStep {
     /// Luau-скрипт. Мутирует тот же кадр, что FIR и baseline.
     ///
     /// Скрипт возвращает `function(frame)`. На время вызова доступны
-    /// глобалы `point` (таблица `StaticPointParams` или `nil`, если
+    /// глобалы `static_params` (таблица `StaticPointParams` или `nil`, если
     /// метаданных нет) и `host` (таблица функций хоста `ScriptHost`).
     /// Формат кадра описан в `AVERAGE_SCRIPT`.
     Script { source: String },
 }
 
 /// Текст скрипта для шага [`PreprocessStep::Script`] — аналог
-/// [`PreprocessParams::average`].
-///
-/// Скрипт вычитает среднее первых [`HEAD_BINS`] отсчётов и инвертирует
-/// сигнал. Арифметика выполняется в Luau, без отдельной обвязки на каждую
-/// операцию.
-///
-/// Формат кадра:
-/// - ключ — id канала, 0-based, как в остальном пайплайне;
-/// - `frame[ch].samples` — массив, индексация с 1, `#` возвращает длину;
-/// - `frame[ch].delay` — сдвиг относительно сырого кадра.
-///
-/// Отсчёты записываются в таблицу на время вызова и после него читаются
-/// обратно в тот же кадр.
-///
-/// Глобал `point` содержит поля `hv`, `acquisition_time`, `frame_len`
-/// (в секундах), `start_time` и `bad_blocks` — список номеров блоков.
-/// Без метаданных точки `point` равен `nil`; изменения `point` в скрипте
-/// не возвращаются в Rust.
-///
-/// Глобал `host` содержит функции, зарегистрированные при сборке VM
-/// (см. [`ScriptHost`](crate::script::ScriptHost)). Тяжёлые операции
-/// работают с скрытым буфером канала и сами обновляют таблицу-снимок:
-/// - `host.fir(channel, left, center, right)` — FIR-фильтр, аналог
-///   [`PreprocessStep::Fir`] (укорачивает канал на `width - 1` отсчётов
-///   и увеличивает `delay` на `width`);
-/// - `host.refresh(channel)` — обновить снимок из буфера вручную (для
-///   host-функций, которые этого не делают сами).
-///
-/// Удлинение канала скриптом не поддерживается: `commit` завершит шаг
-/// ошибкой. Обрезка (`samples[#samples] = nil`) — поддерживается.
-pub const AVERAGE_SCRIPT: &str = r#"-- Аналог PreprocessParams::average: Baseline::Head + Invert.
--- HEAD_BINS совпадает с константой Rust. Если отсчётов в кадре меньше
--- HEAD_BINS, среднее считается по всем отсчётам.
-local HEAD_BINS = 30
-
--- frame — таблица кадра с индексацией отсчётов от 1.
--- point и host — глобалы. Аннотация Frame включает проверку типов
--- в редакторе скриптов (script::SCRIPT_DEFS).
-return function(frame: Frame)
-    for _, channel in frame do
-        local samples = channel.samples
-        local count = math.min(HEAD_BINS, #samples)
-        local sum = 0
-        for index = 1, count do
-            sum += samples[index]
-        end
-        local baseline = if count > 0 then sum / count else 0
-
-        -- Вычесть голову и инвертировать: -(sample - baseline).
-        for index = 1, #samples do
-            samples[index] = baseline - samples[index]
-        end
-    end
-end
-"#;
+/// [`PreprocessParams::average`]. Формат кадра и глобалы
+/// `static_params`/`host` описаны в подсказке редактора скриптов
+/// (widgets.rs) и в `scripts/defs.d.luau`.
+pub const AVERAGE_SCRIPT: &str = include_str!("scripts/average.luau");
 
 /// Упорядоченный список шагов waveform → waveform.
 #[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyclass)]
@@ -825,7 +774,7 @@ mod tests {
     }
 
     #[test]
-    fn script_sees_point_and_writes_back_frame() {
+    fn script_sees_static_params_and_writes_back_frame() {
         use crate::types::second;
 
         let waveform = [1i16, 2, 3, 4];
@@ -840,15 +789,15 @@ mod tests {
             frame_len: bin_time(4),
             bad_blocks,
         };
-        // `point` — обычная таблица, собранная один раз на вызов. Тест
+        // `static_params` — обычная таблица, собранная один раз на вызов. Тест
         // проверяет её поля и запись в отсчёты канала.
         let source = r#"
             return function(frame)
-                assert(point.hv == 14000)
-                assert(point.acquisition_time == 20)
-                assert(point.bad_blocks[1] == 3)
+                assert(static_params.hv == 14000)
+                assert(static_params.acquisition_time == 20)
+                assert(static_params.bad_blocks[1] == 3)
                 local channel = frame[1]
-                channel.samples[1] = point.hv
+                channel.samples[1] = static_params.hv
             end
         "#;
 

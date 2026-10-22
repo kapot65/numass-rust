@@ -156,14 +156,29 @@ impl UserInput for PreprocessParams {
                                 "Luau: `function(frame: Frame)`; `frame[ch].samples` — отсчёты с индексацией от 1.",
                             )
                             .on_hover_text(
-                                "
-                            Скрипт возвращает function(frame: Frame) и меняет кадр на месте.
-                            Ключ кадра — id канала (0-based), у канала поля samples и delay.
-                            Глобалы: point (hv, acquisition_time, frame_len, start_time, bad_blocks)
-                            и host (функции, зарегистрированные при сборке VM).
-                            Ошибки типизации показываются под редактором;
-                            имена point/host/channel дополняются по Tab.
-                            ",
+                                "\
+Скрипт возвращает function(frame: Frame) и меняет кадр на месте:
+отсчёты копируются в таблицы на время вызова и читаются обратно в кадр.
+
+frame = { [id канала (0-based)]: channel }
+  channel.samples — {number}, индексация с 1, #samples — длина
+  channel.delay — сдвиг относительно сырого кадра
+  укорачивать можно (samples[#samples] = nil), удлинять — нет
+
+Глобалы:
+  static_params — зеркало StaticPointParams: hv, acquisition_time,
+    frame_len (сек), start_time, bad_blocks; без метаданных точки — nil,
+    правки не возвращаются в Rust
+  host — функции хоста, работают с буфером канала и сами обновляют снимок:
+    host.fir(channel, left, center, right) — FIR, аналог PreprocessStep::Fir
+    host.refresh(channel) — снимок из буфера вручную
+
+Локалы верхнего уровня — статические: вычисляются один раз при загрузке
+скрипта и живут между кадрами.
+
+Ошибки типизации показываются под редактором; имена static_params/host/channel
+дополняются по Tab (типы — в scripts/defs.d.luau).
+",
                             );
                             let theme = if ui.visuals().dark_mode {
                                 egui_code_editor::ColorTheme::GRUVBOX
