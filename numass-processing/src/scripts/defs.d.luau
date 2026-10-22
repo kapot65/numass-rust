@@ -8,7 +8,7 @@
 -- defs_cover_point_fields (сериализация StaticPointParams).
 --
 -- Формат — definitions-синтаксис Luau (declare), принимаемый тайпчекером
--- ulua; черновик и обоснование — docs/research/luau-lsp-editor.md (5.3, 6).
+-- ulua.
 export type Channel = {
     samples: {number},
     delay: number,

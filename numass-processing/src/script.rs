@@ -151,8 +151,8 @@ fn parse_defs(defs: &str) -> DefsApi {
 
 /// Слова автодополнения редактора скриптов.
 ///
-/// Механически извлекаются из [`SCRIPT_DEFS`] (docs/research/luau-lsp-editor.md,
-/// 6.1): члены `host`/`static_params`/extern-типов и сами имена. Bare-имена, а не
+/// Механически извлекаются из [`SCRIPT_DEFS`]: члены `host`/`static_params`/
+/// extern-типов и сами имена. Bare-имена, а не
 /// `host.fir`: Completer egui_code_editor достраивает слово по префиксу от
 /// последнего не-словесного символа, так что после `host.` вводится `f`.
 #[cfg(feature = "egui")]
