@@ -250,8 +250,9 @@ pub const AVERAGE_SCRIPT: &str = r#"-- Аналог PreprocessParams::average: B
 local HEAD_BINS = 30
 
 -- frame — таблица кадра с индексацией отсчётов от 1.
--- point и host — глобалы.
-return function(frame)
+-- point и host — глобалы. Аннотация Frame включает проверку типов
+-- в редакторе скриптов (script::SCRIPT_DEFS).
+return function(frame: Frame)
     for _, channel in frame do
         local samples = channel.samples
         local count = math.min(HEAD_BINS, #samples)

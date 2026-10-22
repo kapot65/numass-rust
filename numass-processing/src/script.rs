@@ -15,6 +15,8 @@
 
 use std::cell::RefCell;
 
+#[cfg(any(feature = "egui", test))]
+use ulua::TypeDiagnostic;
 use ulua::rt::LuaSerdeExt;
 use ulua::{Buffer, Compiler, Function, IntoLua, Lua, Table};
 
@@ -61,8 +63,10 @@ pub(crate) fn set_channel_samples(
 /// Распаковывает f32 LE из байтов буфера.
 fn f32_from_bytes(bytes: &[u8]) -> Vec<f32> {
     bytes
-        .chunks_exact(4)
-        .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|chunk| f32::from_le_bytes(*chunk))
         .collect()
 }
 
@@ -109,6 +113,133 @@ return {
     refresh = snap_channel,
 }
 "#;
+
+/// Definitions API скриптов preprocess-шага: типы `point`, `host`, кадра и канала.
+///
+/// Единственный источник истины для тайпчека ([`check_script`]) и слов
+/// автодополнения редактора ([`completion_words`]): ручного словаря имён нет,
+/// имена берутся отсюда. Синхронизацию с рантаймом держат тесты
+/// `defs_cover_host_functions` (интроспекция `host`-таблицы VM) и
+/// `defs_cover_point_fields` (сериализация `StaticPointParams`).
+///
+/// Формат — definitions-синтаксис Luau (`declare`), принимаемый тайпчекером
+/// ulua; черновик и обоснование — docs/research/luau-lsp-editor.md (5.3, 6).
+#[cfg(any(feature = "egui", test))]
+pub(crate) const SCRIPT_DEFS: &str = r#"
+export type Channel = {
+    samples: {number},
+    delay: number,
+}
+
+export type Frame = {
+    [number]: Channel,
+}
+
+declare point: {
+    hv: number,
+    start_time: string,
+    acquisition_time: number,
+    frame_len: number,
+    bad_blocks: {number},
+}
+
+declare host: {
+    fir: (channel: Channel, left: number, center: number, right: number) -> (),
+    refresh: (channel: Channel) -> (),
+}
+"#;
+
+/// Разобранный [`SCRIPT_DEFS`]: глобалы с членами и объявленные типы.
+///
+/// Формат контролируется нами (`export type NAME = { ... }`,
+/// `declare NAME: { ... }` без вложенных блоков), поэтому хватает
+/// построчного сканера; корректность синтаксиса дополнительно проверяет
+/// тайпчекер в `defs_typecheck_diagnostics_shapes`.
+#[cfg(any(feature = "egui", test))]
+#[derive(Debug, Default)]
+pub(crate) struct DefsApi {
+    /// Глобалы `declare NAME: { ... }` и члены `export type NAME = {`.
+    pub(crate) globals: Vec<(String, Vec<String>)>,
+    /// Имена `export type NAME = {` (Channel, Frame).
+    pub(crate) types: Vec<String>,
+}
+
+#[cfg(any(feature = "egui", test))]
+impl DefsApi {
+    /// Члены глобала по имени (`host`, `point`, `Channel`).
+    #[cfg(test)]
+    pub(crate) fn members_of(&self, global: &str) -> Vec<String> {
+        self.globals
+            .iter()
+            .find(|(name, _)| name == global)
+            .map(|(_, members)| members.clone())
+            .unwrap_or_default()
+    }
+}
+
+/// Построчный разбор [`SCRIPT_DEFS`] по контролируемому формату.
+#[cfg(any(feature = "egui", test))]
+fn parse_defs(defs: &str) -> DefsApi {
+    let mut api = DefsApi::default();
+    let mut block: Option<(String, Vec<String>)> = None;
+    for line in defs.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("export type ") {
+            let name = rest.split_once('=').map_or(rest, |(name, _)| name).trim();
+            api.types.push(name.to_owned());
+            block = Some((name.to_owned(), Vec::new()));
+        } else if let Some(rest) = line.strip_prefix("declare ") {
+            if let Some((name, _)) = rest.split_once(':') {
+                block = Some((name.trim().to_owned(), Vec::new()));
+            }
+        } else if block.is_some() && line == "}" {
+            api.globals.push(block.take().expect("checked is_some"));
+        } else if let Some((_, members)) = block.as_mut() {
+            // Индексаторы (`[number]: Channel`) и комментарии — не члены.
+            if let Some((member, _)) = line.split_once(':') {
+                let member = member.trim();
+                if !member.is_empty() && !member.starts_with('[') && !member.starts_with("--") {
+                    members.push(member.to_owned());
+                }
+            }
+        }
+    }
+    api
+}
+
+/// Слова автодополнения редактора скриптов.
+///
+/// Механически извлекаются из [`SCRIPT_DEFS`] (docs/research/luau-lsp-editor.md,
+/// 6.1): члены `host`/`point`/extern-типов и сами имена. Bare-имена, а не
+/// `host.fir`: Completer egui_code_editor достраивает слово по префиксу от
+/// последнего не-словесного символа, так что после `host.` вводится `f`.
+#[cfg(feature = "egui")]
+pub(crate) fn completion_words() -> &'static [String] {
+    static WORDS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    WORDS.get_or_init(|| {
+        let api = parse_defs(SCRIPT_DEFS);
+        let mut words = api.types.clone();
+        for (name, members) in &api.globals {
+            words.push(name.clone());
+            words.extend(members.iter().cloned());
+        }
+        words.sort_unstable();
+        words.dedup();
+        words
+    })
+}
+
+/// Тайпчек исходника против [`SCRIPT_DEFS`].
+///
+/// Пустой результат — ошибок нет. Сообщения несут подсказки по сигнатурам
+/// host-функций (рендер всей таблицы при опечатке, arity при незавершённом
+/// вызове) — см. тест `defs_typecheck_diagnostics_shapes`.
+#[cfg(any(feature = "egui", test))]
+pub(crate) fn check_script(source: &str) -> Vec<TypeDiagnostic> {
+    ulua::check_with_definitions(source, SCRIPT_DEFS)
+        .err()
+        .unwrap_or_default()
+}
 
 /// Набор функций, доступных скрипту через глобал `host`.
 ///
@@ -333,10 +464,14 @@ impl ScriptRuntime {
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::Cell, collections::BTreeMap, rc::Rc};
+    use std::{
+        cell::Cell,
+        collections::{BTreeMap, BTreeSet},
+        rc::Rc,
+    };
 
     use super::*;
-    use crate::preprocess::ChannelSamples;
+    use crate::preprocess::{AVERAGE_SCRIPT, ChannelSamples};
 
     /// Пользовательский хост регистрируется при сборке VM и доступен
     /// во всех кадрах одного рантайма.
@@ -551,8 +686,8 @@ end
                     lua.create_function(|_, body: Table| {
                         let mut buffer: Buffer = body.raw_get(BUFFER_KEY)?;
                         let mut bytes = buffer.to_vec();
-                        for chunk in bytes.chunks_exact_mut(4) {
-                            let v = f32::from_le_bytes(chunk.try_into().unwrap());
+                        for chunk in bytes.as_chunks_mut::<4>().0 {
+                            let v = f32::from_le_bytes(*chunk);
                             chunk.copy_from_slice(&(v * 2.0).to_le_bytes());
                         }
                         buffer.write_bytes(0, &bytes);
@@ -607,40 +742,13 @@ end
         assert!(frames[&0].is_empty());
     }
 
-    /// Черновик definitions-файла (`numass.d.luau` из docs/research/luau-lsp-editor.md)
-    /// принимается тайпчекером ulua, а диагностики типовых ошибок несут
-    /// подсказки по сигнатурам — на этих инвариантах держится дизайн редактора
-    /// скриптов (заполнение Completer из definitions + панель ошибок).
+    /// Формы сообщений тайпчека против [`SCRIPT_DEFS`]: на них держится дизайн
+    /// редактора (Completer из definitions + панель ошибок как signature help).
+    /// Позитивный кейс заодно валидирует сам definitions-синтаксис.
     #[test]
     fn defs_typecheck_diagnostics_shapes() {
-        let defs = r#"
-            declare extern type Channel with
-                samples: {number}
-                delay: number
-            end
-
-            declare extern type Frame with
-                [number]: Channel
-            end
-
-            declare point: {
-                hv: number,
-                start_time: string,
-                acquisition_time: number,
-                frame_len: number,
-                bad_blocks: {number},
-            }
-
-            declare host: {
-                fir: (channel: Channel, left: number, center: number, right: number) -> (),
-                refresh: (channel: Channel) -> (),
-            }
-        "#;
-
         let clean = "return function(frame: Frame) host.fir(frame[1], 1, 1, 1) end";
-        if let Err(diags) = ulua::check_with_definitions(clean, defs) {
-            panic!("clean script must typecheck, got: {diags:?}");
-        }
+        assert!(check_script(clean).is_empty());
 
         let cases = [
             (
@@ -648,7 +756,7 @@ end
                 "return function(frame: Frame) host.firr(frame[1]) end",
             ),
             (
-                "zero-arg probe (signature?)",
+                "zero-arg probe",
                 "return function(frame: Frame) host.fir() end",
             ),
             (
@@ -665,27 +773,22 @@ end
             ),
         ];
         for (name, source) in cases {
-            match ulua::check_with_definitions(source, defs) {
-                Ok(()) => println!("{name}: unexpectedly OK"),
-                Err(diags) => {
-                    for d in &diags {
-                        println!("{name} @ {}:{}: {}", d.line, d.column, d.message);
-                    }
-                }
+            let diags = check_script(source);
+            if diags.is_empty() {
+                println!("{name}: unexpectedly OK");
+            }
+            for d in &diags {
+                println!("{name} @ {}:{}: {}", d.line, d.column, d.message);
             }
         }
 
         // Пустой исходник валиден: редактор стартует без диагностики.
-        assert!(ulua::check_with_definitions("", defs).is_ok());
+        assert!(check_script("").is_empty());
 
         // Инвариант 1: опечатка в члене таблицы рендерит в сообщении
         // сигнатуры всех её функций — панель ошибок удваивается как подсказка
         // по API. Имена параметров рендерер теряет (типы остаются).
-        let diags = ulua::check_with_definitions(
-            "return function(frame: Frame) host.firr(frame[1]) end",
-            defs,
-        )
-        .unwrap_err();
+        let diags = check_script("return function(frame: Frame) host.firr(frame[1]) end");
         assert!(diags.iter().any(|d| {
             d.message
                 .contains("fir: (Channel, number, number, number) -> ()")
@@ -693,8 +796,7 @@ end
 
         // Инвариант 2: незавершённый вызов во время набора уже даёт
         // arity-подсказку — параллельно с ошибкой парсинга, без паники.
-        let diags = ulua::check_with_definitions("return function(frame: Frame) host.fir(", defs)
-            .unwrap_err();
+        let diags = check_script("return function(frame: Frame) host.fir(");
         assert!(
             diags
                 .iter()
@@ -703,14 +805,84 @@ end
 
         // Стоимость одного вызова (front-end + builtins + defs парсятся каждый
         // раз — переиспользуемый `Checker` definitions не поддерживает):
-        // ориентир для debounce в виджете, включая wasm.
+        // ориентир для частоты проверки в виджете, включая wasm.
         let started = std::time::Instant::now();
         for _ in 0..10 {
-            let _ = ulua::check_with_definitions(clean, defs);
+            let _ = check_script(clean);
         }
         println!(
             "check_with_definitions: {:.1} ms/call",
             started.elapsed().as_secs_f64() * 100.0 / 10.0
         );
+    }
+
+    /// [`SCRIPT_DEFS`] покрывает host-функции рантайма без пропусков и
+    /// фантомов: имена собираются интроспекцией VM после `ScriptHost::install`
+    /// (включая `refresh` прелюдии) и сравниваются с `declare host`.
+    /// Новая host-функция без строки в definitions ломает этот тест.
+    #[test]
+    fn defs_cover_host_functions() {
+        let lua = Lua::new();
+        let host = lua.create_table();
+        PreprocessHost.install(&lua, &host).unwrap();
+        // Прелюдия добавляет refresh при отсутствии своей (ScriptRuntime::compile).
+        if host.get::<Option<Function>>("refresh").unwrap().is_none() {
+            host.set("refresh", lua.create_function(|_, ()| Ok(())).unwrap())
+                .unwrap();
+        }
+
+        let mut registered = BTreeSet::new();
+        host.for_each::<String, ulua::Value>(|key, _| {
+            registered.insert(key);
+            Ok(())
+        })
+        .unwrap();
+
+        let declared = parse_defs(SCRIPT_DEFS).members_of("host");
+        assert_eq!(
+            registered,
+            declared.into_iter().collect::<BTreeSet<String>>()
+        );
+    }
+
+    /// [`SCRIPT_DEFS`] покрывает поля `point`: ключи таблицы собираются той же
+    /// сериализацией, которой рантайм выставляет глобал (ScriptRuntime::apply).
+    /// Новое поле `StaticPointParams` без строки в definitions ломает этот тест.
+    #[test]
+    fn defs_cover_point_fields() {
+        use crate::types::{Time, second};
+
+        let sample = StaticPointParams {
+            hv: 14_000.0,
+            start_time: chrono::DateTime::from_timestamp(0, 0).unwrap().naive_utc(),
+            acquisition_time: Time::new::<second>(30.0),
+            frame_len: Time::new::<second>(40.0),
+            bad_blocks: BTreeSet::from([3]),
+        };
+        let lua = Lua::new();
+        let point = lua.to_value(&sample).unwrap();
+        let table = point.as_table().unwrap();
+
+        let mut serialized = BTreeSet::new();
+        table
+            .for_each::<String, ulua::Value>(|key, _| {
+                serialized.insert(key);
+                Ok(())
+            })
+            .unwrap();
+
+        let declared = parse_defs(SCRIPT_DEFS).members_of("point");
+        assert_eq!(
+            serialized,
+            declared.into_iter().collect::<BTreeSet<String>>()
+        );
+    }
+
+    /// Дефолтный скрипт (с аннотацией `frame: Frame`) проходит тайпчек:
+    /// редактор стартует без диагностики на свежем шаге `+ script`.
+    #[test]
+    fn average_script_typechecks() {
+        let diags = check_script(AVERAGE_SCRIPT);
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
     }
 }

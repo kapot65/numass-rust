@@ -1,5 +1,7 @@
 //! This module contains egui widgets for processing configurations
 
+use std::hash::{DefaultHasher, Hash, Hasher};
+
 use crate::{
     histogram::HistogramParams,
     postprocess::PostProcessParams,
@@ -12,6 +14,7 @@ use crate::{
         Algorithm, FIRSTPEAK_DEFAULT, HWResetParams, LIKHOVID_DEFAULT, LONGDIFF_DEFAULT,
         ProcessParams, TRAPEZOID_DEFAULT,
     },
+    script,
 };
 
 pub const HISTOGRAM_MIN: f32 = -200.0;
@@ -149,25 +152,82 @@ impl UserInput for PreprocessParams {
                         PreprocessStep::Invert {} => {}
                         PreprocessStep::Merge {} => {}
                         PreprocessStep::Script { source } => {
-                            ui.label("Luau: `function(frame)`; `frame[ch].samples` — отсчёты с индексацией от 1.")
-                                .on_hover_text(
-                                    "
-                                Скрипт возвращает function(frame) и меняет кадр на месте.
-                                Ключ кадра — id канала (0-based), у канала поля samples и delay.
-                                Глобалы: point (hv, acquisition_time, frame_len, start_time, bad_blocks)
-                                и host (функции, зарегистрированные при сборке VM).
-                                ",
-                                );
+                            ui.label(
+                                "Luau: `function(frame: Frame)`; `frame[ch].samples` — отсчёты с индексацией от 1.",
+                            )
+                            .on_hover_text(
+                                "
+                            Скрипт возвращает function(frame: Frame) и меняет кадр на месте.
+                            Ключ кадра — id канала (0-based), у канала поля samples и delay.
+                            Глобалы: point (hv, acquisition_time, frame_len, start_time, bad_blocks)
+                            и host (функции, зарегистрированные при сборке VM).
+                            Ошибки типизации показываются под редактором;
+                            имена point/host/channel дополняются по Tab.
+                            ",
+                            );
                             let theme = if ui.visuals().dark_mode {
                                 egui_code_editor::ColorTheme::GRUVBOX
                             } else {
                                 egui_code_editor::ColorTheme::GRUVBOX_LIGHT
                             };
-                            egui_code_editor::CodeEditor::default()
-                                .id_source("preprocess-script")
+                            let syntax = egui_code_editor::Syntax::lua();
+                            // Completer живёт между кадрами в данных egui (UserInput
+                            // бессостоятелен); словарь — из definitions API,
+                            // без ручного списка слов.
+                            let completer_id = egui::Id::new(("script-completer", idx));
+                            let mut completer = ui
+                                .ctx()
+                                .data_mut(|d| {
+                                    d.get_temp::<egui_code_editor::Completer>(completer_id)
+                                })
+                                .unwrap_or_else(|| {
+                                    let mut completer =
+                                        egui_code_editor::Completer::new_with_syntax(&syntax)
+                                            .with_auto_indent()
+                                            .with_user_words();
+                                    for word in script::completion_words() {
+                                        completer.push_word(word);
+                                    }
+                                    completer
+                                });
+                            let _ = egui_code_editor::CodeEditor::default()
+                                .id_source(format!("preprocess-script-{idx}"))
                                 .with_rows(12)
                                 .with_theme(theme)
-                                .show(ui, source, &egui_code_editor::Syntax::lua());
+                                .show_with_completer(ui, source, &syntax, &mut completer);
+                            ui.ctx()
+                                .data_mut(|d| d.insert_temp(completer_id, completer));
+
+                            // Тайпчек на каждое изменение текста (~2 мс на кадр
+                            // текста). Кэш по хэшу исходника: пересчёт сам
+                            // восстанавливается при сдвиге шагов (удаление).
+                            let diags_id = egui::Id::new(("script-diags", idx));
+                            let mut hasher = DefaultHasher::new();
+                            source.as_str().hash(&mut hasher);
+                            let source_hash = hasher.finish();
+                            let diags = match ui.ctx().data_mut(|d| {
+                                d.get_temp::<(u64, Vec<ulua::TypeDiagnostic>)>(diags_id)
+                            }) {
+                                Some((hash, diags)) if hash == source_hash => diags,
+                                _ => {
+                                    let diags = script::check_script(source);
+                                    ui.ctx().data_mut(|d| {
+                                        d.insert_temp(diags_id, (source_hash, diags.clone()))
+                                    });
+                                    diags
+                                }
+                            };
+                            if !diags.is_empty() {
+                                ui.add_space(4.0);
+                                for diag in &diags {
+                                    ui.label(
+                                        egui::RichText::new(diag.to_string())
+                                            .family(egui::FontFamily::Monospace)
+                                            .small()
+                                            .color(ui.visuals().error_fg_color),
+                                    );
+                                }
+                            }
                         }
                     },
                 );
