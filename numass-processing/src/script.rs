@@ -20,7 +20,9 @@ use ulua::TypeDiagnostic;
 use ulua::rt::LuaSerdeExt;
 use ulua::{Buffer, Compiler, FromLuaMulti, Function, IntoLua, Lua, Table};
 
-use crate::preprocess::{ProcessedFrame, ProcessedPoint, StaticPointParams, emulate_fir};
+use crate::preprocess::{
+    ProcessedFrame, ProcessedPoint, StaticPointParams, emulate_fir, high_pass, moving_average,
+};
 
 pub type ScriptError = ulua::Error;
 
@@ -268,6 +270,36 @@ impl ChannelOp for FirOp {
     }
 }
 
+/// Скользящее среднее ширины `width` — фильтр низких частот: то же окно,
+/// что у `PreprocessStep::Fir` только справа (`right = width`), поэтому
+/// длина и `delay` меняются так же.
+struct LpfOp;
+impl ChannelOp for LpfOp {
+    const NAME: &'static str = "lpf";
+    type Args = (u16,);
+    fn run(samples: &[f32], &(width,): &Self::Args) -> Result<Vec<f32>, String> {
+        Ok(moving_average(samples, usize::from(width)))
+    }
+    fn delay_shift(&(width,): &Self::Args) -> i64 {
+        i64::from(width)
+    }
+}
+
+/// Отсчёт минус среднее по окрестности — фильтр высоких частот. Окно
+/// центрировано: длина и `delay` канала не меняются, дрейф базовой линии
+/// уходит, положение событий сохраняется.
+struct HpfOp;
+impl ChannelOp for HpfOp {
+    const NAME: &'static str = "hpf";
+    type Args = (u16,);
+    fn run(samples: &[f32], &(width,): &Self::Args) -> Result<Vec<f32>, String> {
+        high_pass(samples, usize::from(width))
+    }
+    fn delay_shift(_: &Self::Args) -> i64 {
+        0
+    }
+}
+
 /// Реестр [`PreprocessHost`]: единственный список операций — из него
 /// генерируются `install` и hover-подсказки редактора, рассинхрон
 /// невозможен. Операция вне схемы «канал → канал» (например, FFT со
@@ -290,6 +322,8 @@ macro_rules! preprocess_host_ops {
 }
 preprocess_host_ops! {
     FirOp => "host.fir(channel, left, center, right) — FIR, аналог PreprocessStep::Fir",
+    LpfOp => "host.lpf(channel, width) — скользящее среднее (низкие частоты)",
+    HpfOp => "host.hpf(channel, width) — вычитает локальное среднее (высокие частоты, width >= 3)",
 }
 
 /// Канал одного кадра: таблицы и скрытый буфер, переиспользуемые между кадрами.
@@ -610,6 +644,65 @@ mod tests {
 
         assert_eq!(channel.samples, emulate_fir(&samples, 6, 15, 6));
         assert_eq!(channel.delay, 3 + 27);
+    }
+
+    /// `host.lpf` — скользящее среднее: те же числа, что у нативной
+    /// [`moving_average`], `delay` растёт на ширину окна.
+    #[test]
+    fn host_lpf_matches_native_moving_average() {
+        let samples: Vec<f32> = (0..48).map(|i| (i * 11 % 29) as f32 - 14.0).collect();
+        let channel = run_script(
+            include_str!("scripts/tests/host_lpf_matches_native_moving_average.luau"),
+            &PreprocessHost,
+            samples.clone(),
+            3,
+        )
+        .unwrap();
+
+        assert_eq!(channel.samples, moving_average(&samples, 8));
+        assert_eq!(channel.delay, 3 + 8);
+    }
+
+    /// `host.hpf` вычитает локальное среднее: длина и `delay` канала
+    /// сохраняются, дрейф базовой линии уходит.
+    #[test]
+    fn host_hpf_matches_native_high_pass() {
+        let drift: Vec<f32> = (0..64).map(|i| i as f32 * 0.25).collect();
+        let mut samples = drift.clone();
+        samples[40] += 100.0;
+        let channel = run_script(
+            include_str!("scripts/tests/host_hpf_matches_native_high_pass.luau"),
+            &PreprocessHost,
+            samples.clone(),
+            3,
+        )
+        .unwrap();
+
+        // Скрипт добавил 0.5 к первому отсчёту поверх фильтра.
+        let expected = high_pass(&samples, 9)
+            .unwrap()
+            .iter()
+            .enumerate()
+            .map(|(i, v)| v + if i == 0 { 0.5 } else { 0.0 })
+            .collect::<Vec<f32>>();
+        assert_eq!(channel.samples, expected);
+        assert_eq!(channel.samples.len(), 64);
+        assert_eq!(channel.delay, 3);
+    }
+
+    /// Узкое окно `host.hpf` — ошибка времени выполнения, видимая шагу
+    /// (`apply` возвращает `Err`), а не молчаливый вырожденный канал.
+    #[test]
+    fn host_hpf_rejects_narrow_window() {
+        let error = run_script(
+            include_str!("scripts/tests/host_hpf_rejects_narrow_window.luau"),
+            &PreprocessHost,
+            vec![1.0, 2.0, 3.0],
+            0,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("at least 3 samples"), "{error}");
     }
 
     /// Длина кадра меняется между точками: буферы и снимки перестраиваются,

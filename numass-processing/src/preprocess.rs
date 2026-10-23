@@ -488,6 +488,43 @@ pub fn emulate_fir(waveform: &[f32], right: usize, center: usize, left: usize) -
         .collect()
 }
 
+/// Скользящее среднее ширины `width` — фильтр низких частот.
+///
+/// Причинное окно `[i, i + width)` — то же, что [`emulate_fir`] с окном
+/// только справа (`right = width`): выход короче входа на `width - 1`
+/// отсчётов, `delay` канала растёт на `width`. Вырожденные ширины наследуют
+/// семантику FIR: `width <= 1` — тождество, `width == 0` — пустой канал.
+pub fn moving_average(waveform: &[f32], width: usize) -> Vec<f32> {
+    emulate_fir(waveform, width, 0, 0)
+}
+
+/// Фильтр высоких частот: отсчёт минус среднее по его окрестности.
+///
+/// Окно ширины `width` центрировано на отсчёте (чётная ширина сдвинута
+/// на пол-отсчёта влево), у краёв сигнала обрезается и нормируется на
+/// фактическую длину. Длина входа не меняется, `delay` канала — тоже:
+/// медленный дрейф базовой линии уходит, положение событий сохраняется.
+///
+/// Окно из меньше чем 3 отсчётов не задаёт окрестности: [`Err`] вместо
+/// молчаливого вырожденного сигнала.
+pub fn high_pass(waveform: &[f32], width: usize) -> Result<Vec<f32>, String> {
+    if width < 3 {
+        return Err(format!(
+            "high_pass: window must be at least 3 samples, got {width}"
+        ));
+    }
+    let half = width / 2;
+    Ok(waveform
+        .iter()
+        .enumerate()
+        .map(|(index, &sample)| {
+            let start = index.saturating_sub(half);
+            let end = (start + width).min(waveform.len());
+            sample - waveform[start..end].iter().sum::<f32>() / (end - start) as f32
+        })
+        .collect())
+}
+
 /// Гистограмма всех отсчётов уже материализованных кадров.
 pub fn samples_histogram(frames: &ProcessedPoint, min: f32, max: f32, step: f32) -> PointHistogram {
     let mut histogram = PointHistogram::new_step(min..max, step);
@@ -709,6 +746,38 @@ mod tests {
                 .iter()
                 .all(|value| (*value - (20.0 - 20.25)).abs() < 1e-3)
         );
+    }
+
+    #[test]
+    fn moving_average_matches_right_only_fir() {
+        let waveform: Vec<f32> = (0..32).map(|i| (i * 13 % 7) as f32).collect();
+        assert_eq!(
+            moving_average(&waveform, 8),
+            emulate_fir(&waveform, 8, 0, 0)
+        );
+        assert_eq!(moving_average(&waveform, 1), waveform);
+        assert!(moving_average(&waveform, 0).is_empty());
+    }
+
+    #[test]
+    fn high_pass_removes_drift_and_keeps_events() {
+        // Линейный дрейф базовой линии + дельта-событие.
+        let drift: Vec<f32> = (0..64).map(|i| i as f32 * 0.5).collect();
+        let mut waveform = drift.clone();
+        waveform[40] += 100.0;
+
+        let filtered = high_pass(&waveform, 9).unwrap();
+
+        // Длина сохраняется, в линейной области дрейф даёт ровно ноль,
+        // событие остаётся на месте (ослаблено на долю окна).
+        assert_eq!(filtered.len(), waveform.len());
+        assert_eq!(filtered[20], 0.0);
+        assert!((filtered[40] - 800.0 / 9.0).abs() < 1e-3);
+        // Константный сигнал фильтр гасит целиком, включая края.
+        let flat = vec![5.0f32; 16];
+        assert!(high_pass(&flat, 7).unwrap().iter().all(|v| *v == 0.0));
+        // Узкое окно — ошибка, а не NaN-канал.
+        assert!(high_pass(&waveform, 2).is_err());
     }
 
     #[test]

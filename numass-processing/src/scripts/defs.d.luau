@@ -28,5 +28,7 @@ declare static_params: {
 
 declare host: {
     fir: (channel: Channel, left: number, center: number, right: number) -> (),
+    lpf: (channel: Channel, width: number) -> (),
+    hpf: (channel: Channel, width: number) -> (),
     refresh: (channel: Channel) -> (),
 }
