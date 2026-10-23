@@ -82,6 +82,47 @@ fn step_title(step: &PreprocessStep) -> &'static str {
     }
 }
 
+/// Подсказка шага Script: статический каркас + host-строки из реестра
+/// операций script.rs (`host_hover_lines`) — список функций не
+/// дублируется руками. Собирается один раз.
+fn script_step_hint() -> &'static str {
+    static HINT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    HINT.get_or_init(|| {
+        let mut host = String::from(
+            "  host — функции хоста, работают с буфером канала и сами обновляют снимок:\n",
+        );
+        for line in script::host_hover_lines() {
+            host.push_str("    ");
+            host.push_str(line);
+            host.push('\n');
+        }
+        host.push_str("    host.refresh(channel) — снимок из буфера вручную\n");
+        host.push_str("    как добавить свою — docs/adr/0005-embedded-scripting.md\n");
+        format!(
+            "\
+Скрипт возвращает function(frame: Frame) и меняет кадр на месте:
+отсчёты копируются в таблицы на время вызова и читаются обратно в кадр.
+
+frame = {{ [id канала (0-based)]: channel }}
+  channel.samples — {{number}}, индексация с 1, #samples — длина
+  channel.delay — сдвиг относительно сырого кадра
+  укорачивать можно (samples[#samples] = nil), удлинять — нет
+
+Глобалы:
+  static_params — зеркало StaticPointParams: hv, acquisition_time,
+    frame_len (сек), start_time, bad_blocks; без метаданных точки — nil,
+    правки не возвращаются в Rust
+{host}
+Локалы верхнего уровня — статические: вычисляются один раз при загрузке
+скрипта и живут между кадрами.
+
+Ошибки типизации показываются под редактором; имена static_params/host/channel
+дополняются по Tab (типы — в scripts/defs.d.luau).
+"
+        )
+    })
+}
+
 fn hw_reset_block(ui: &mut egui::Ui, reset: &mut HWResetParams) {
     block(ui, "hw reset detection", |ui| {
         ui.add(egui::Slider::new(&mut reset.window, 0..=100).text("diff window"));
@@ -155,31 +196,7 @@ impl UserInput for PreprocessParams {
                             ui.label(
                                 "Luau: `function(frame: Frame)`; `frame[ch].samples` — отсчёты с индексацией от 1.",
                             )
-                            .on_hover_text(
-                                "\
-Скрипт возвращает function(frame: Frame) и меняет кадр на месте:
-отсчёты копируются в таблицы на время вызова и читаются обратно в кадр.
-
-frame = { [id канала (0-based)]: channel }
-  channel.samples — {number}, индексация с 1, #samples — длина
-  channel.delay — сдвиг относительно сырого кадра
-  укорачивать можно (samples[#samples] = nil), удлинять — нет
-
-Глобалы:
-  static_params — зеркало StaticPointParams: hv, acquisition_time,
-    frame_len (сек), start_time, bad_blocks; без метаданных точки — nil,
-    правки не возвращаются в Rust
-  host — функции хоста, работают с буфером канала и сами обновляют снимок:
-    host.fir(channel, left, center, right) — FIR, аналог PreprocessStep::Fir
-    host.refresh(channel) — снимок из буфера вручную
-
-Локалы верхнего уровня — статические: вычисляются один раз при загрузке
-скрипта и живут между кадрами.
-
-Ошибки типизации показываются под редактором; имена static_params/host/channel
-дополняются по Tab (типы — в scripts/defs.d.luau).
-",
-                            );
+                            .on_hover_text(script_step_hint());
                             let theme = if ui.visuals().dark_mode {
                                 egui_code_editor::ColorTheme::GRUVBOX
                             } else {

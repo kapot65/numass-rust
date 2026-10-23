@@ -18,7 +18,7 @@ use std::cell::RefCell;
 #[cfg(any(feature = "egui", test))]
 use ulua::TypeDiagnostic;
 use ulua::rt::LuaSerdeExt;
-use ulua::{Buffer, Compiler, Function, IntoLua, Lua, Table};
+use ulua::{Buffer, Compiler, FromLuaMulti, Function, IntoLua, Lua, Table};
 
 use crate::preprocess::{ProcessedFrame, ProcessedPoint, StaticPointParams, emulate_fir};
 
@@ -58,6 +58,15 @@ pub(crate) fn set_channel_samples(
 
     let snap: Function = lua.globals().raw_get("__snap_channel")?;
     snap.call::<()>(body.clone())
+}
+
+/// Прибавляет `shift` к полю `delay` тела канала.
+///
+/// Компенсация шагов, укорачивающих сигнал или сдвигающих события
+/// (окно FIR); `read_back` вернёт `delay` в кадр.
+fn add_delay(body: &Table, shift: i64) -> Result<(), ScriptError> {
+    let delay: i64 = body.raw_get("delay")?;
+    body.raw_set("delay", delay + shift)
 }
 
 /// Распаковывает f32 LE из байтов буфера.
@@ -188,39 +197,99 @@ pub(crate) fn check_script(source: &str) -> Vec<TypeDiagnostic> {
 /// [`install`](ScriptHost::install) вызывается один раз при сборке VM.
 /// Реализация регистрирует тяжёлую математику, свёртки, отрисовку графиков
 /// и прочие операции, которые не выражаются циклом Luau. Сам шаг про имена
-/// этих функций ничего не знает.
+/// этих функций ничего не знает. Как добавить функцию —
+/// [ADR 0005](../../docs/adr/0005-embedded-scripting.md) (рецепт, контракт, грабли).
 pub trait ScriptHost {
     fn install(&self, lua: &Lua, host: &Table) -> Result<(), ScriptError>;
 }
 
 /// Хост шага предобработки.
 ///
-/// Не хранит состояния: таблица `host` принадлежит одной VM.
+/// Не хранит состояния: таблица `host` принадлежит одной VM. Состав задаётся
+/// реестром [`preprocess_host_ops`]: одна операция — один блок [`ChannelOp`]
+/// плюс строка в списке.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PreprocessHost;
 
-impl ScriptHost for PreprocessHost {
-    fn install(&self, lua: &Lua, host: &Table) -> Result<(), ScriptError> {
-        // FIR над скрытым буфером канала: Table -> to_vec -> emulate_fir ->
-        // новый буфер -> обновление снимка. Скрипт передаёт тело канала
-        // (`frame[ch]`), окно задаётся как в `PreprocessStep::Fir`.
-        host.set(
-            "fir",
-            lua.create_function(|lua, (body, left, center, right): (Table, u16, u16, u16)| {
-                let samples = channel_samples(&body)?;
-                let filtered =
-                    emulate_fir(&samples, right as usize, center as usize, left as usize);
-                set_channel_samples(lua, &body, &filtered)?;
+/// Канальная host-операция реестра [`PreprocessHost`]: имя, параметры и
+/// правило `delay` — одним блоком рядом с математикой.
+///
+/// `run` получает отсчёты целиком (копия скрытого буфера), скелетон
+/// «буфер → математика → буфер + снимок» общий — [`register_channel_op`].
+/// Некорректные параметры — `Err(String)` с именем и ограничением: сообщение
+/// станет runtime-ошибкой Luau. Hover-подсказка задаётся строкой в списке
+/// [`preprocess_host_ops`].
+trait ChannelOp {
+    /// Имя в таблице `host`.
+    const NAME: &'static str;
+    /// Параметры после канала: кортеж `u16` (конвенция `host.fir`).
+    type Args: FromLuaMulti;
+    fn run(samples: &[f32], args: &Self::Args) -> Result<Vec<f32>, String>;
+    /// Сдвиг `delay` канала после операции; 0 — не менять.
+    fn delay_shift(args: &Self::Args) -> i64;
+}
 
-                // `emulate_fir` укорачивает сигнал на `width - 1` отсчётов.
-                let width = usize::from(left + center + right);
-                let delay: i64 = body.raw_get("delay")?;
-                body.raw_set("delay", delay + width as i64)?;
-                Ok(())
-            })?,
-        )?;
-        Ok(())
+/// Скелетон регистрации: буфер → математика → буфер + снимок → `delay`.
+fn register_channel_op<Op: ChannelOp + 'static>(
+    lua: &Lua,
+    host: &Table,
+) -> Result<(), ScriptError> {
+    host.set(
+        Op::NAME,
+        lua.create_function(|lua, (body, args): (Table, Op::Args)| {
+            let samples = channel_samples(&body)?;
+            let filtered = Op::run(&samples, &args).map_err(ScriptError::RuntimeError)?;
+            set_channel_samples(lua, &body, &filtered)?;
+            let shift = Op::delay_shift(&args);
+            if shift != 0 {
+                add_delay(&body, shift)?;
+            }
+            Ok(())
+        })?,
+    )
+}
+
+/// FIR с окном `left × center × right` — аналог `PreprocessStep::Fir`;
+/// `emulate_fir` укорачивает сигнал на `width - 1` отсчётов.
+struct FirOp;
+impl ChannelOp for FirOp {
+    const NAME: &'static str = "fir";
+    type Args = (u16, u16, u16);
+    fn run(samples: &[f32], &(left, center, right): &Self::Args) -> Result<Vec<f32>, String> {
+        Ok(emulate_fir(
+            samples,
+            usize::from(right),
+            usize::from(center),
+            usize::from(left),
+        ))
     }
+    fn delay_shift(&(left, center, right): &Self::Args) -> i64 {
+        i64::from(left + center + right)
+    }
+}
+
+/// Реестр [`PreprocessHost`]: единственный список операций — из него
+/// генерируются `install` и hover-подсказки редактора, рассинхрон
+/// невозможен. Операция вне схемы «канал → канал» (например, FFT со
+/// спектром на выходе) регистрируется в `install` вручную через `host.set`.
+macro_rules! preprocess_host_ops {
+    ($($op:ident => $hover:literal),* $(,)?) => {
+        impl ScriptHost for PreprocessHost {
+            fn install(&self, lua: &Lua, host: &Table) -> Result<(), ScriptError> {
+                $( register_channel_op::<$op>(lua, host)?; )*
+                Ok(())
+            }
+        }
+
+        /// Hover-строки host-функций для подсказки редактора (widgets.rs).
+        #[cfg(any(feature = "egui", test))]
+        pub(crate) fn host_hover_lines() -> &'static [&'static str] {
+            &[ $($hover,)* ]
+        }
+    };
+}
+preprocess_host_ops! {
+    FirOp => "host.fir(channel, left, center, right) — FIR, аналог PreprocessStep::Fir",
 }
 
 /// Канал одного кадра: таблицы и скрытый буфер, переиспользуемые между кадрами.
@@ -415,6 +484,46 @@ mod tests {
     use super::*;
     use crate::preprocess::{AVERAGE_SCRIPT, ChannelSamples};
 
+    /// Ключи таблицы как отсортированное множество (сверки defs/hover).
+    fn table_keys(table: &Table) -> BTreeSet<String> {
+        let mut keys = BTreeSet::new();
+        table
+            .for_each::<String, ulua::Value>(|key, _| {
+                keys.insert(key);
+                Ok(())
+            })
+            .unwrap();
+        keys
+    }
+
+    /// Прогоняет `source` на кадре с одним каналом №0 и возвращает канал.
+    ///
+    /// Сжимает общий тест-бойлерплейт; многокадровые/пустые/кастомные
+    /// сценарии остаются в тестах развёрнутыми. Ошибка `apply` — наружу
+    /// (тесты на `RuntimeError`), ошибка компиляции — паника.
+    fn run_script(
+        source: &str,
+        host: &dyn ScriptHost,
+        samples: Vec<f32>,
+        delay: usize,
+    ) -> Result<ChannelSamples, ScriptError> {
+        let runtime = ScriptRuntime::compile(source, host).unwrap();
+        let mut frames = BTreeMap::from([(
+            0u64,
+            BTreeMap::from([(0u8, ChannelSamples { samples, delay })]),
+        )]);
+        runtime.apply(&mut frames, None)?;
+        Ok(frames
+            .into_iter()
+            .next()
+            .unwrap()
+            .1
+            .into_iter()
+            .next()
+            .unwrap()
+            .1)
+    }
+
     /// Пользовательский хост регистрируется при сборке VM и доступен
     /// во всех кадрах одного рантайма.
     #[test]
@@ -444,7 +553,7 @@ mod tests {
             calls: Rc::new(Cell::new(0)),
         };
         let runtime = ScriptRuntime::compile(
-            include_str!("scripts/tests/host_is_installed_once_per_vm.luau"),
+            include_str!("scripts/tests/custom_hosts/host_is_installed_once_per_vm.luau"),
             &host,
         )
         .unwrap();
@@ -469,30 +578,19 @@ mod tests {
     /// обновляет снимок сам, без ручного `refresh`.
     #[test]
     fn host_fir_refreshes_snapshot() {
-        let runtime = ScriptRuntime::compile(
+        let samples: Vec<f32> = (0..16).map(|i| i as f32).collect();
+        let channel = run_script(
             include_str!("scripts/tests/host_fir_refreshes_snapshot.luau"),
             &PreprocessHost,
+            samples.clone(),
+            0,
         )
         .unwrap();
-
-        let samples: Vec<f32> = (0..16).map(|i| i as f32).collect();
-        let mut frames = BTreeMap::from([(
-            0u64,
-            BTreeMap::from([(
-                0u8,
-                ChannelSamples {
-                    samples: samples.clone(),
-                    delay: 0,
-                },
-            )]),
-        )]);
-        runtime.apply(&mut frames, None).unwrap();
 
         let expected: Vec<f32> = emulate_fir(&samples, 1, 0, 1)
             .iter()
             .map(|v| v * 2.0)
             .collect();
-        let channel = &frames[&0][&0];
         assert_eq!(channel.samples, expected);
         // `host.fir` увеличивает delay на ширину окна, как `PreprocessStep::Fir`.
         assert_eq!(channel.delay, 2);
@@ -501,28 +599,16 @@ mod tests {
     /// `host.fir` без последующих правок даёт те же числа, что нативный FIR.
     #[test]
     fn host_fir_matches_native_fir() {
-        let runtime = ScriptRuntime::compile(
+        let samples: Vec<f32> = (0..64).map(|i| (i * 7 % 23) as f32 - 11.0).collect();
+        let channel = run_script(
             include_str!("scripts/tests/host_fir_matches_native_fir.luau"),
             &PreprocessHost,
+            samples.clone(),
+            3,
         )
         .unwrap();
 
-        let samples: Vec<f32> = (0..64).map(|i| (i * 7 % 23) as f32 - 11.0).collect();
-        let mut frames = BTreeMap::from([(
-            0u64,
-            BTreeMap::from([(
-                0u8,
-                ChannelSamples {
-                    samples: samples.clone(),
-                    delay: 3,
-                },
-            )]),
-        )]);
-        runtime.apply(&mut frames, None).unwrap();
-
-        let expected = emulate_fir(&samples, 6, 15, 6);
-        let channel = &frames[&0][&0];
-        assert_eq!(channel.samples, expected);
+        assert_eq!(channel.samples, emulate_fir(&samples, 6, 15, 6));
         assert_eq!(channel.delay, 3 + 27);
     }
 
@@ -579,25 +665,15 @@ mod tests {
     /// `read_back` возвращает укороченный кадр.
     #[test]
     fn script_can_trim_channel() {
-        let runtime = ScriptRuntime::compile(
+        let channel = run_script(
             include_str!("scripts/tests/script_can_trim_channel.luau"),
             &PreprocessHost,
+            vec![1.0, 2.0, 3.0],
+            0,
         )
         .unwrap();
 
-        let mut frames = BTreeMap::from([(
-            0u64,
-            BTreeMap::from([(
-                0u8,
-                ChannelSamples {
-                    samples: vec![1.0, 2.0, 3.0],
-                    delay: 0,
-                },
-            )]),
-        )]);
-        runtime.apply(&mut frames, None).unwrap();
-
-        assert_eq!(frames[&0][&0].samples, vec![1.0, 2.0]);
+        assert_eq!(channel.samples, vec![1.0, 2.0]);
     }
 
     /// `host.refresh` вручную подтягивает буфер в снимок — для host-функций,
@@ -625,25 +701,15 @@ mod tests {
             }
         }
 
-        let runtime = ScriptRuntime::compile(
-            include_str!("scripts/tests/host_refresh_updates_snapshot.luau"),
+        let channel = run_script(
+            include_str!("scripts/tests/custom_hosts/host_refresh_updates_snapshot.luau"),
             &RawHost,
+            vec![1.0, 2.0],
+            0,
         )
         .unwrap();
 
-        let mut frames = BTreeMap::from([(
-            0u64,
-            BTreeMap::from([(
-                0u8,
-                ChannelSamples {
-                    samples: vec![1.0, 2.0],
-                    delay: 0,
-                },
-            )]),
-        )]);
-        runtime.apply(&mut frames, None).unwrap();
-
-        assert_eq!(frames[&0][&0].samples, vec![102.0, 4.0]);
+        assert_eq!(channel.samples, vec![102.0, 4.0]);
     }
 
     /// Пустой кадр: скрипт получает пустую таблицу, шаг не падает.
@@ -750,16 +816,9 @@ mod tests {
                 .unwrap();
         }
 
-        let mut registered = BTreeSet::new();
-        host.for_each::<String, ulua::Value>(|key, _| {
-            registered.insert(key);
-            Ok(())
-        })
-        .unwrap();
-
         let declared = parse_defs(SCRIPT_DEFS).members_of("host");
         assert_eq!(
-            registered,
+            table_keys(&host),
             declared.into_iter().collect::<BTreeSet<String>>()
         );
     }
@@ -782,51 +841,68 @@ mod tests {
         let point = lua.to_value(&sample).unwrap();
         let table = point.as_table().unwrap();
 
-        let mut serialized = BTreeSet::new();
-        table
-            .for_each::<String, ulua::Value>(|key, _| {
-                serialized.insert(key);
-                Ok(())
-            })
-            .unwrap();
-
         let declared = parse_defs(SCRIPT_DEFS).members_of("static_params");
         assert_eq!(
-            serialized,
+            table_keys(table),
             declared.into_iter().collect::<BTreeSet<String>>()
         );
     }
 
-    /// Прелюдия и тестовые скрипты, использующие только объявленный в
-    /// SCRIPT_DEFS API, проходят тайпчек — аннотации в .luau-файлах валидны.
-    /// Скрипты с незадекларированными host-функциями (`host.mark`,
-    /// `host.double`) не проверяются: они вне definitions по построению.
+    /// Hover-строки реестра — по одной на каждую зарегистрированную
+    /// операцию, без опечаток: имя извлекается из `host.<имя>(`.
+    /// `refresh` ставит прелюдия, его строка в widgets.rs статическая.
+    #[test]
+    fn hover_lines_cover_registered_ops() {
+        let lua = Lua::new();
+        let host = lua.create_table();
+        PreprocessHost.install(&lua, &host).unwrap();
+        let mut registered = table_keys(&host);
+        registered.remove("refresh");
+
+        let mut hovered = BTreeSet::new();
+        for line in host_hover_lines() {
+            let rest = line
+                .strip_prefix("host.")
+                .unwrap_or_else(|| panic!("hover без префикса `host.`: {line}"));
+            let name = rest.split('(').next().unwrap();
+            assert!(hovered.insert(name.to_owned()), "дубль hover: {line}");
+        }
+        assert_eq!(hovered, registered);
+    }
+
+    /// Прелюдия и все .luau-скрипты `src/scripts` (кроме `defs.d.luau` —
+    /// это definitions, не скрипт) и `src/scripts/tests` проходят тайпчек
+    /// против [`SCRIPT_DEFS`]: каталоги сканируются, ручного списка нет —
+    /// новый .luau попадает в проверку автоматически. Скрипты кастомных
+    /// хостов (`host.mark`, `host.double`) живут в `scripts/tests/custom_hosts`:
+    /// их функции вне defs по построению.
     #[test]
     fn embedded_scripts_typecheck() {
-        for (name, source) in [
-            ("prelude", PRELUDE),
-            (
-                "host_fir_refreshes_snapshot",
-                include_str!("scripts/tests/host_fir_refreshes_snapshot.luau"),
-            ),
-            (
-                "host_fir_matches_native_fir",
-                include_str!("scripts/tests/host_fir_matches_native_fir.luau"),
-            ),
-            (
-                "channel_length_change_between_points",
-                include_str!("scripts/tests/channel_length_change_between_points.luau"),
-            ),
-            (
-                "script_can_trim_channel",
-                include_str!("scripts/tests/script_can_trim_channel.luau"),
-            ),
-            (
-                "empty_frame_is_passed_through",
-                include_str!("scripts/tests/empty_frame_is_passed_through.luau"),
-            ),
-        ] {
-            let diags = check_script(source);
+        let base = concat!(env!("CARGO_MANIFEST_DIR"), "/src/scripts");
+        let base = std::path::Path::new(base);
+        let mut scripts: Vec<(String, String)> = std::fs::read_dir(base)
+            .unwrap()
+            .chain(std::fs::read_dir(base.join("tests")).unwrap())
+            .filter_map(|entry| {
+                let path = entry.unwrap().path();
+                // Только файлы верхнего уровня двух каталогов: подкаталоги
+                // (custom_hosts) и прочие файлы в проверку не попадают.
+                // `defs.d.luau` — definitions, не скрипт.
+                if path.extension().is_some_and(|ext| ext == "luau")
+                    && path.file_stem().unwrap() != "defs.d"
+                {
+                    let name = path.file_stem().unwrap().to_string_lossy().into_owned();
+                    Some((name, std::fs::read_to_string(&path).unwrap()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert!(!scripts.is_empty(), "скрипты не найдены");
+        scripts.sort();
+
+        for (name, source) in scripts {
+            let diags = check_script(&source);
             assert!(
                 diags.is_empty(),
                 "{name}: unexpected diagnostics: {diags:?}"
