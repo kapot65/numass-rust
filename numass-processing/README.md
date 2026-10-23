@@ -6,9 +6,14 @@ This repository contains common numass processing algorithms used in 2022_12 run
 
 Модуль `numass_processing` собирается фичей `python` (вместе с ней включается `polars`).
 
+Python-пакеты этого репозитория — один uv-workspace в корне. Окружение одно: `./.venv`. `numass-analysis` берёт этот каталог как член воркспейса, не с PyPI.
+
 ```shell
-maturin develop --manifest-path numass-processing/Cargo.toml
+uv sync --package numass-analysis
+uv run --package numass-analysis python -c 'import numass_processing'
 ```
+
+После правки Rust достаточно снова запустить `uv run` или `uv sync`: ключ пересборки — `pyproject.toml`, `Cargo.toml` и `src/**/*.rs`. Import сам расширение не пересобирает. Не запускать `maturin develop` в отдельное `.venv` внутри этого каталога.
 
 Стабы генерируются отдельным шагом; сгенерированный `numass_processing.pyi` автоматически правится `ruff check --fix` (если `ruff` нет в `PATH`, используется `uvx ruff`).
 
@@ -33,10 +38,10 @@ uv tool install '.[root]'
 
 `uv tool install` не принимает `--extra`: extra задаётся как `.[root]`. Повторная установка после правок: `uv tool install --force '.[root]'`. Команда попадает в `PATH` как `convert-to-root`.
 
-Без глобальной установки, из каталога пакета:
+Без глобальной установки, из корня воркспейса:
 
 ```shell
-uv run --extra root python convert-to-root.py /path/to/point -o point.root
+uv run --package numass-processing --extra root python numass-processing/convert-to-root.py /path/to/point -o point.root
 ```
 
 Вызов:

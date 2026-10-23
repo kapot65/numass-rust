@@ -5,6 +5,12 @@
 AGENTS.md
 TODO.md
 
+# --- Python / uv ---
+.venv/
+.ruff_cache/
+__pycache__/
+*.egg-info/
+
 # --- Build artifacts ---
 target/
 target-*/
