@@ -24,7 +24,7 @@ use crate::{
     },
     postprocess::PostProcessParams,
     preprocess::{
-        PreprocessParams, ProcessedFrame, ProcessedPoint, StaticPointParams, apply_waveforms,
+        PreprocessParams, ProcessedFrame, ProcessedPoint, StaticPointParams, apply_waveforms_with,
         extract_waveforms,
     },
     types::{FrameEvent, NumassEvent, NumassEvents, NumassFrameFast, NumassWaveformsFast, TICK_NS},
@@ -280,7 +280,7 @@ pub fn extract_events(
 ) -> (NumassEvents, StaticPointParams) {
     let meta_params = StaticPointParams::from_point(meta, &point);
     let raw = extract_waveforms(&point);
-    let processed = apply_waveforms(&raw, &preprocess.steps);
+    let processed = apply_waveforms_with(&raw, &preprocess.steps, Some(&meta_params));
     (extract_processed(&processed, &raw, process), meta_params)
 }
 

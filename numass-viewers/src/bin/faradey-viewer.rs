@@ -442,11 +442,12 @@ impl Default for FaradeyViewerApp {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl eframe::App for FaradeyViewerApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
         ctx.request_repaint_after(std::time::Duration::from_secs(1));
 
-        egui::SidePanel::left("left").show(ctx, |ui| {
-            egui::TopBottomPanel::bottom("version").show_inside(ui, |ui| {
+        egui::Panel::left("left").show(ui, |ui| {
+            egui::Panel::bottom("version").show(ui, |ui| {
                 numass_viewers::version_label(ui);
             });
 
@@ -455,7 +456,7 @@ impl eframe::App for FaradeyViewerApp {
             self.files_editor(ui);
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             let state = self.state.lock();
 
             let mut left_border = 0.0;
@@ -466,11 +467,7 @@ impl eframe::App for FaradeyViewerApp {
                 .filter(|(_, cache)| cache.opened)
                 .collect::<Vec<_>>();
 
-            let height = {
-                let mut y = 0.0;
-                ctx.input(|i| y = i.screen_rect().height());
-                y
-            };
+            let height = ctx.viewport_rect().height();
             match self.plot_mode {
                 PlotMode::Lines => {
                     let plot = Plot::new("Lines Plot")

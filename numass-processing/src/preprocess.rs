@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     histogram::PointHistogram,
+    script::{PreprocessHost, ScriptRuntime},
     types::{
         NumassFrameFast, NumassWaveforms, NumassWaveformsFast, Time, bin_time, nanoseconds, time_ns,
     },
@@ -203,7 +204,20 @@ pub enum PreprocessStep {
     /// Слить вейвформы всех каналов кадра в одну: отсчёты складываются
     /// бин за бин. Итог остаётся под номером наименьшего канала кадра.
     Merge {},
+    /// Luau-скрипт. Мутирует тот же кадр, что FIR и baseline.
+    ///
+    /// Скрипт возвращает `function(frame)`. На время вызова доступны
+    /// глобалы `static_params` (таблица `StaticPointParams` или `nil`, если
+    /// метаданных нет) и `host` (таблица функций хоста `ScriptHost`).
+    /// Формат кадра описан в `AVERAGE_SCRIPT`.
+    Script { source: String },
 }
+
+/// Текст скрипта для шага [`PreprocessStep::Script`] — аналог
+/// [`PreprocessParams::average`]. Формат кадра и глобалы
+/// `static_params`/`host` описаны в подсказке редактора скриптов
+/// (widgets.rs) и в `scripts/defs.d.luau`.
+pub const AVERAGE_SCRIPT: &str = include_str!("scripts/average.luau");
 
 /// Упорядоченный список шагов waveform → waveform.
 #[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyclass)]
@@ -283,22 +297,37 @@ pub type ProcessedFrame = BTreeMap<u8, ChannelSamples>;
 pub type ProcessedPoint = BTreeMap<u64, ProcessedFrame>;
 
 /// Материализует сырые кадры в `f32` и проводит каждый шаг ровно один раз.
+///
+/// Скриптовый шаг видит `point == nil`. Для прогона с метаданными —
+/// [`apply_waveforms_with`].
 pub fn apply_waveforms(
     waveforms: &NumassWaveformsFast<'_>,
     steps: &[PreprocessStep],
+) -> ProcessedPoint {
+    apply_waveforms_with(waveforms, steps, None)
+}
+
+/// Как [`apply_waveforms`], но скрипт получает параметры точки.
+///
+/// Точка раскладывается в таблицу один раз на прогон, не на кадр.
+pub fn apply_waveforms_with(
+    waveforms: &NumassWaveformsFast<'_>,
+    steps: &[PreprocessStep],
+    point: Option<&StaticPointParams>,
 ) -> ProcessedPoint {
     let mut buffers = waveforms
         .iter()
         .map(|(time, frame)| (*time, materialize(frame)))
         .collect::<ProcessedPoint>();
-    apply_steps(&mut buffers, steps);
+    apply_steps(&mut buffers, steps, point);
     buffers
 }
 
 /// Та же цепочка на одном кадре. `Baseline::Point` видит только этот кадр.
+/// Скрипт видит `point == nil`.
 pub fn apply_frame(frame: &NumassFrameFast<'_>, steps: &[PreprocessStep]) -> ProcessedFrame {
     let mut buffers = BTreeMap::from([(0, materialize(frame))]);
-    apply_steps(&mut buffers, steps);
+    apply_steps(&mut buffers, steps, None);
     buffers.remove(&0).unwrap()
 }
 
@@ -317,13 +346,21 @@ fn materialize(frame: &NumassFrameFast<'_>) -> ProcessedFrame {
         .collect()
 }
 
-fn apply_steps(buffers: &mut ProcessedPoint, steps: &[PreprocessStep]) {
+fn apply_steps(
+    buffers: &mut ProcessedPoint,
+    steps: &[PreprocessStep],
+    point: Option<&StaticPointParams>,
+) {
     for step in steps {
-        apply_step(buffers, step);
+        apply_step(buffers, step, point);
     }
 }
 
-fn apply_step(buffers: &mut ProcessedPoint, step: &PreprocessStep) {
+fn apply_step(
+    buffers: &mut ProcessedPoint,
+    step: &PreprocessStep,
+    point: Option<&StaticPointParams>,
+) {
     match step {
         PreprocessStep::Fir {
             left,
@@ -386,6 +423,16 @@ fn apply_step(buffers: &mut ProcessedPoint, step: &PreprocessStep) {
                 merge_frame(frame);
             }
         }
+        // VM создаётся на один вызов шага и остаётся в текущем потоке.
+        // Хост не хранит состояния, поэтому синхронизация между точками
+        // не требуется.
+        PreprocessStep::Script { source } => {
+            let runtime = ScriptRuntime::compile(source, &PreprocessHost)
+                .unwrap_or_else(|err| panic!("preprocess script: {err}"));
+            runtime
+                .apply(buffers, point)
+                .unwrap_or_else(|err| panic!("preprocess script: {err}"));
+        }
     }
 }
 
@@ -439,6 +486,43 @@ pub fn emulate_fir(waveform: &[f32], right: usize, center: usize, left: usize) -
             (right_sum - left_sum) / (left + right) as f32
         })
         .collect()
+}
+
+/// Скользящее среднее ширины `width` — фильтр низких частот.
+///
+/// Причинное окно `[i, i + width)` — то же, что [`emulate_fir`] с окном
+/// только справа (`right = width`): выход короче входа на `width - 1`
+/// отсчётов, `delay` канала растёт на `width`. Вырожденные ширины наследуют
+/// семантику FIR: `width <= 1` — тождество, `width == 0` — пустой канал.
+pub fn moving_average(waveform: &[f32], width: usize) -> Vec<f32> {
+    emulate_fir(waveform, width, 0, 0)
+}
+
+/// Фильтр высоких частот: отсчёт минус среднее по его окрестности.
+///
+/// Окно ширины `width` центрировано на отсчёте (чётная ширина сдвинута
+/// на пол-отсчёта влево), у краёв сигнала обрезается и нормируется на
+/// фактическую длину. Длина входа не меняется, `delay` канала — тоже:
+/// медленный дрейф базовой линии уходит, положение событий сохраняется.
+///
+/// Окно из меньше чем 3 отсчётов не задаёт окрестности: [`Err`] вместо
+/// молчаливого вырожденного сигнала.
+pub fn high_pass(waveform: &[f32], width: usize) -> Result<Vec<f32>, String> {
+    if width < 3 {
+        return Err(format!(
+            "high_pass: window must be at least 3 samples, got {width}"
+        ));
+    }
+    let half = width / 2;
+    Ok(waveform
+        .iter()
+        .enumerate()
+        .map(|(index, &sample)| {
+            let start = index.saturating_sub(half);
+            let end = (start + width).min(waveform.len());
+            sample - waveform[start..end].iter().sum::<f32>() / (end - start) as f32
+        })
+        .collect())
 }
 
 /// Гистограмма всех отсчётов уже материализованных кадров.
@@ -665,6 +749,38 @@ mod tests {
     }
 
     #[test]
+    fn moving_average_matches_right_only_fir() {
+        let waveform: Vec<f32> = (0..32).map(|i| (i * 13 % 7) as f32).collect();
+        assert_eq!(
+            moving_average(&waveform, 8),
+            emulate_fir(&waveform, 8, 0, 0)
+        );
+        assert_eq!(moving_average(&waveform, 1), waveform);
+        assert!(moving_average(&waveform, 0).is_empty());
+    }
+
+    #[test]
+    fn high_pass_removes_drift_and_keeps_events() {
+        // Линейный дрейф базовой линии + дельта-событие.
+        let drift: Vec<f32> = (0..64).map(|i| i as f32 * 0.5).collect();
+        let mut waveform = drift.clone();
+        waveform[40] += 100.0;
+
+        let filtered = high_pass(&waveform, 9).unwrap();
+
+        // Длина сохраняется, в линейной области дрейф даёт ровно ноль,
+        // событие остаётся на месте (ослаблено на долю окна).
+        assert_eq!(filtered.len(), waveform.len());
+        assert_eq!(filtered[20], 0.0);
+        assert!((filtered[40] - 800.0 / 9.0).abs() < 1e-3);
+        // Константный сигнал фильтр гасит целиком, включая края.
+        let flat = vec![5.0f32; 16];
+        assert!(high_pass(&flat, 7).unwrap().iter().all(|v| *v == 0.0));
+        // Узкое окно — ошибка, а не NaN-канал.
+        assert!(high_pass(&waveform, 2).is_err());
+    }
+
+    #[test]
     fn merge_sums_channels_binwise() {
         let first = [1i16, 2, 3];
         let second = [10i16, 20, 30];
@@ -705,5 +821,65 @@ mod tests {
                 .iter()
                 .all(|value| (*value - 40.0).abs() < 1e-4)
         );
+    }
+
+    #[test]
+    fn script_matches_head_then_invert() {
+        let mut waveform = vec![100i16; 30];
+        waveform.extend([80i16; 10]);
+        let frame = BTreeMap::from([(0u8, waveform.as_slice())]);
+        let waveforms = BTreeMap::from([(0u64, frame)]);
+
+        let scripted = apply_waveforms(
+            &waveforms,
+            &[PreprocessStep::Script {
+                source: AVERAGE_SCRIPT.to_owned(),
+            }],
+        );
+        let builtin = apply_waveforms(&waveforms, &PreprocessParams::average().steps);
+
+        assert_eq!(scripted[&0][&0].samples, builtin[&0][&0].samples);
+        assert_eq!(scripted[&0][&0].delay, builtin[&0][&0].delay);
+    }
+
+    #[test]
+    fn script_sees_static_params_and_writes_back_frame() {
+        use crate::types::second;
+
+        let waveform = [1i16, 2, 3, 4];
+        let frame = BTreeMap::from([(1u8, waveform.as_slice())]);
+        let waveforms = BTreeMap::from([(7u64, frame)]);
+        let mut bad_blocks = BTreeSet::new();
+        bad_blocks.insert(3);
+        let point = StaticPointParams {
+            hv: 14_000.0,
+            start_time: chrono::DateTime::from_timestamp(0, 0).unwrap().naive_utc(),
+            acquisition_time: Time::new::<second>(20.0),
+            frame_len: bin_time(4),
+            bad_blocks,
+        };
+        // `static_params` — обычная таблица, собранная один раз на вызов. Тест
+        // проверяет её поля и запись в отсчёты канала.
+        let source = r#"
+            return function(frame)
+                assert(static_params.hv == 14000)
+                assert(static_params.acquisition_time == 20)
+                assert(static_params.bad_blocks[1] == 3)
+                local channel = frame[1]
+                channel.samples[1] = static_params.hv
+            end
+        "#;
+
+        let processed = apply_waveforms_with(
+            &waveforms,
+            &[PreprocessStep::Script {
+                source: source.to_owned(),
+            }],
+            Some(&point),
+        );
+
+        let samples = &processed[&7][&1].samples;
+        assert_eq!(samples[0], 14_000.0);
+        assert_eq!(&samples[1..], &[2.0, 3.0, 4.0]);
     }
 }

@@ -845,27 +845,28 @@ impl Default for DataViewerApp {
 }
 
 impl eframe::App for DataViewerApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
         ctx.set_visuals(Visuals::dark());
 
         ctx.request_repaint_after(std::time::Duration::from_secs(1));
 
-        egui::SidePanel::left("left").show(ctx, |ui| {
-            egui::TopBottomPanel::bottom("version").show_inside(ui, |ui| {
+        egui::Panel::left("left").show(ui, |ui| {
+            egui::Panel::bottom("version").show(ui, |ui| {
                 crate::version_label(ui);
             });
 
-            self.params_editor(ui, ctx);
+            self.params_editor(ui, &ctx);
 
             ui.separator();
 
             self.files_editor(ui);
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             let state = self.state.lock();
 
-            let thickness = if ctx.style().visuals.dark_mode {
+            let thickness = if ctx.global_style().visuals.dark_mode {
                 1.0
             } else {
                 2.0
@@ -880,11 +881,7 @@ impl eframe::App for DataViewerApp {
                 .collect::<Vec<_>>();
 
             #[cfg(not(target_arch = "wasm32"))]
-            let height = {
-                let mut y = 0.0;
-                ctx.input(|i| y = i.screen_rect().height());
-                y
-            };
+            let height = ctx.viewport_rect().height();
             #[cfg(target_arch = "wasm32")]
             let height = window().unwrap().inner_height().unwrap().as_f64().unwrap() as f32;
 

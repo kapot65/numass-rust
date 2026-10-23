@@ -192,7 +192,8 @@ impl BundleViewer {
 // TODO: add visualization for resets, overflows
 impl eframe::App for BundleViewer {
     #[allow(unused_variables)]
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
         ctx.set_visuals(Visuals::dark());
 
         if let Some(data) = &*self.data.lock() {
@@ -209,20 +210,20 @@ impl eframe::App for BundleViewer {
             });
         }
 
-        eframe::egui::SidePanel::left("parameters").show(ctx, |ui| {
-            eframe::egui::TopBottomPanel::bottom("version").show_inside(ui, |ui| {
+        eframe::egui::Panel::left("parameters").show(ui, |ui| {
+            eframe::egui::Panel::bottom("version").show(ui, |ui| {
                 crate::version_label(ui);
             });
 
-            self.preprocess = self.preprocess.input(ui, ctx);
+            self.preprocess = self.preprocess.input(ui, &ctx);
 
             ui.separator();
 
-            self.process = self.process.input(ui, ctx);
+            self.process = self.process.input(ui, &ctx);
 
             ui.separator();
 
-            self.post_process = self.post_process.input(ui, ctx);
+            self.post_process = self.post_process.input(ui, &ctx);
 
             ui.separator();
 
@@ -253,15 +254,11 @@ impl eframe::App for BundleViewer {
             }
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             if let Some(data) = &*self.data.lock() {
                 let chunks = &data.chunks;
                 #[cfg(not(target_arch = "wasm32"))]
-                let width = {
-                    let mut x = 0.0;
-                    ctx.input(|i| x = i.screen_rect().width());
-                    x
-                };
+                let width = ctx.viewport_rect().width();
                 #[cfg(target_arch = "wasm32")]
                 let width = eframe::web_sys::window()
                     .unwrap()

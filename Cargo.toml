@@ -25,7 +25,7 @@ numass = { path = "dataforge-parser-numass" }
 numass_processing = { package = "numass-processing", path = "numass-processing" }
 numass_tqdc = { package = "numass-tqdc", path = "tqdc-controller-rust/tqdc" }
 # numass_tqdc_apps = { path = "tqdc-controller-rust/apps" }
-eframe = "0.31.1"
+eframe = "0.36"
 clap = { version = "4.0.26", features = ["derive"] }
 protobuf = "3.7.1"
 serde = { version = "1.0.163", features = ["derive"] }

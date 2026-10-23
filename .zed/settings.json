@@ -1,24 +1,51 @@
+// Настройки Luau LSP для скриптов встраиваемого движка
+// (numass-processing/src/scripts).
+//
+// Definitions-файл регистрируется явно: суффикс `.d.luau` сам по себе для
+// luau-lsp недостаточен — definition-синтаксис (`declare`) парсится только
+// для файлов из этого списка. Относительные пути zed-luau разрешает от корня
+// worktree.
 {
-    "lsp": {
-        "rust-analyzer": {
-            "initialization_options": {
-                "check": {
-                    "command": "clippy",
-                    "workspace": true
-                },
-                "diagnostics": {
-                    "styleLints": {
-                        "enable": true
-                    }
-                }
-            }
+  "lsp": {
+    "rust-analyzer": {
+      "initialization_options": {
+        "check": {
+          "command": "clippy",
+          "workspace": true
         },
-        "yaml-language-server": {
-            "settings": {
-                "yaml": {
-                    "customTags": ["!Trapezoid mapping", "!FirstPeak mapping"]
-                }
-            }
+        "diagnostics": {
+          "styleLints": {
+            "enable": true
+          }
         }
+      }
+    },
+    "yaml-language-server": {
+      "settings": {
+        "yaml": {
+          "customTags": ["!Trapezoid mapping", "!FirstPeak mapping"]
+        }
+      }
+    },
+    "luau-lsp": {
+      "settings": {
+        "luau-lsp": {
+          // Не Rojo-проект: sourcemap не нужен и генерирует ошибку загрузки.
+          "sourcemap": {
+            "enabled": false
+          },
+          "types": {
+            "definitionFiles": [
+              "numass-processing/src/scripts/defs.d.luau"
+            ]
+          },
+          // Тестовые скрипты используют незадекларированные host-функции
+          // (host.mark, host.double) — это фикстуры, а не пользовательский API.
+          "ignoreGlobs": [
+            "**/scripts/tests/*.luau"
+          ]
+        }
+      }
     }
+  }
 }

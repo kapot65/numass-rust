@@ -18,9 +18,10 @@ serde_json = "1.0.91"
 serde_qs = "0.13.0"
 numass = { workspace = true }
 
-egui = { version = "0.31.1", optional = true }
-egui_plot = { version = "0.32.1", optional = true }
-egui_extras = { version =  "0.31.1", features = ["image", "svg"], optional = true }
+egui = { version = "0.36", optional = true }
+egui_plot = { version = "0.37", optional = true }
+egui_extras = { version = "0.36", features = ["image", "svg"], optional = true }
+egui_code_editor = { version = "0.4.2", optional = true }
 plotly = { version = "0.8.3", optional = true }
 rgb_hsv = { version = "1.0.1", optional = true }
 clap = { version = "4", features = ["derive"], optional = true }
@@ -34,10 +35,13 @@ pyo3-stub-gen-derive = { version = "0.23.1", optional = true }
 
 protobuf = "3.2.0"
 uom = { version = "0.38.0", default-features = false, features = ["autoconvert", "f64", "si", "std", "serde"] }
+ulua = { version = "0.1.7", default-features = false, features = ["typecheck", "serde"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { version = "1.21.2", features = ["full"] }
 dataforge = { workspace = true, features = ["tokio"] }
+# JIT — только native (A64/x64). На wasm32 фича не собирается, шаг идёт на интерпретаторе.
+ulua = { version = "0.1.7", default-features = false, features = ["typecheck", "serde", "jit"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3.52"
@@ -51,7 +55,7 @@ xmltree = { version = "0.12", default-features = false }
 [features]
 default = []
 clap = ["dep:clap"]
-egui = ["dep:egui", "dep:egui_plot", "dep:egui_extras"]
+egui = ["dep:egui", "dep:egui_plot", "dep:egui_extras", "dep:egui_code_editor"]
 plotly = ["dep:plotly", "dep:rgb_hsv"]
 polars = ["dep:polars"]
 # Весь Python-binding код, включая to_polars. Maturin включает только эту фичу.

@@ -153,11 +153,12 @@ impl TriggerViewer {
 
 impl eframe::App for TriggerViewer {
     #[allow(unused_variables)]
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
         ctx.set_visuals(Visuals::dark());
 
-        egui::SidePanel::left("left").show(ctx, |ui| {
-            egui::TopBottomPanel::bottom("version").show_inside(ui, |ui| {
+        egui::Panel::left("left").show(ui, |ui| {
+            egui::Panel::bottom("version").show(ui, |ui| {
                 crate::version_label(ui);
             });
 
@@ -205,7 +206,7 @@ impl eframe::App for TriggerViewer {
         });
 
         if let Some(trigger_density) = self.trigger_density.lock().as_ref() {
-            egui::CentralPanel::default().show(ctx, |ui| {
+            egui::CentralPanel::default().show(ui, |ui| {
                 if let Some(label) = self.stats.lock().label("frame") {
                     ui.weak(label);
                 }
@@ -238,7 +239,7 @@ impl eframe::App for TriggerViewer {
                     });
             });
         } else {
-            egui::CentralPanel::default().show(ctx, |ui| {
+            egui::CentralPanel::default().show(ui, |ui| {
                 ui.spinner();
             });
         }

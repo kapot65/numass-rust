@@ -1,17 +1,20 @@
 //! This module contains egui widgets for processing configurations
 
+use std::hash::{DefaultHasher, Hash, Hasher};
+
 use crate::{
     histogram::HistogramParams,
     postprocess::PostProcessParams,
     preprocess::{
-        Baseline, CHECK_BIN_SIZE, CHECK_HV_THRESHOLD, CUTOFF_BIN_SIZE, FIR_CENTER, FIR_LEFT,
-        FIR_RIGHT, HEAD_BINS, POINT_BASELINE_MAX, POINT_BASELINE_MIN, POINT_BASELINE_STEP,
-        PreprocessParams, PreprocessStep,
+        AVERAGE_SCRIPT, Baseline, CHECK_BIN_SIZE, CHECK_HV_THRESHOLD, CUTOFF_BIN_SIZE, FIR_CENTER,
+        FIR_LEFT, FIR_RIGHT, HEAD_BINS, POINT_BASELINE_MAX, POINT_BASELINE_MIN,
+        POINT_BASELINE_STEP, PreprocessParams, PreprocessStep,
     },
     process::{
         Algorithm, FIRSTPEAK_DEFAULT, HWResetParams, LIKHOVID_DEFAULT, LONGDIFF_DEFAULT,
         ProcessParams, TRAPEZOID_DEFAULT,
     },
+    script,
 };
 
 pub const HISTOGRAM_MIN: f32 = -200.0;
@@ -29,7 +32,7 @@ pub trait UserInput {
 /// `header_extra` is always visible, on the same row as the title.
 fn collapsing<R>(
     ui: &mut egui::Ui,
-    id: impl std::hash::Hash,
+    id: impl std::hash::Hash + std::fmt::Debug,
     title: &str,
     default_open: bool,
     header_extra: impl FnOnce(&mut egui::Ui) -> R,
@@ -75,7 +78,49 @@ fn step_title(step: &PreprocessStep) -> &'static str {
         PreprocessStep::Baseline(Baseline::Point { .. }) => "baseline point",
         PreprocessStep::Invert {} => "invert",
         PreprocessStep::Merge {} => "merge",
+        PreprocessStep::Script { .. } => "script",
     }
+}
+
+/// Подсказка шага Script: статический каркас + host-строки из реестра
+/// операций script.rs (`host_hover_lines`) — список функций не
+/// дублируется руками. Собирается один раз.
+fn script_step_hint() -> &'static str {
+    static HINT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    HINT.get_or_init(|| {
+        let mut host = String::from(
+            "  host — функции хоста, работают с буфером канала и сами обновляют снимок:\n",
+        );
+        for line in script::host_hover_lines() {
+            host.push_str("    ");
+            host.push_str(line);
+            host.push('\n');
+        }
+        host.push_str("    host.refresh(channel) — снимок из буфера вручную\n");
+        host.push_str("    как добавить свою — docs/adr/0005-embedded-scripting.md\n");
+        format!(
+            "\
+Скрипт возвращает function(frame: Frame) и меняет кадр на месте:
+отсчёты копируются в таблицы на время вызова и читаются обратно в кадр.
+
+frame = {{ [id канала (0-based)]: channel }}
+  channel.samples — {{number}}, индексация с 1, #samples — длина
+  channel.delay — сдвиг относительно сырого кадра
+  укорачивать можно (samples[#samples] = nil), удлинять — нет
+
+Глобалы:
+  static_params — зеркало StaticPointParams: hv, acquisition_time,
+    frame_len (сек), start_time, bad_blocks; без метаданных точки — nil,
+    правки не возвращаются в Rust
+{host}
+Локалы верхнего уровня — статические: вычисляются один раз при загрузке
+скрипта и живут между кадрами.
+
+Ошибки типизации показываются под редактором; имена static_params/host/channel
+дополняются по Tab (типы — в scripts/defs.d.luau).
+"
+        )
+    })
 }
 
 fn hw_reset_block(ui: &mut egui::Ui, reset: &mut HWResetParams) {
@@ -147,6 +192,75 @@ impl UserInput for PreprocessParams {
                         }
                         PreprocessStep::Invert {} => {}
                         PreprocessStep::Merge {} => {}
+                        PreprocessStep::Script { source } => {
+                            ui.label(
+                                "Luau: `function(frame: Frame)`; `frame[ch].samples` — отсчёты с индексацией от 1.",
+                            )
+                            .on_hover_text(script_step_hint());
+                            let theme = if ui.visuals().dark_mode {
+                                egui_code_editor::ColorTheme::GRUVBOX
+                            } else {
+                                egui_code_editor::ColorTheme::GRUVBOX_LIGHT
+                            };
+                            let syntax = egui_code_editor::Syntax::lua();
+                            // Completer живёт между кадрами в данных egui (UserInput
+                            // бессостоятелен); словарь — из definitions API,
+                            // без ручного списка слов.
+                            let completer_id = egui::Id::new(("script-completer", idx));
+                            let mut completer = ui
+                                .ctx()
+                                .data_mut(|d| {
+                                    d.get_temp::<egui_code_editor::Completer>(completer_id)
+                                })
+                                .unwrap_or_else(|| {
+                                    let mut completer =
+                                        egui_code_editor::Completer::new_with_syntax(&syntax)
+                                            .with_auto_indent()
+                                            .with_user_words();
+                                    for word in script::completion_words() {
+                                        completer.push_word(word);
+                                    }
+                                    completer
+                                });
+                            let _ = egui_code_editor::CodeEditor::default()
+                                .id_source(format!("preprocess-script-{idx}"))
+                                .with_rows(12)
+                                .with_theme(theme)
+                                .show_with_completer(ui, source, &syntax, &mut completer);
+                            ui.ctx()
+                                .data_mut(|d| d.insert_temp(completer_id, completer));
+
+                            // Тайпчек на каждое изменение текста (~2 мс на кадр
+                            // текста). Кэш по хэшу исходника: пересчёт сам
+                            // восстанавливается при сдвиге шагов (удаление).
+                            let diags_id = egui::Id::new(("script-diags", idx));
+                            let mut hasher = DefaultHasher::new();
+                            source.as_str().hash(&mut hasher);
+                            let source_hash = hasher.finish();
+                            let diags = match ui.ctx().data_mut(|d| {
+                                d.get_temp::<(u64, Vec<ulua::TypeDiagnostic>)>(diags_id)
+                            }) {
+                                Some((hash, diags)) if hash == source_hash => diags,
+                                _ => {
+                                    let diags = script::check_script(source);
+                                    ui.ctx().data_mut(|d| {
+                                        d.insert_temp(diags_id, (source_hash, diags.clone()))
+                                    });
+                                    diags
+                                }
+                            };
+                            if !diags.is_empty() {
+                                ui.add_space(4.0);
+                                for diag in &diags {
+                                    ui.label(
+                                        egui::RichText::new(diag.to_string())
+                                            .family(egui::FontFamily::Monospace)
+                                            .small()
+                                            .color(ui.visuals().error_fg_color),
+                                    );
+                                }
+                            }
+                        }
                     },
                 );
                 if removed {
@@ -184,6 +298,11 @@ impl UserInput for PreprocessParams {
                 }
                 if ui.button("+ merge").clicked() {
                     steps.push(PreprocessStep::Merge {});
+                }
+                if ui.button("+ script").clicked() {
+                    steps.push(PreprocessStep::Script {
+                        source: AVERAGE_SCRIPT.to_owned(),
+                    });
                 }
             });
         });
@@ -387,7 +506,7 @@ impl UserInput for PostProcessParams {
                 );
 
             block_closed(ui, "merge mapping", |ui| {
-                let image = if ctx.style().visuals.dark_mode {
+                let image = if ctx.global_style().visuals.dark_mode {
                     egui::include_image!("../resources/detector_dark.svg")
                 } else {
                     egui::include_image!("../resources/detector_light.svg")

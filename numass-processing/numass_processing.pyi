@@ -423,6 +423,21 @@ class PreprocessStep:
         __match_args__ = ()
         def __new__(cls) -> PreprocessStep.Merge: ...
     
+    @typing.final
+    class Script(PreprocessStep):
+        r"""
+        Luau-скрипт. Мутирует тот же кадр, что FIR и baseline.
+        
+        Скрипт возвращает `function(frame)`. На время вызова доступны
+        глобалы `static_params` (таблица `StaticPointParams` или `nil`, если
+        метаданных нет) и `host` (таблица функций хоста `ScriptHost`).
+        Формат кадра описан в `AVERAGE_SCRIPT`.
+        """
+        __match_args__ = ("source",)
+        @property
+        def source(self) -> builtins.str: ...
+        def __new__(cls, source: builtins.str) -> PreprocessStep.Script: ...
+    
 
 @typing.final
 class ProcessParams:

@@ -1,0 +1,1 @@
+return function(frame: Frame) for _, channel in frame do host.lpf(channel, 8) end end
