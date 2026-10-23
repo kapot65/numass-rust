@@ -4,6 +4,72 @@ pkg-config
 cmake
 libfontconfig-dev
 
+## C++/ROOT-скрипты
+
+C++/ROOT часть собирается отдельно от cargo-воркспейса через CMake. Бинарники
+создаются автоматически: каждый файл `scripts/**/*.C` становится исполняемым
+файлом с именем этого файла.
+
+Требования: `cmake >= 3.24`, CERN ROOT (`>= 6.16`, `root-config` в `PATH`),
+компилятор с поддержкой стандарта, с которым собран ROOT (стандарт берётся из
+`ROOT_CXX_STANDARD`). CLI11 и nlohmann_json ставятся пакетным менеджером
+[CPM](https://github.com/cpm-cmake/CPM.cmake), сам CPM скачивается при
+конфигурации — в репозитории его код не хранится.
+
+### Сборка
+
+```sh
+cmake -S numass-analysis -B numass-analysis/build
+cmake --build numass-analysis/build -j
+```
+
+Готовые бинарники:
+
+| Скрипт | Бинарник | Аргументы |
+| --- | --- | --- |
+| `scripts/fit-deltas.C` | `fit-deltas` | нет |
+| `scripts/recalibration/fit.C` | `fit` | `<folder> <left> <right>` |
+| `scripts/recalibration/calibrate.C` | `calibrate` | нет |
+
+Бинарники лежат в `numass-analysis/build/bin`.
+
+### Запуск
+
+Скрипты читают файлы по относительным путям, поэтому запускать их нужно из
+каталога с данными:
+
+```sh
+cd numass-analysis/scripts/recalibration
+
+# вместо root 'fit.C+("raw", 1.0, 2.0)'
+../../build/bin/fit raw 1.0 2.0
+
+# читает ./output/calibration_raw.csv и ./output/calibration_kev.csv,
+# пишет ./output/coeffs.json
+../../build/bin/calibrate
+```
+
+`fit-deltas` ожидает `11kev-deltas-all.tsv` в текущем каталоге (см. комментарий
+в начале `scripts/fit-deltas.C`):
+
+```sh
+numass-analysis/build/bin/fit-deltas
+```
+
+### Новый скрипт
+
+Достаточно положить файл в `scripts/` — CMake подхватит его сам
+(`CONFIGURE_DEPENDS`) при следующей сборке. Соглашение:
+
+- функция называется как файл, где `-` заменён на `_`
+  (`foo-bar.C` → `foo_bar()`);
+- допустимые сигнатуры: `void foo_bar()` либо
+  `foo_bar(const char* folder, double left, double right)` — во втором случае
+  аргументы берутся из командной строки.
+
+Для clangd/zed CMake пишет `build/compile_commands.json` — он нужен для
+навигации по ROOT-заголовкам.
+
 ## Коррекция на мониторные точки
 1. Получить коэффициенты мониторовных точек.
    1. Преобразовать в формат типа (можно через [convert-monitors.jl](scripts/convert-monitors.jl))

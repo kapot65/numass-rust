@@ -18,6 +18,7 @@
 # will have compiled files and executables
 debug/
 target/
+build/
 target-cross/
 target-trunk/
 dist/
