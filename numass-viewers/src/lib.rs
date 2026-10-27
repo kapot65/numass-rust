@@ -164,10 +164,21 @@ pub async fn process_point(
         &process,
         Some(&post_process),
     )
-    .await
-    // TODO(К3): ошибку скрипта/данных показать пользователю через PointState.error
-    // вместо паники.
-    .unwrap_or_else(|err| panic!("{err}"));
+    .await;
+
+    // Ошибка пайплайна (скриптовый шаг) — не паника: вьюер показывает её
+    // пользователю в дереве файлов и не падает.
+    let events = match events {
+        Ok(events) => events,
+        Err(err) => {
+            return Some(PointState {
+                opened: true,
+                modified,
+                error: Some(err.to_string()),
+                ..EMPTY_POINT
+            });
+        }
+    };
 
     events.map(|(_, events)| {
         if let Some((events, preprocess)) = events {
@@ -181,6 +192,7 @@ pub async fn process_point(
                 preprocess: Some(preprocess),
                 modified,
                 counts,
+                error: None,
             }
         } else {
             EMPTY_POINT

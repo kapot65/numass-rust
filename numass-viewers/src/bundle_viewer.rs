@@ -4,6 +4,7 @@ use crate::{ChunkedData, TimestampStats};
 use egui::{Visuals, mutex::Mutex};
 use egui_plot::{Legend, Points};
 use numass_processing::{
+    error::PipelineError,
     numass::{NumassMeta, protos::rsb_event},
     postprocess::{PostProcessParams, post_process},
     preprocess::PreprocessParams,
@@ -36,6 +37,9 @@ pub struct BundleViewer {
 
     data: Arc<Mutex<Option<ChunkedData<Chunk>>>>,
     current_chunk: usize,
+    /// Ошибка пайплайна (скриптовый шаг): рисуется банером, снимается
+    /// успешным recalculate (кнопка apply).
+    error: Arc<Mutex<Option<String>>>,
 }
 
 /// Раскладывает события по чанкам длиной `limit`.
@@ -53,15 +57,13 @@ fn point_to_chunks(
     process: ProcessParams,
     postprocess: PostProcessParams,
     limit: Time,
-) -> ChunkedData<Chunk> {
+) -> Result<ChunkedData<Chunk>, PipelineError> {
     let limit_ns = time_ns(limit);
     let bound_ns = acquisition_time(meta.clone()).map(timestamps_bound);
     let (events, _) = post_process(
-        extract_events(meta, point, &preprocess, &process).unwrap_or_else(|err| panic!("{err}")),
+        extract_events(meta, point, &preprocess, &process)?,
         &postprocess,
-    )
-    // TODO(К3): ошибку скрипта показать пользователю вместо паники.
-    .unwrap_or_else(|err| panic!("{err}"));
+    )?;
 
     let frame_times: Vec<u64> = events.keys().copied().collect();
     let (frame_times, mut stats) = match bound_ns {
@@ -116,7 +118,7 @@ fn point_to_chunks(
         }
     }
 
-    ChunkedData { chunks, stats }
+    Ok(ChunkedData { chunks, stats })
 }
 
 impl BundleViewer {
@@ -135,11 +137,13 @@ impl BundleViewer {
             limit_ms: 100,
             data: Arc::new(Mutex::new(None)),
             current_chunk: 0,
+            error: Arc::new(Mutex::new(None)),
         };
 
         let point = Arc::clone(&viewer.point);
         let meta = Arc::clone(&viewer.meta);
         let data = Arc::clone(&viewer.data);
+        let error = Arc::clone(&viewer.error);
         let limit = Time::new::<millisecond>(viewer.limit_ms as f64);
         let process = viewer.process.to_owned();
         let preprocess = viewer.preprocess.to_owned();
@@ -156,6 +160,7 @@ impl BundleViewer {
                 meta,
                 point,
                 data,
+                error,
                 preprocess,
                 process,
                 post_process,
@@ -170,23 +175,28 @@ impl BundleViewer {
         meta: Arc<Mutex<Option<NumassMeta>>>,
         point: Arc<Mutex<Option<rsb_event::Point>>>,
         data: Arc<Mutex<Option<ChunkedData<Chunk>>>>,
+        error: Arc<Mutex<Option<String>>>,
         preprocess: PreprocessParams,
         process: ProcessParams,
         post_process: PostProcessParams,
         limit: Time,
     ) {
         *data.lock() = None;
+        *error.lock() = None;
 
         if let Some(point) = &*point.lock() {
-            let data_local = Some(point_to_chunks(
+            match point_to_chunks(
                 meta.lock().clone(),
                 point.clone(),
                 preprocess,
                 process,
                 post_process,
                 limit,
-            ));
-            *data.lock() = data_local;
+            ) {
+                Ok(chunked) => *data.lock() = Some(chunked),
+                // Скриптовый шаг и т.п. — банер в UI, программа не падает.
+                Err(err) => *error.lock() = Some(err.to_string()),
+            }
         }
     }
 }
@@ -237,6 +247,7 @@ impl eframe::App for BundleViewer {
                 let meta = Arc::clone(&self.meta);
                 let point = Arc::clone(&self.point);
                 let data = Arc::clone(&self.data);
+                let error = Arc::clone(&self.error);
                 let limit = Time::new::<millisecond>(self.limit_ms as f64);
                 let process = self.process.to_owned();
                 let preprocess = self.preprocess.to_owned();
@@ -247,6 +258,7 @@ impl eframe::App for BundleViewer {
                         meta,
                         point,
                         data,
+                        error,
                         preprocess,
                         process,
                         post_process,
@@ -257,6 +269,17 @@ impl eframe::App for BundleViewer {
         });
 
         egui::CentralPanel::default().show(ui, |ui| {
+            // Ошибка пайплайна — банер над графиком.
+            if let Some(error) = &*self.error.lock() {
+                ui.label(
+                    egui::RichText::new(error)
+                        .small()
+                        .monospace()
+                        .color(ui.visuals().error_fg_color),
+                );
+                ui.add_space(4.0);
+            }
+
             if let Some(data) = &*self.data.lock() {
                 let chunks = &data.chunks;
                 #[cfg(not(target_arch = "wasm32"))]

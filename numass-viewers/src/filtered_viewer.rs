@@ -31,13 +31,16 @@ pub struct FilteredViewer {
     process: ProcessParams,
     postprocess: PostProcessParams,
     range: Range<f32>,
-    /// Точка принадлежит вьюеру: вейвформы заимствуются из неё на время
+    /// Точка принадлежит вьюеру: вейформы заимствуются из неё на время
     /// операций (вместо утечки через `Box::leak`).
     point: rsb_event::Point,
     processed: ProcessedPoint,
     raw_hidden_seeded: bool,
     indexes: Option<Vec<u64>>,
     current: usize,
+    /// Ошибка пайплайна (скрипт/данные): рисуется банером вместо графика,
+    /// снимается успешным reprocess.
+    error: Option<String>,
 }
 
 impl FilteredViewer {
@@ -50,10 +53,23 @@ impl FilteredViewer {
     ) -> Self {
         let point = load_point(&filepath).await;
         let waveforms = extract_waveforms(&point);
-        // TODO(К3): ошибку скрипта показать пользователю вместо паники.
-        let processed = apply_waveforms(&waveforms, &preprocess_params.steps)
-            .unwrap_or_else(|err| panic!("{err}"));
-        let indexes = Self::matching_frames(&processed, &process, &postprocess, &range, &waveforms);
+
+        let (processed, indexes, error) =
+            match apply_waveforms(&waveforms, &preprocess_params.steps) {
+                Ok(processed) => {
+                    match Self::matching_frames(
+                        &processed,
+                        &process,
+                        &postprocess,
+                        &range,
+                        &waveforms,
+                    ) {
+                        Ok(indexes) => (processed, Some(indexes), None),
+                        Err(err) => (processed, None, Some(err)),
+                    }
+                }
+                Err(err) => (ProcessedPoint::default(), None, Some(err.to_string())),
+            };
 
         Self {
             preprocess_params,
@@ -63,27 +79,34 @@ impl FilteredViewer {
             point,
             processed,
             raw_hidden_seeded: false,
-            indexes: Some(indexes),
+            indexes,
             current: 0,
+            error,
         }
     }
 
     fn reprocess(&mut self) {
         let waveforms = extract_waveforms(&self.point);
-        // TODO(К3): ошибку скрипта показать пользователю вместо паники.
-        let processed = apply_waveforms(&waveforms, &self.preprocess_params.steps)
-            .unwrap_or_else(|err| panic!("{err}"));
-        let indexes = Self::matching_frames(
-            &processed,
-            &self.process,
-            &self.postprocess,
-            &self.range,
-            &waveforms,
-        );
+
+        let (processed, indexes, error) =
+            match apply_waveforms(&waveforms, &self.preprocess_params.steps) {
+                Ok(processed) => match Self::matching_frames(
+                    &processed,
+                    &self.process,
+                    &self.postprocess,
+                    &self.range,
+                    &waveforms,
+                ) {
+                    Ok(indexes) => (processed, Some(indexes), None),
+                    Err(err) => (processed, None, Some(err)),
+                },
+                Err(err) => (ProcessedPoint::default(), None, Some(err.to_string())),
+            };
 
         self.processed = processed;
-        self.indexes = Some(indexes);
+        self.indexes = indexes;
         self.current = 0;
+        self.error = error;
     }
 
     /// Времена кадров, в которых есть хотя бы одно событие с амплитудой в `range`.
@@ -93,17 +116,13 @@ impl FilteredViewer {
         postprocess: &PostProcessParams,
         range: &Range<f32>,
         waveforms: &NumassWaveformsFast<'_>,
-    ) -> Vec<u64> {
+    ) -> Result<Vec<u64>, String> {
         let mut indexes = vec![];
 
         for (time, frame) in waveforms {
-            let events = post_process_frame(
-                extract_frame(&processed[time], frame, &process.algorithm, &mut None)
-                    .unwrap_or_else(|err| panic!("{err}")),
-                postprocess,
-                None,
-            )
-            .unwrap_or_else(|err| panic!("{err}"));
+            let events = extract_frame(&processed[time], frame, &process.algorithm, &mut None)
+                .and_then(|events| post_process_frame(events, postprocess, None))
+                .map_err(|err| err.to_string())?;
 
             for (_, event) in events {
                 if let FrameEvent::Event {
@@ -112,7 +131,7 @@ impl FilteredViewer {
                 {
                     let amplitude = if process.convert_to_kev {
                         convert_to_kev(&amplitude, channel, &process.algorithm)
-                            .unwrap_or_else(|err| panic!("{err}"))
+                            .map_err(|err| err.to_string())?
                     } else {
                         amplitude
                     };
@@ -124,7 +143,7 @@ impl FilteredViewer {
             }
         }
 
-        indexes
+        Ok(indexes)
     }
 
     /// Сырые вейвформы каналов кадра с данным временем (без копирования).
@@ -144,37 +163,50 @@ impl FilteredViewer {
         frame
     }
 
-    fn plot_processed_frame(&self, plot_ui: &mut PlotUi<'_>, time: u64) {
+    /// Отрисовка кадра + событий. Ошибка пайплайна (скрипт/данные) возвращается
+    /// текстом: `ui()` показывает её банером вместо паники.
+    fn plot_processed_frame(&self, plot_ui: &mut PlotUi<'_>, time: u64) -> Option<String> {
         let frame = self.frame_at(time);
         let processed = &self.processed[&time];
 
         draw_raw_frame(&frame, plot_ui);
         draw_processed_frame(processed, plot_ui);
 
-        let mut events = extract_frame(
+        let pipeline_result = extract_frame(
             processed,
             &frame,
             &self.process.algorithm,
             &mut Some(plot_ui),
         )
-        .unwrap_or_else(|err| panic!("{err}"));
-        events = post_process_frame(events, &self.postprocess, Some(plot_ui))
-            .unwrap_or_else(|err| panic!("{err}"));
+        .and_then(|events| post_process_frame(events, &self.postprocess, Some(plot_ui)));
+        let mut events = match pipeline_result {
+            Ok(events) => events,
+            Err(err) => return Some(err.to_string()),
+        };
 
+        let mut kev_error = None;
         if self.process.convert_to_kev {
             events.iter_mut().for_each(|(_, event)| {
+                if kev_error.is_some() {
+                    return;
+                }
                 if let FrameEvent::Event {
                     channel: ch_id,
                     amplitude,
                     ..
                 } = event
                 {
-                    // TODO(К3): ошибку показать пользователю вместо паники.
-                    *amplitude = convert_to_kev(amplitude, *ch_id, &self.process.algorithm)
-                        .unwrap_or_else(|err| panic!("{err}"))
+                    *amplitude = match convert_to_kev(amplitude, *ch_id, &self.process.algorithm) {
+                        Ok(value) => value,
+                        Err(err) => {
+                            kev_error = Some(err.to_string());
+                            return;
+                        }
+                    };
                 }
             });
         }
+        kev_error
     }
 
     fn inc(&mut self) {
@@ -237,6 +269,19 @@ impl eframe::App for FilteredViewer {
             }
         });
 
+        // Ошибка пайплайна — верхняя панель: видна и в «No data»,
+        // и в рисовании графика.
+        if let Some(error) = &self.error {
+            eframe::egui::Panel::top("pipeline-error").show(ui, |ui| {
+                ui.label(
+                    egui::RichText::new(error)
+                        .small()
+                        .monospace()
+                        .color(ui.visuals().error_fg_color),
+                );
+            });
+        }
+
         if self
             .indexes
             .as_ref()
@@ -281,6 +326,7 @@ impl eframe::App for FilteredViewer {
             });
 
             eframe::egui::CentralPanel::default().show(ui, |ui| {
+                let mut plot_error = None;
                 if let Some(indexes) = self.indexes.as_ref() {
                     let legend = if self.raw_hidden_seeded {
                         Legend::default()
@@ -301,10 +347,13 @@ impl eframe::App for FilteredViewer {
                             }
 
                             let position = indexes[self.current];
-                            self.plot_processed_frame(plot_ui, position);
+                            plot_error = self.plot_processed_frame(plot_ui, position);
                         });
                 } else {
                     ui.spinner();
+                }
+                if let Some(error) = plot_error {
+                    self.error = Some(error);
                 }
             });
         }

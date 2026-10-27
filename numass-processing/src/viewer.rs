@@ -109,6 +109,10 @@ pub struct PointState {
     pub histogram: Option<PointHistogram>,
     pub preprocess: Option<StaticPointParams>,
     pub counts: Option<usize>,
+    /// Ошибка пайплайна (скриптовый шаг предобработки): вьювер показывает её
+    /// пользователю вместо данных гистограммы.
+    #[serde(default)]
+    pub error: Option<String>,
 }
 
 pub const EMPTY_POINT: PointState = PointState {
@@ -117,6 +121,7 @@ pub const EMPTY_POINT: PointState = PointState {
     preprocess: None,
     counts: None,
     modified: None,
+    error: None,
 };
 
 #[cfg(test)]

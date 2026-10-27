@@ -471,6 +471,19 @@ impl DataViewerApp {
                         }
                     });
 
+                    // Ошибка скрипта/данных при обработке этой точки: не падаем,
+                    // показываем первую строку + полный текст по наведению.
+                    if let Some(error) = &cache.error {
+                        let first_line = error.lines().next().unwrap_or_default();
+                        ui.label(
+                            egui::RichText::new(first_line)
+                                .small()
+                                .monospace()
+                                .color(ui.visuals().error_fg_color),
+                        )
+                        .on_hover_text(error);
+                    }
+
                     if let Some(point) = exclusive_point {
                         for (key, cache) in opened_files.iter_mut() {
                             if key != &point {
