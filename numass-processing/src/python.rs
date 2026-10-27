@@ -7,14 +7,31 @@
 use std::path::PathBuf;
 
 use numass::protos::rsb_event;
-use pyo3::exceptions::{PyFileNotFoundError, PyKeyError, PyValueError};
+use pyo3::exceptions::{
+    PyFileNotFoundError, PyKeyError, PyRuntimeError, PySyntaxError, PyValueError,
+};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyType};
 use pyo3_polars::PyDataFrame;
 
+use crate::error::PipelineError;
 use crate::postprocess::{ChannelIgnore, PostProcessParams};
 use crate::preprocess::PreprocessParams;
 use crate::process::{Algorithm, HWResetParams, HistParams, ProcessParams};
+
+/// Ошибка пайплайна → исключение Python (не паника, не BaseException).
+///
+/// Ошибка компиляции скрипта — `SyntaxError`, его исполнения — `RuntimeError`,
+/// данные вне ожиданий пайплайна — `ValueError`.
+fn pipeline_error(err: PipelineError) -> PyErr {
+    match err {
+        PipelineError::Script(ulua::Error::SyntaxError { message, .. }) => {
+            PySyntaxError::new_err(message)
+        }
+        PipelineError::Script(err) => PyRuntimeError::new_err(err.to_string()),
+        PipelineError::Data(message) => PyValueError::new_err(message),
+    }
+}
 
 #[cfg(feature = "stubgen")]
 pyo3_stub_gen::module_doc!(
@@ -449,19 +466,21 @@ fn extract_waveforms(point: Py<Point>) -> Waveforms {
 }
 
 /// Те же шаги, что `preprocess::apply_waveforms`.
+///
+/// Ошибка шага скрипта (парсинг/исполнение) — исключение (`SyntaxError`/
+/// `RuntimeError`), расширение процесс не убивает.
 #[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyfunction)]
 #[pyfunction]
 fn apply_waveforms(
     py: Python<'_>,
     waveforms: &Waveforms,
     steps: Vec<crate::preprocess::PreprocessStep>,
-) -> ProcessedPoint {
+) -> PyResult<ProcessedPoint> {
     let point = waveforms.point.borrow(py);
     let fast = crate::preprocess::extract_waveforms(&point.inner);
-    ProcessedPoint {
-        inner: crate::preprocess::apply_waveforms(&fast, &steps)
-            .unwrap_or_else(|err| panic!("{err}")),
-    }
+    Ok(ProcessedPoint {
+        inner: crate::preprocess::apply_waveforms(&fast, &steps).map_err(pipeline_error)?,
+    })
 }
 
 /// Те же шаги, что `preprocess::apply_frame`. `Baseline::Point` видит только этот кадр.
@@ -477,7 +496,7 @@ fn apply_frame(
         return Err(PyKeyError::new_err(frame.time));
     };
     Ok(ProcessedFrame {
-        inner: crate::preprocess::apply_frame(&fast, &steps).unwrap_or_else(|err| panic!("{err}")),
+        inner: crate::preprocess::apply_frame(&fast, &steps).map_err(pipeline_error)?,
     })
 }
 
@@ -509,7 +528,7 @@ fn extract_processed(
     let raw = crate::preprocess::extract_waveforms(&point.inner);
     Ok(NumassEvents {
         inner: crate::process::extract_processed(&processed.inner, &raw, &process)
-            .unwrap_or_else(|err| panic!("{err}")),
+            .map_err(pipeline_error)?,
     })
 }
 
@@ -534,16 +553,15 @@ fn extract_frame(
             #[cfg(feature = "egui")]
             &mut None,
         )
-        .unwrap_or_else(|err| panic!("{err}")),
+        .map_err(pipeline_error)?,
     })
 }
 
-/// Те же аргументы, что `process::convert_to_kev`.
+/// Те же аргументы, что `process::convert_to_kev`. Ошибка канала вне калибровки — `ValueError`.
 #[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyfunction)]
 #[pyfunction]
-fn convert_to_kev(amplitude: f32, ch_id: u8, algorithm: Algorithm) -> f32 {
-    crate::process::convert_to_kev(&amplitude, ch_id, &algorithm)
-        .unwrap_or_else(|err| panic!("{err}"))
+fn convert_to_kev(amplitude: f32, ch_id: u8, algorithm: Algorithm) -> PyResult<f32> {
+    crate::process::convert_to_kev(&amplitude, ch_id, &algorithm).map_err(pipeline_error)
 }
 
 /// `StaticPointParams::from_point` словарём. В биндингах `StaticPointParams` — только dict.
@@ -595,21 +613,21 @@ fn post_process(
         parse_json_dict::<crate::preprocess::StaticPointParams>(py, preprocess.bind(py))?;
     let (amplitudes, _) =
         crate::postprocess::post_process((events.inner.clone(), static_params), &params)
-            .unwrap_or_else(|err| panic!("{err}"));
+            .map_err(pipeline_error)?;
     Ok(NumassEvents { inner: amplitudes })
 }
 
 /// Те же аргументы, что `postprocess::post_process_frame`, без egui.
 #[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyfunction)]
 #[pyfunction]
-fn post_process_frame(events: &FrameEvents, params: PostProcessParams) -> FrameEvents {
-    FrameEvents {
+fn post_process_frame(events: &FrameEvents, params: PostProcessParams) -> PyResult<FrameEvents> {
+    Ok(FrameEvents {
         inner: crate::postprocess::post_process_frame(
             events.inner.clone(),
             &params,
             #[cfg(feature = "egui")]
             None,
         )
-        .unwrap_or_else(|err| panic!("{err}")),
-    }
+        .map_err(pipeline_error)?,
+    })
 }

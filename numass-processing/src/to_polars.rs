@@ -505,7 +505,7 @@ mod tests {
         waveform.extend([80i16; 10]);
         let frame = BTreeMap::from([(0u8, waveform.as_slice())]);
         let waveforms = BTreeMap::from([(5u64, frame)]);
-        let processed = apply_waveforms(&waveforms, &PreprocessParams::average().steps);
+        let processed = apply_waveforms(&waveforms, &PreprocessParams::average().steps).unwrap();
         let df = processed.to_polars();
 
         assert_eq!(df.height(), 1);
