@@ -16,7 +16,8 @@ use plotly::Plot;
 async fn main() {
     // let path = "/data-fast/numass-server/2024_11/Tritium_3/set_2/p0(30s)(HV1=14000)";
     let path = "/data-fast/numass-server/2024_11/Tritium_3/set_1/p196(20s)(HV1=10000)";
-    let point = load_point(&PathBuf::from(path)).await;
+    // no-GUI: битая точка — паника.
+    let point = load_point(&PathBuf::from(path)).await.expect("load point");
     let waveforms = extract_waveforms(&point);
     let filtered =
         apply_waveforms(&waveforms, &PreprocessParams::trapezoid_fir().steps).expect("preprocess");

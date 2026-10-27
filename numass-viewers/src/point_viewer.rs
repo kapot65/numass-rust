@@ -32,6 +32,8 @@ pub struct PointViewer {
     data: Arc<Mutex<Option<ChunkedData<Chunk>>>>,
     current_chunk: usize,
     state: Arc<Mutex<AppState>>,
+    /// Ошибка загрузки/парсинга точки: показывается вместо spinner (не паника).
+    error: Arc<Mutex<Option<String>>>,
 }
 
 /// Кадры точки с исправленными таймстампами: (время, канал, кадр).
@@ -138,20 +140,30 @@ impl PointViewer {
             data: Arc::new(Mutex::new(None)),
             current_chunk: 0,
             state: Arc::new(Mutex::new(AppState::Initializing)),
+            error: Arc::new(Mutex::new(None)),
         };
 
         let data = Arc::clone(&viewer.data);
         let state = Arc::clone(&viewer.state);
+        let error = Arc::clone(&viewer.error);
 
         spawn(async move {
-            let point = load_point(&filepath).await;
-            let acquisition = acquisition_time(load_meta(&filepath).await);
-            *data.lock() = Some(point_to_chunks(
-                point,
-                Time::new::<millisecond>(1.0),
-                acquisition,
-            ));
-            *state.lock() = AppState::FirstLoad;
+            match load_point(&filepath).await {
+                Ok(point) => {
+                    let acquisition = acquisition_time(load_meta(&filepath).await);
+                    *data.lock() = Some(point_to_chunks(
+                        point,
+                        Time::new::<millisecond>(1.0),
+                        acquisition,
+                    ));
+                    *state.lock() = AppState::FirstLoad;
+                }
+                // Битый файл — не паника: вьюер показывает ошибку вместо данных.
+                Err(err) => {
+                    *error.lock() = Some(err.to_string());
+                    *state.lock() = AppState::FirstLoad;
+                }
+            }
         });
 
         viewer
@@ -176,7 +188,17 @@ impl eframe::App for PointViewer {
                 *self.state.lock() = AppState::Interactive;
             }
             AppState::Interactive => {
-                if let Some(data) = self.data.lock().as_ref() {
+                // Ошибка загрузки/парсинга точки — сообщение вместо данных,
+                // вьюер не падает.
+                if let Some(error) = &*self.error.lock() {
+                    egui::CentralPanel::default().show(ui, |ui| {
+                        ui.label(
+                            egui::RichText::new(error)
+                                .monospace()
+                                .color(ui.visuals().error_fg_color),
+                        );
+                    });
+                } else if let Some(data) = self.data.lock().as_ref() {
                     let chunks = &data.chunks;
                     // consume_key, чтобы сфокусированный (через Tab) слайдер
                     // не обрабатывал стрелки повторно.

@@ -30,6 +30,9 @@ fn pipeline_error(err: PipelineError) -> PyErr {
         }
         PipelineError::Script(err) => PyRuntimeError::new_err(err.to_string()),
         PipelineError::Data(message) => PyValueError::new_err(message),
+        // Разбор точки не удался: битый файл → ValueError с текстом (OSError
+        // здесь не нужен: файлы проверяются до чтения).
+        PipelineError::Load(err) => PyValueError::new_err(err.to_string()),
     }
 }
 
@@ -431,6 +434,9 @@ impl FrameEvents {
 }
 
 /// Загружает протокольную точку из файла DataForge.
+///
+/// Битый файл (не читается заголовок или protobuf) — `ValueError` с текстом
+/// разбора, а не PanicException.
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyfunction)]
 #[pyfunction]
@@ -438,9 +444,9 @@ fn load_point(path: PathBuf) -> PyResult<Point> {
     if !path.is_file() {
         return Err(PyFileNotFoundError::new_err(path.display().to_string()));
     }
-    Ok(Point {
-        inner: crate::storage::load_point_sync(&path),
-    })
+    let inner = crate::storage::load_point_sync(&path)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    Ok(Point { inner })
 }
 
 /// Полный JSON метаданных точки из DataForge, без разбора в `NumassMeta`.
@@ -468,7 +474,7 @@ fn extract_waveforms(point: Py<Point>) -> Waveforms {
 /// Те же шаги, что `preprocess::apply_waveforms`.
 ///
 /// Ошибка шага скрипта (парсинг/исполнение) — исключение (`SyntaxError`/
-/// `RuntimeError`), расширение процесс не убивает.
+/// `RuntimeError`), процесс не умирает.
 #[cfg_attr(feature = "stubgen", pyo3_stub_gen::derive::gen_stub_pyfunction)]
 #[pyfunction]
 fn apply_waveforms(

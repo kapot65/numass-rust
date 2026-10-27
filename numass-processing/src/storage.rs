@@ -12,7 +12,7 @@ use protobuf::Message;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    error::PipelineError,
+    error::{LoadPointError, PipelineError},
     numass::protos::rsb_event,
     postprocess::PostProcessParams,
     preprocess::{PreprocessParams, StaticPointParams},
@@ -37,7 +37,7 @@ pub async fn process_point(
         #[cfg(not(target_arch = "wasm32"))]
         {
             // TODO: remove duplication with wasm32 branch. Maybe use async closures? https://rust-lang.github.io/async-book/07_workarounds/05_async_closures.html
-            let point = load_point(filepath).await;
+            let point = load_point(filepath).await?;
 
             let events = match postprocess {
                 Some(postprocess) => crate::postprocess::post_process(
@@ -100,9 +100,11 @@ pub fn api_url(prefix: &str, filepath: &Path) -> String {
 /// DF01 header length. Known to the client; the file server does not parse it.
 const DF_HEADER_LEN: usize = 30;
 
-fn read_df_header(header_bytes: &[u8]) -> Option<dataforge::DFBinaryHeader> {
+fn read_df_header(
+    header_bytes: &[u8],
+) -> Result<dataforge::DFBinaryHeader, dataforge::DFParseError> {
     let mut cursor = std::io::Cursor::new(header_bytes);
-    dataforge::read_binary_header_sync(&mut cursor).ok()
+    dataforge::read_binary_header_sync(&mut cursor)
 }
 
 fn region_lengths(header: &dataforge::DFBinaryHeader) -> (usize, usize) {
@@ -114,12 +116,12 @@ fn region_lengths(header: &dataforge::DFBinaryHeader) -> (usize, usize) {
 }
 
 fn meta_from_parts(header_bytes: &[u8], meta_bytes: Vec<u8>) -> Option<NumassMeta> {
-    let header = read_df_header(header_bytes)?;
+    let header = read_df_header(header_bytes).ok()?;
     dataforge::parse_meta(&header, meta_bytes).ok()
 }
 
-fn point_from_data(data: &[u8]) -> rsb_event::Point {
-    rsb_event::Point::parse_from_bytes(data).unwrap()
+fn point_from_data(data: &[u8]) -> Result<rsb_event::Point, protobuf::Error> {
+    rsb_event::Point::parse_from_bytes(data)
 }
 
 /// Read `len` bytes at `start`. Native code seeks in the local file.
@@ -183,7 +185,8 @@ pub fn load_meta_json_sync(filepath: &Path) -> Result<serde_json::Value, datafor
 #[cfg(not(target_arch = "wasm32"))]
 pub fn load_meta_sync(filepath: &Path) -> Option<NumassMeta> {
     let header_bytes = read_range_sync(filepath, 0, DF_HEADER_LEN);
-    let header = read_df_header(&header_bytes)?;
+    // Мета остается Option-функцией: ошибка заголовка не различается здесь.
+    let header = read_df_header(&header_bytes).ok()?;
     let (meta_len, _) = region_lengths(&header);
     let meta_bytes = read_range_sync(filepath, DF_HEADER_LEN as u64, meta_len);
     meta_from_parts(&header_bytes, meta_bytes)
@@ -192,7 +195,8 @@ pub fn load_meta_sync(filepath: &Path) -> Option<NumassMeta> {
 /// Load point metadata only from the storage.
 pub async fn load_meta(filepath: &Path) -> Option<NumassMeta> {
     let header_bytes = read_range(filepath, 0, DF_HEADER_LEN).await;
-    let header = read_df_header(&header_bytes)?;
+    // Мета остается Option-функцией: ошибка заголовка не различается здесь.
+    let header = read_df_header(&header_bytes).ok()?;
     let (meta_len, _) = region_lengths(&header);
     let meta_bytes = read_range(filepath, DF_HEADER_LEN as u64, meta_len).await;
     meta_from_parts(&header_bytes, meta_bytes)
@@ -216,24 +220,30 @@ pub async fn load_modified_time(filepath: PathBuf) -> Option<SystemTime> {
 
 /// Load and parse point binary data from the storage.
 /// Do not use this function directly without reason.
+///
+/// Ошибки разбора (заголовок DataForge, protobuf) возвращаются в [`LoadPointError`]:
+/// Python-биндинги превращают её в исключение, вьювер — в сообщение пользователю.
+/// Сеть/файловая система (`read_range*`) в тип не входит: там паника.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn load_point_sync(filepath: &Path) -> rsb_event::Point {
+pub fn load_point_sync(filepath: &Path) -> Result<rsb_event::Point, LoadPointError> {
     let header_bytes = read_range_sync(filepath, 0, DF_HEADER_LEN);
-    let header = read_df_header(&header_bytes).unwrap();
+    let header = read_df_header(&header_bytes).map_err(LoadPointError::DataForge)?;
     let (meta_len, data_len) = region_lengths(&header);
     let data = read_range_sync(
         filepath,
         DF_HEADER_LEN as u64 + u64::try_from(meta_len).unwrap(),
         data_len,
     );
-    point_from_data(&data)
+    point_from_data(&data).map_err(LoadPointError::Proto)
 }
 
 /// Load and parse point binary data from the storage.
 /// Do not use this function directly without reason.
-pub async fn load_point(filepath: &Path) -> rsb_event::Point {
+///
+/// Ошибки разбора — в [`LoadPointError`] (см. [`load_point_sync`]).
+pub async fn load_point(filepath: &Path) -> Result<rsb_event::Point, LoadPointError> {
     let header_bytes = read_range(filepath, 0, DF_HEADER_LEN).await;
-    let header = read_df_header(&header_bytes).unwrap();
+    let header = read_df_header(&header_bytes).map_err(LoadPointError::DataForge)?;
     let (meta_len, data_len) = region_lengths(&header);
     let data = read_range(
         filepath,
@@ -241,7 +251,7 @@ pub async fn load_point(filepath: &Path) -> rsb_event::Point {
         data_len,
     )
     .await;
-    point_from_data(&data)
+    point_from_data(&data).map_err(LoadPointError::Proto)
 }
 
 /// Temporal numass file storage representation.

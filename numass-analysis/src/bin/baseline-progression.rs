@@ -81,7 +81,10 @@ async fn main() {
             }
 
             tokio::spawn(async move {
-                let point = load_point(&PathBuf::from(point_path)).await;
+                // no-GUI: битая точка — паника.
+                let point = load_point(&PathBuf::from(point_path))
+                    .await
+                    .expect("load point");
 
                 let time = point.channels[0].blocks[0].time;
 

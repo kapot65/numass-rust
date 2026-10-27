@@ -65,7 +65,7 @@ async fn main() {
                     let filepath = PathBuf::from(filepath);
 
                     let meta = load_meta(&filepath).await;
-                    let point = load_point(&filepath).await;
+                    let point = load_point(&filepath).await.expect("load point");
                     let (events, _) = extract_events(
                         meta,
                         point,

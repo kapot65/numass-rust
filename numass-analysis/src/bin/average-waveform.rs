@@ -27,7 +27,8 @@ async fn main() {
 
     let filepath = PathBuf::from(filepath);
 
-    let point = load_point(&filepath).await;
+    // no-GUI: битая точка — паника.
+    let point = load_point(&filepath).await.expect("load point");
 
     let waveforms_ch6 = point
         .channels

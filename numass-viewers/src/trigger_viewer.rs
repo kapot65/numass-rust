@@ -24,6 +24,9 @@ pub struct TriggerViewer {
     trigger_density: Arc<Mutex<Option<PointHistogram>>>,
     stats: Arc<Mutex<TimestampStats>>,
     static_params: Arc<Mutex<Option<StaticPointParams>>>,
+    /// Ошибка загрузки/парсинга точки или неподходящей меты: показывается
+    /// вместо spinner, вьюер не падает.
+    error: Arc<Mutex<Option<String>>>,
 
     /// bin size in ms
     bin_size: u64,
@@ -37,8 +40,8 @@ impl TriggerViewer {
             point: Arc::new(Mutex::new(None)),
             stats: Arc::new(Mutex::new(TimestampStats::default())),
             static_params: Arc::new(Mutex::new(None)),
-
             trigger_density: Arc::new(Mutex::new(None)),
+            error: Arc::new(Mutex::new(None)),
             bin_size: 10,
             per_channel: false,
         };
@@ -48,20 +51,28 @@ impl TriggerViewer {
         let trigger_density = Arc::clone(&viewer.trigger_density);
         let stats = Arc::clone(&viewer.stats);
         let static_params = Arc::clone(&viewer.static_params);
+        let error = Arc::clone(&viewer.error);
         let limit_ms = viewer.bin_size;
 
         spawn(async move {
             let meta_local = load_meta(&filepath).await;
             meta.lock().clone_from(&meta_local);
 
-            let point_local = load_point(&filepath).await;
+            match load_point(&filepath).await {
+                Err(err) => {
+                    // Битый файл — не паника: вьюер показывает ошибку вместо данных.
+                    *error.lock() = Some(err.to_string());
+                    return;
+                }
+                Ok(point_local) => {
+                    // TODO: optimize to prevent double processing of point data
+                    let static_params_local =
+                        StaticPointParams::from_point(meta_local.clone(), &point_local);
+                    *static_params.lock() = Some(static_params_local);
 
-            // TODO: optimize to prevent double processing of point data
-            let static_params_local =
-                StaticPointParams::from_point(meta_local.clone(), &point_local);
-            *static_params.lock() = Some(static_params_local);
-
-            *point.lock() = Some(point_local);
+                    *point.lock() = Some(point_local);
+                }
+            }
 
             if let Some(NumassMeta::Reply(Reply::AcquirePoint {
                 acquisition_time, ..
@@ -76,7 +87,7 @@ impl TriggerViewer {
                 )
                 .await;
             } else {
-                panic!("Unexpected meta data type")
+                *error.lock() = Some("point metadata is not an acquired point".to_owned());
             }
         });
 
@@ -171,6 +182,7 @@ impl eframe::App for TriggerViewer {
                 let point = Arc::clone(&self.point);
                 let trigger_density = Arc::clone(&self.trigger_density);
                 let stats = Arc::clone(&self.stats);
+                let error = Arc::clone(&self.error);
                 let limit_ms = self.bin_size;
 
                 let meta = self.meta.lock().clone();
@@ -179,6 +191,7 @@ impl eframe::App for TriggerViewer {
                         acquisition_time, ..
                     })) = meta
                     {
+                        *error.lock() = None;
                         TriggerViewer::calc_density(
                             point,
                             trigger_density,
@@ -188,7 +201,7 @@ impl eframe::App for TriggerViewer {
                         )
                         .await;
                     } else {
-                        panic!("Unexpected meta data type")
+                        *error.lock() = Some("point metadata is not an acquired point".to_owned());
                     }
                 });
             }
@@ -240,7 +253,16 @@ impl eframe::App for TriggerViewer {
             });
         } else {
             egui::CentralPanel::default().show(ui, |ui| {
-                ui.spinner();
+                // Ошибка загрузки/парсинга — текст вместо spinner.
+                if let Some(error) = &*self.error.lock() {
+                    ui.label(
+                        egui::RichText::new(error)
+                            .monospace()
+                            .color(ui.visuals().error_fg_color),
+                    );
+                } else {
+                    ui.spinner();
+                }
             });
         }
     }

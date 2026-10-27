@@ -150,8 +150,14 @@ impl BundleViewer {
         let post_process = viewer.post_process.to_owned();
 
         spawn(async move {
-            let point_local = load_point(&filepath).await;
-            *point.lock() = Some(point_local);
+            match load_point(&filepath).await {
+                Ok(point_local) => *point.lock() = Some(point_local),
+                // Битый файл — не паника: банер ошибки вместо графика.
+                Err(err) => {
+                    *error.lock() = Some(err.to_string());
+                    return;
+                }
+            }
 
             let meta_local = load_meta(&filepath).await;
             *meta.lock() = meta_local;

@@ -127,10 +127,15 @@ impl From<&RawWaveform> for ProcessedWaveform {
 
 impl From<rsb_event::point::channel::block::Frame> for RawWaveform {
     fn from(frame: rsb_event::point::channel::block::Frame) -> Self {
-        let waveform_len = frame.data.len() / 2;
-        RawWaveform(
-            (0..waveform_len)
-                .map(|idx| i16::from_le_bytes(frame.data[idx * 2..idx * 2 + 2].try_into().unwrap()))
+        // Отсчёты — пары байтов LE; нечётный хвост обрезается (данные могли
+        // урезать при передаче).
+        Self(
+            frame
+                .data
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|bytes| i16::from_le_bytes(*bytes))
                 .collect::<Vec<_>>(),
         )
     }
@@ -138,10 +143,14 @@ impl From<rsb_event::point::channel::block::Frame> for RawWaveform {
 
 impl From<&rsb_event::point::channel::block::Frame> for RawWaveform {
     fn from(frame: &rsb_event::point::channel::block::Frame) -> Self {
-        let waveform_len = frame.data.len() / 2;
-        RawWaveform(
-            (0..waveform_len)
-                .map(|idx| i16::from_le_bytes(frame.data[idx * 2..idx * 2 + 2].try_into().unwrap()))
+        // См. From<Frame> — та же обрезка нечётного хвоста.
+        Self(
+            frame
+                .data
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|bytes| i16::from_le_bytes(*bytes))
                 .collect::<Vec<_>>(),
         )
     }

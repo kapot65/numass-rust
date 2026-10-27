@@ -24,7 +24,8 @@ async fn main() {
     let filepath = PathBuf::from(filepath);
 
     let meta = load_meta(&filepath).await;
-    let point = load_point(&filepath).await;
+    // no-GUI: битая точка — паника.
+    let point = load_point(&filepath).await.expect("load point");
 
     let (frames, _) = numass_processing::process::extract_events(
         meta,

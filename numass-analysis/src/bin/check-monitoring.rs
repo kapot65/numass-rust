@@ -97,7 +97,7 @@ async fn main() {
                 }
                 *current_runs.lock().await += 1;
 
-                let point = load_point(&filepath).await;
+                let point = load_point(&filepath).await.expect("load point");
 
                 let (amps, preprocess) = post_process(
                     extract_events(

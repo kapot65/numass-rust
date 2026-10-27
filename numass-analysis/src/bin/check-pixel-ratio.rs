@@ -84,7 +84,7 @@ async fn main() {
                 )
                 .unwrap();
 
-                let point = load_point(&filepath).await;
+                let point = load_point(&filepath).await.expect("load point");
 
                 let (amps, _) = post_process(
                     extract_events(

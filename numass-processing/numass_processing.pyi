@@ -512,11 +512,14 @@ def apply_frame(frame: Frame, steps: typing.Sequence[PreprocessStep]) -> Process
 def apply_waveforms(waveforms: Waveforms, steps: typing.Sequence[PreprocessStep]) -> ProcessedPoint:
     r"""
     Те же шаги, что `preprocess::apply_waveforms`.
+    
+    Ошибка шага скрипта (парсинг/исполнение) — исключение (`SyntaxError`/
+    `RuntimeError`), процесс не умирает.
     """
 
 def convert_to_kev(amplitude: builtins.float, ch_id: builtins.int, algorithm: Algorithm) -> builtins.float:
     r"""
-    Те же аргументы, что `process::convert_to_kev`.
+    Те же аргументы, что `process::convert_to_kev`. Ошибка канала вне калибровки — `ValueError`.
     """
 
 def extract_frame(processed: ProcessedFrame, frame: Frame, algorithm: Algorithm) -> FrameEvents:
@@ -557,6 +560,9 @@ def load_meta(path: builtins.str | os.PathLike | pathlib.Path) -> dict[str, typi
 def load_point(path: builtins.str | os.PathLike | pathlib.Path) -> Point:
     r"""
     Загружает протокольную точку из файла DataForge.
+    
+    Битый файл (не читается заголовок или protobuf) — `ValueError` с текстом
+    разбора, а не PanicException.
     """
 
 def post_process(events: NumassEvents, preprocess: dict[str, typing.Any], params: PostProcessParams) -> NumassEvents:

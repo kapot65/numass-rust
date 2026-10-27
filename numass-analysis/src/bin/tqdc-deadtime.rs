@@ -35,7 +35,7 @@ async fn main() {
                 let hist = Arc::clone(&hist);
                 let filepath = filepath.clone();
                 tokio::spawn(async move {
-                    let point = load_point(&filepath).await;
+                    let point = load_point(&filepath).await.expect("load point");
 
                     let frames = extract_waveforms(&point);
                     let processed = apply_waveforms(&frames, &PreprocessParams::default().steps)

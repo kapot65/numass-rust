@@ -51,7 +51,24 @@ impl FilteredViewer {
         postprocess: PostProcessParams,
         range: Range<f32>,
     ) -> Self {
-        let point = load_point(&filepath).await;
+        // Битый файл — не паника: вьюер открывается с банером ошибки.
+        let point = match load_point(&filepath).await {
+            Ok(point) => point,
+            Err(err) => {
+                return Self {
+                    preprocess_params,
+                    process,
+                    postprocess,
+                    range,
+                    point: rsb_event::Point::default(),
+                    processed: ProcessedPoint::default(),
+                    raw_hidden_seeded: false,
+                    indexes: None,
+                    current: 0,
+                    error: Some(err.to_string()),
+                };
+            }
+        };
         let waveforms = extract_waveforms(&point);
 
         let (processed, indexes, error) =
