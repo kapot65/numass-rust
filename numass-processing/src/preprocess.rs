@@ -286,9 +286,14 @@ impl PreprocessParams {
 
 /// Канал после предобработки.
 ///
+/// Отсчёты одного канала одного кадра после материализации и шагов.
+///
 /// `delay` — сдвиг индекса относительно сырого кадра. FIR записывает сюда
 /// `left + center + right`, как прежний `offset`.
-#[derive(Clone, Debug)]
+///
+/// Serialize/Deserialize — wire worker'a script-worker на wasm (обратная
+/// передача обработаных кадров) и грядущий переезд wasm-hist на этот формат.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChannelSamples {
     pub samples: Vec<f32>,
     pub delay: usize,

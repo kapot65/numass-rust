@@ -4560,6 +4560,7 @@ dependencies = [
  "tracing-wasm",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "web-sys",
  "which 6.0.3",
 ]
 

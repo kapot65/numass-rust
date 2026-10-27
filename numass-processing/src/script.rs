@@ -194,6 +194,24 @@ pub(crate) fn check_script(source: &str) -> Vec<TypeDiagnostic> {
         .unwrap_or_default()
 }
 
+/// Тайпчек-гейт для рантайма: `Err` с текстом диагностик, без исполнения скрипта.
+///
+/// Worker `script-worker` прогоняет это до исполнения: ошибки типов/аргументов
+/// (не-выражающиеся в синтаксисе) возвращаются текстом, а не trap'ом worker'а.
+#[cfg(any(feature = "egui", test))]
+pub fn typecheck_script(source: &str) -> Result<(), String> {
+    let diagnostics = check_script(source);
+    if diagnostics.is_empty() {
+        Ok(())
+    } else {
+        Err(diagnostics
+            .iter()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+            .join("\n"))
+    }
+}
+
 /// Набор функций, доступных скрипту через глобал `host`.
 ///
 /// [`install`](ScriptHost::install) вызывается один раз при сборке VM.
@@ -1009,5 +1027,18 @@ mod tests {
     fn average_script_typechecks() {
         let diags = check_script(AVERAGE_SCRIPT);
         assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+    }
+
+    /// [`typecheck_script`] (гейт script-worker'а): корректные скрипты
+    /// проходят; битый синтаксис — `Err` с текстом, без исполнения.
+    #[cfg(feature = "egui")]
+    #[test]
+    fn typecheck_script_reports_errors() {
+        assert!(typecheck_script(AVERAGE_SCRIPT).is_ok());
+
+        let Err(text) = typecheck_script("return function(frame") else {
+            panic!("broken script must typecheck-fail")
+        };
+        assert!(text.contains("Expected"), "{text}");
     }
 }

@@ -1,13 +1,13 @@
-use std::{collections::BTreeMap, ops::Range, path::PathBuf};
+use std::{collections::BTreeMap, ops::Range, path::PathBuf, sync::Arc};
 
-use egui::Visuals;
+use egui::{Visuals, mutex::Mutex};
 use egui_plot::{Legend, PlotUi};
 
 use numass_processing::{
     numass::protos::rsb_event,
     postprocess::{PostProcessParams, post_process_frame},
     preprocess::{
-        PreprocessParams, ProcessedPoint, apply_waveforms, draw_processed_frame, draw_raw_frame,
+        PreprocessParams, PreprocessStep, ProcessedPoint, draw_processed_frame, draw_raw_frame,
         extract_waveforms, frame_to_waveform,
     },
     process::{ProcessParams, convert_to_kev, extract_frame},
@@ -17,8 +17,13 @@ use numass_processing::{
     widgets::{HISTOGRAM_MAX, HISTOGRAM_MIN, UserInput},
 };
 
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::spawn;
+
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen_futures::spawn_local as spawn;
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
@@ -32,15 +37,19 @@ pub struct FilteredViewer {
     postprocess: PostProcessParams,
     range: Range<f32>,
     /// Точка принадлежит вьюеру: вейформы заимствуются из неё на время
-    /// операций (вместо утечки через `Box::leak`).
-    point: rsb_event::Point,
-    processed: ProcessedPoint,
+    /// операций (вместо утечки через `Box::leak`). Аc — чтобы задача
+    /// репроцесса (wasm: это worker, выполняющий Lua) читала точку без копии.
+    point: Arc<rsb_event::Point>,
+    /// Результат предобработки; пишется задачей репроцесса, читается ui.
+    processed: Arc<Mutex<ProcessedPoint>>,
     raw_hidden_seeded: bool,
-    indexes: Option<Vec<u64>>,
+    indexes: Arc<Mutex<Option<Vec<u64>>>>,
     current: usize,
     /// Ошибка пайплайна (скрипт/данные): рисуется банером вместо графика,
-    /// снимается успешным reprocess.
-    error: Option<String>,
+    /// снимается успешным репроцессом.
+    error: Arc<Mutex<Option<String>>>,
+    /// Пока идёт репроцесс, повторные клики по apply игнорируются.
+    reprocess_running: Arc<Mutex<bool>>,
 }
 
 impl FilteredViewer {
@@ -53,26 +62,103 @@ impl FilteredViewer {
     ) -> Self {
         // Битый файл — не паника: вьюер открывается с банером ошибки.
         let point = match load_point(&filepath).await {
-            Ok(point) => point,
+            Ok(point) => Arc::new(point),
             Err(err) => {
                 return Self {
                     preprocess_params,
                     process,
                     postprocess,
                     range,
-                    point: rsb_event::Point::default(),
-                    processed: ProcessedPoint::default(),
+                    point: Arc::new(rsb_event::Point::default()),
+                    processed: Arc::new(Mutex::new(ProcessedPoint::default())),
                     raw_hidden_seeded: false,
-                    indexes: None,
+                    indexes: Arc::new(Mutex::new(None)),
                     current: 0,
-                    error: Some(err.to_string()),
+                    error: Arc::new(Mutex::new(Some(err.to_string()))),
+                    reprocess_running: Arc::new(Mutex::new(false)),
                 };
             }
         };
+
+        let viewer = Self {
+            preprocess_params,
+            process,
+            postprocess,
+            range,
+            point,
+            processed: Arc::new(Mutex::new(ProcessedPoint::default())),
+            raw_hidden_seeded: false,
+            indexes: Arc::new(Mutex::new(None)),
+            current: 0,
+            error: Arc::new(Mutex::new(None)),
+            reprocess_running: Arc::new(Mutex::new(false)),
+        };
+
+        // Первый прогон здесь и синхронизован await'ом: вьюер появится после
+        // полной загрузки, одинаково на обеих платформах.
+        FilteredViewer::reprocess_task(
+            Arc::clone(&viewer.point),
+            viewer.preprocess_params.steps.clone(),
+            viewer.process.clone(),
+            viewer.postprocess,
+            viewer.range.clone(),
+            Arc::clone(&viewer.processed),
+            Arc::clone(&viewer.indexes),
+            Arc::clone(&viewer.error),
+            Arc::clone(&viewer.reprocess_running),
+            None,
+        )
+        .await;
+
+        viewer
+    }
+
+    /// Кнопка apply: запуск репроцесса в фоне.
+    fn reprocess(&mut self, ctx: eframe::egui::Context) {
+        {
+            let mut running = self.reprocess_running.lock();
+            if *running {
+                return;
+            }
+            *running = true;
+        }
+
+        spawn(Self::reprocess_task(
+            Arc::clone(&self.point),
+            self.preprocess_params.steps.clone(),
+            self.process.clone(),
+            self.postprocess,
+            self.range.clone(),
+            Arc::clone(&self.processed),
+            Arc::clone(&self.indexes),
+            Arc::clone(&self.error),
+            Arc::clone(&self.reprocess_running),
+            Some(ctx),
+        ));
+    }
+
+    /// Прогон пайплайна на переданных параметрах со записью в state вьюера.
+    ///
+    /// Одинаковый на обеих платформах: разница только в том, где исполняет
+    /// скриптовый шаг `script_worker::apply_waveforms_with` (native — локально,
+    /// wasm — отдельный worker-модуль, Lua-throw не убивает интерфейс).
+    #[allow(clippy::too_many_arguments)]
+    async fn reprocess_task(
+        point: Arc<rsb_event::Point>,
+        steps: Vec<PreprocessStep>,
+        process: ProcessParams,
+        postprocess: PostProcessParams,
+        range: Range<f32>,
+        processed_slot: Arc<Mutex<ProcessedPoint>>,
+        indexes_slot: Arc<Mutex<Option<Vec<u64>>>>,
+        error_slot: Arc<Mutex<Option<String>>>,
+        running_slot: Arc<Mutex<bool>>,
+        repaint: Option<eframe::egui::Context>,
+    ) {
         let waveforms = extract_waveforms(&point);
 
         let (processed, indexes, error) =
-            match apply_waveforms(&waveforms, &preprocess_params.steps) {
+            match crate::script_worker::apply_waveforms_with(&waveforms, &steps, None).await {
                 Ok(processed) => {
                     match Self::matching_frames(
                         &processed,
@@ -88,42 +174,14 @@ impl FilteredViewer {
                 Err(err) => (ProcessedPoint::default(), None, Some(err.to_string())),
             };
 
-        Self {
-            preprocess_params,
-            process,
-            postprocess,
-            range,
-            point,
-            processed,
-            raw_hidden_seeded: false,
-            indexes,
-            current: 0,
-            error,
+        *processed_slot.lock() = processed;
+        *indexes_slot.lock() = indexes;
+        *error_slot.lock() = error;
+        *running_slot.lock() = false;
+
+        if let Some(ctx) = repaint {
+            ctx.request_repaint();
         }
-    }
-
-    fn reprocess(&mut self) {
-        let waveforms = extract_waveforms(&self.point);
-
-        let (processed, indexes, error) =
-            match apply_waveforms(&waveforms, &self.preprocess_params.steps) {
-                Ok(processed) => match Self::matching_frames(
-                    &processed,
-                    &self.process,
-                    &self.postprocess,
-                    &self.range,
-                    &waveforms,
-                ) {
-                    Ok(indexes) => (processed, Some(indexes), None),
-                    Err(err) => (processed, None, Some(err)),
-                },
-                Err(err) => (ProcessedPoint::default(), None, Some(err.to_string())),
-            };
-
-        self.processed = processed;
-        self.indexes = indexes;
-        self.current = 0;
-        self.error = error;
     }
 
     /// Времена кадров, в которых есть хотя бы одно событие с амплитудой в `range`.
@@ -184,7 +242,8 @@ impl FilteredViewer {
     /// текстом: `ui()` показывает её банером вместо паники.
     fn plot_processed_frame(&self, plot_ui: &mut PlotUi<'_>, time: u64) -> Option<String> {
         let frame = self.frame_at(time);
-        let processed = &self.processed[&time];
+        let processed = self.processed.lock();
+        let processed = &processed[&time];
 
         draw_raw_frame(&frame, plot_ui);
         draw_processed_frame(processed, plot_ui);
@@ -227,7 +286,7 @@ impl FilteredViewer {
     }
 
     fn inc(&mut self) {
-        if let Some(len) = self.indexes.as_ref().map(|indexes| indexes.len())
+        if let Some(len) = self.indexes.lock().as_ref().map(|indexes| indexes.len())
             && len > 0
             && self.current + 1 < len
         {
@@ -236,7 +295,7 @@ impl FilteredViewer {
     }
 
     fn dec(&mut self) {
-        if self.indexes.is_some() && self.current != 0 {
+        if self.indexes.lock().is_some() && self.current != 0 {
             self.current -= 1
         }
     }
@@ -248,7 +307,8 @@ impl eframe::App for FilteredViewer {
         let ctx = ui.ctx().clone();
         ctx.set_visuals(Visuals::dark());
 
-        let indexes_len = self.indexes.as_ref().map(|indexes| indexes.len());
+        let indexes_len = self.indexes.lock().as_ref().map(|indexes| indexes.len());
+        let reprocess_running = *self.reprocess_running.lock();
 
         ctx.input(|i| {
             if i.key_pressed(eframe::egui::Key::ArrowLeft) {
@@ -281,14 +341,19 @@ impl eframe::App for FilteredViewer {
             ui.add(egui::Slider::new(&mut max, HISTOGRAM_MIN..=HISTOGRAM_MAX).text("right"));
             self.range = min..max;
 
-            if ui.button("apply").clicked() {
-                self.reprocess();
+            let apply_label = if reprocess_running {
+                "processing..."
+            } else {
+                "apply"
+            };
+            if ui.button(apply_label).clicked() {
+                self.reprocess(ctx.clone());
             }
         });
 
         // Ошибка пайплайна — верхняя панель: видна и в «No data»,
-        // и в рисовании графика.
-        if let Some(error) = &self.error {
+        // и при рисовании графика.
+        if let Some(error) = self.error.lock().as_ref() {
             eframe::egui::Panel::top("pipeline-error").show(ui, |ui| {
                 ui.label(
                     egui::RichText::new(error)
@@ -301,12 +366,17 @@ impl eframe::App for FilteredViewer {
 
         if self
             .indexes
+            .lock()
             .as_ref()
             .is_none_or(|indexes| indexes.is_empty())
         {
             eframe::egui::CentralPanel::default().show(ui, |ui| {
                 ui.centered_and_justified(|ui| {
-                    ui.label("No data to display");
+                    if reprocess_running {
+                        ui.spinner();
+                    } else {
+                        ui.label("No data to display");
+                    }
                 });
             });
         } else {
@@ -336,7 +406,7 @@ impl eframe::App for FilteredViewer {
                         }
                     }
 
-                    if let Some(indexes) = self.indexes.as_ref() {
+                    if let Some(indexes) = self.indexes.lock().as_ref() {
                         ui.label(format_time(nanoseconds(indexes[self.current] as f64)));
                     }
                 })
@@ -344,7 +414,7 @@ impl eframe::App for FilteredViewer {
 
             eframe::egui::CentralPanel::default().show(ui, |ui| {
                 let mut plot_error = None;
-                if let Some(indexes) = self.indexes.as_ref() {
+                if let Some(indexes) = self.indexes.lock().as_ref() {
                     let legend = if self.raw_hidden_seeded {
                         Legend::default()
                     } else {
@@ -370,7 +440,7 @@ impl eframe::App for FilteredViewer {
                     ui.spinner();
                 }
                 if let Some(error) = plot_error {
-                    self.error = Some(error);
+                    *self.error.lock() = Some(error);
                 }
             });
         }

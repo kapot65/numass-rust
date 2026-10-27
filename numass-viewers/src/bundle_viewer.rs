@@ -7,8 +7,8 @@ use numass_processing::{
     error::PipelineError,
     numass::{NumassMeta, protos::rsb_event},
     postprocess::{PostProcessParams, post_process},
-    preprocess::PreprocessParams,
-    process::{ProcessParams, extract_events},
+    preprocess::{PreprocessParams, StaticPointParams, extract_waveforms},
+    process::{ProcessParams, extract_processed},
     storage::{load_meta, load_point},
     types::{FrameEvent, Time, millisecond, nanosecond, nanoseconds, time_ns},
     utils::{
@@ -50,7 +50,7 @@ pub struct BundleViewer {
 /// кадров с невосстановимым временем не рисуются и попадают в
 /// `stats.dropped`; сколько поправлено и с какой поправкой — `stats`.
 /// Без `acquisition_time` (нет мета) границы и ремонта нет.
-fn point_to_chunks(
+async fn point_to_chunks(
     meta: Option<NumassMeta>,
     point: rsb_event::Point,
     preprocess: PreprocessParams,
@@ -60,8 +60,16 @@ fn point_to_chunks(
 ) -> Result<ChunkedData<Chunk>, PipelineError> {
     let limit_ns = time_ns(limit);
     let bound_ns = acquisition_time(meta.clone()).map(timestamps_bound);
+
+    // Тело `extract_events` с разносом: скриптовый шаг — через `script_worker`
+    // (wasm: отдельный worker-модуль; native: прямой вызов), остальное — локально.
+    let meta_params = StaticPointParams::from_point(meta.clone(), &point);
+    let raw = extract_waveforms(&point);
+    let processed =
+        crate::script_worker::apply_waveforms_with(&raw, &preprocess.steps, Some(&meta_params))
+            .await?;
     let (events, _) = post_process(
-        extract_events(meta, point, &preprocess, &process)?,
+        (extract_processed(&processed, &raw, &process)?, meta_params),
         &postprocess,
     )?;
 
@@ -171,13 +179,14 @@ impl BundleViewer {
                 process,
                 post_process,
                 limit,
-            );
+            )
+            .await;
         });
 
         viewer
     }
 
-    fn recalculate_chunks(
+    async fn recalculate_chunks(
         meta: Arc<Mutex<Option<NumassMeta>>>,
         point: Arc<Mutex<Option<rsb_event::Point>>>,
         data: Arc<Mutex<Option<ChunkedData<Chunk>>>>,
@@ -190,15 +199,20 @@ impl BundleViewer {
         *data.lock() = None;
         *error.lock() = None;
 
-        if let Some(point) = &*point.lock() {
+        // Guard не Send; клон (как и раньше) делаем до await'а.
+        let point = point.lock().clone();
+        if let Some(point) = &point {
+            let meta = meta.lock().clone();
             match point_to_chunks(
-                meta.lock().clone(),
+                meta,
                 point.clone(),
                 preprocess,
                 process,
                 post_process,
                 limit,
-            ) {
+            )
+            .await
+            {
                 Ok(chunked) => *data.lock() = Some(chunked),
                 // Скриптовый шаг и т.п. — банер в UI, программа не падает.
                 Err(err) => *error.lock() = Some(err.to_string()),
@@ -269,7 +283,8 @@ impl eframe::App for BundleViewer {
                         process,
                         post_process,
                         limit,
-                    );
+                    )
+                    .await;
                 });
             }
         });

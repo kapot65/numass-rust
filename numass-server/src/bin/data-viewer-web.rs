@@ -242,6 +242,26 @@ async fn main() {
                     ))
                     .unwrap()
             }),
+        )
+        .route(
+            "/script-worker.js",
+            get(|| async {
+                Response::builder()
+                    .header("content-type", "application/javascript")
+                    .body(Body::from(include_str!("../../dist/script-worker.js")))
+                    .unwrap()
+            }),
+        )
+        .route(
+            "/script-worker_bg.wasm",
+            get(|| async {
+                Response::builder()
+                    .header("content-type", "application/wasm")
+                    .body(Body::from(
+                        include_bytes!("../../dist/script-worker_bg.wasm").to_vec(),
+                    ))
+                    .unwrap()
+            }),
         );
 
     let listener = tokio::net::TcpListener::bind(address).await.unwrap();

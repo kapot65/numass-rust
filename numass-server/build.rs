@@ -13,6 +13,8 @@ const VIEWER_ASSETS: &[&str] = &[
     "data-viewer_bg.wasm",
     "worker.js",
     "worker_bg.wasm",
+    "script-worker.js",
+    "script-worker_bg.wasm",
 ];
 
 /// Cargo-переменные, которые вложенному `trunk`/`cargo` нужно оставить.

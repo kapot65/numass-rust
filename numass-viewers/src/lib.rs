@@ -15,6 +15,7 @@ pub mod app;
 pub mod bundle_viewer;
 pub mod filtered_viewer;
 pub mod point_viewer;
+pub mod script_worker;
 pub mod trigger_viewer;
 
 /// Статистика сломанных таймстампов точки: сколько поправлено и сколько
