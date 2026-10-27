@@ -58,6 +58,9 @@ async fn main() {
         .build_handler();
 
     // build our application with a single route
+    // Ответы-ошибки handlers — HTTP-статус + текст: веб-вьювер читает текст и
+    // показывает ошибку пользователю, не паника сервера (соединение не
+    // умирает, как раньше).
     let app = Router::new()
         .route("/api/to-root", get(|
             State(args): State<Opt>,
@@ -66,10 +69,10 @@ async fn main() {
 
                 // params=<json>, как и у остальных GET /api.
                 let Some(query) = to_root_options else {
-                    return StatusCode::BAD_REQUEST.into_response();
+                    return Err((StatusCode::BAD_REQUEST, "params required".into()));
                 };
                 let Ok(root_options) = ToROOTOptions::from_query_string(&query) else {
-                    return StatusCode::BAD_REQUEST.into_response();
+                    return Err((StatusCode::BAD_REQUEST, "bad params".into()));
                 };
 
                 let output = {
@@ -91,20 +94,33 @@ async fn main() {
                     .arg("--output")
                     .arg(&output);
 
+                // Конвертер — python-скрипт поверх биндингов: ошибки пайплайна
+                // (скрипт и т.п.) — его exit-код и stderr, не HTTP-500 от паники.
+                let launched = command
+                    .output()
+                    .await
+                    .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, format!("convert-to-root: {err}")))?;
+                if !launched.status.success() {
+                    let stderr = String::from_utf8_lossy(&launched.stderr);
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("convert-to-root: {}\n{}", launched.status, stderr),
+                    ));
+                }
 
-                command.spawn().unwrap().wait().await.unwrap();
-
-                let content = tokio::fs::read(&output).await.unwrap();
-                // remove temp file
-                tokio::fs::remove_file(output).await.unwrap();
+                let content = tokio::fs::read(&output)
+                    .await
+                    .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, format!("read output: {err}")))?;
+                // remove temp file (best effort: ошибка удаления не ломает ответ)
+                let _ = tokio::fs::remove_file(output).await;
 
                 let out_name = numass_processing::utils::construct_filename(root_options.filepath.to_str().unwrap(), Some("root"));
 
-                Response::builder()
+                Ok(Response::builder()
                     .header("Content-Disposition", format!("attachment; filename=\"{out_name}\""))
                     .header("content-type", "application/octet-stream")
                     .body(Body::from(content))
-                    .unwrap()
+                    .unwrap())
         }))
         .route("/api/process/meta/{*path}", get(|
                 State(args): State<Opt>,
@@ -130,46 +146,50 @@ async fn main() {
                 postprocess: postprocessing,
             }) = HistParams::from_query_string(&query.unwrap_or_default())
             else {
-                return StatusCode::BAD_REQUEST.into_response();
+                return Err((StatusCode::BAD_REQUEST, "invalid hist params".into()));
             };
 
-            let mut point_file = tokio::fs::File::open(args.directory.join(filepath)).await.unwrap();
-            let amplitudes = if let Ok(DFMessage {
+            let mut point_file = tokio::fs::File::open(args.directory.join(&filepath)).await
+                .map_err(|err| (StatusCode::NOT_FOUND, format!("cannot open {filepath:?}: {err}")))?;
+            if let Ok(DFMessage {
                 meta,
                 data,
-            }) = read_df_message::<numass::NumassMeta>(&mut point_file).await {
-                if let numass::NumassMeta::Reply(numass::Reply::AcquirePoint { .. }) = &meta {
-                    let point = rsb_event::Point::parse_from_bytes(&data.unwrap()).unwrap(); // TODO: return None for bad parsing
+            }) = read_df_message::<numass::NumassMeta>(&mut point_file).await
+                && let numass::NumassMeta::Reply(numass::Reply::AcquirePoint { .. }) = &meta
+            {
+                let data = data
+                    .ok_or((StatusCode::INTERNAL_SERVER_ERROR, "point message without data".into()))?;
+                let point = rsb_event::Point::parse_from_bytes(&data)
+                    .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, format!("broken point data: {err}")))?;
 
-                    // No-GUI обработка: ошибка пайплайна (скриптовый шаг и т.п.) —
-                    // паника, как раньше. TODO: возвращать HTTP 500 с текстом ошибки
-                    // и «None» для не-Reply-меты — отдельная итерация.
-                    let out = if let Some(postprocessing) = postprocessing {
-                        Some(post_process(
-                            extract_events(Some(meta), point, &preprocess, &process)
-                                .unwrap_or_else(|err| panic!("{err}")),
-                            &postprocessing,
-                        )
-                        .unwrap_or_else(|err| panic!("{err}")))
-                    } else {
-                        Some(
-                            extract_events(Some(meta), point, &preprocess, &process)
-                                .unwrap_or_else(|err| panic!("{err}")),
-                        )
-                    };
-                    rmp_serde::to_vec(&out).unwrap()
-                } else {
-                    rmp_serde::to_vec::<Option<(NumassEvents, StaticPointParams)>>(&None).unwrap() // TODO: send error instead of None
-                }
-            } else {
-                rmp_serde::to_vec::<Option<(NumassEvents, StaticPointParams)>>(&None).unwrap() // TODO: send error instead of None
-            };
+                // Ошибка пайплайна (скриптовый шаг и т.п.) — HTTP 500 с текстом
+                // ошибки: веб-клиент показывает её как ошибку точки, не падает.
+                let extracted = extract_events(Some(meta), point, &preprocess, &process)
+                    .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+                let out = match postprocessing {
+                    Some(postprocessing) => Some(
+                        post_process(extracted, &postprocessing)
+                            .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?,
+                    ),
+                    None => Some(extracted),
+                };
+                let body = rmp_serde::to_vec(&out)
+                    .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, format!("serialize: {err}")))?;
 
+                return Ok(Response::builder()
+                    .header("content-type", "application/messagepack")
+                    .body(Body::from(body))
+                    .unwrap());
+            }
 
-            Response::builder()
+            // Мета не читается или не AcquirePoint — пустой ответ (None):
+            // тот же результат Ok(None), что у native process_point.
+            let body = rmp_serde::to_vec::<Option<(NumassEvents, StaticPointParams)>>(&None)
+                .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, format!("serialize: {err}")))?;
+            Ok(Response::builder()
                 .header("content-type", "application/messagepack")
-                .body(Body::from(amplitudes))
-                .unwrap()
+                .body(Body::from(body))
+                .unwrap())
         }))
         .route("/files", any(handle_dav))
         .route("/files/", any(handle_dav))

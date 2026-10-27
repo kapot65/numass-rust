@@ -66,21 +66,27 @@ impl From<ScriptError> for PipelineError {
     }
 }
 
-/// Точка не разборалась из DataForge-файла.
+/// Точка не разборалась/не загрузилась из хранилища.
 #[derive(Debug)]
 pub enum LoadPointError {
+    /// Файл не открылся/не читается (только native).
+    Io(std::io::Error),
     /// Битый заголовок DF01 (заголовок/мета не читаются).
     DataForge(dataforge::DFParseError),
     /// Данные точки не разобрались как protobuf (`rsb_event::Point`).
     Proto(protobuf::Error),
+    /// Сбой HTTP-загрузки/неожиданный ответ (только wasm: fetch, статус,
+    /// undecodable-тело ответа).
+    Http(String),
 }
 
-// protobuf::Error уже реализует fmt::Error.
 impl fmt::Display for LoadPointError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Io(err) => write!(f, "cannot read point file: {err}"),
             Self::DataForge(err) => write!(f, "broken dataforge header: {err}"),
             Self::Proto(err) => write!(f, "broken point data: {err}"),
+            Self::Http(message) => write!(f, "cannot load point over http: {message}"),
         }
     }
 }
@@ -88,8 +94,10 @@ impl fmt::Display for LoadPointError {
 impl std::error::Error for LoadPointError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::Io(err) => Some(err),
             Self::DataForge(err) => Some(err),
             Self::Proto(err) => Some(err),
+            Self::Http(_) => None,
         }
     }
 }
@@ -130,6 +138,17 @@ mod tests {
         assert!(err.source().is_some());
         assert!(
             err.to_string().starts_with("broken dataforge header"),
+            "{}",
+            err
+        );
+    }
+
+    #[test]
+    fn transport_error_display() {
+        let err = LoadPointError::Http("process/hist: HTTP 500: boom".to_owned());
+        assert!(err.source().is_none());
+        assert!(
+            err.to_string().starts_with("cannot load point over http"),
             "{}",
             err
         );

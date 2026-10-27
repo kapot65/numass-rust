@@ -58,21 +58,32 @@ pub async fn process_point(
                 postprocess: postprocess.copied(),
             }
             .to_query_string();
-            let amplitudes_raw = gloo::net::http::Request::get(&format!(
+            let response = gloo::net::http::Request::get(&format!(
                 "{}?{query}",
                 api_url("api/process/hist", filepath)
             ))
             .send()
             .await
-            .unwrap()
-            .binary()
-            .await
-            .unwrap();
-            Ok(Some((
-                meta.unwrap(),
-                rmp_serde::from_slice::<Option<(NumassEvents, StaticPointParams)>>(&amplitudes_raw)
-                    .unwrap(),
-            )))
+            .map_err(|err| LoadPointError::Http(err.to_string()))?;
+
+            let status = response.status();
+            if status != 200 {
+                // Сервер вернул ошибку (например, сломанный preprocess-скрипт):
+                // текст ошибки уходит в PointState.error, как native показывает её
+                // из Result напрямую.
+                let text = response.text().await.unwrap_or_default();
+                return Err(
+                    LoadPointError::Http(format!("process/hist: HTTP {status}: {text}")).into(),
+                );
+            }
+            let amplitudes_raw = response
+                .binary()
+                .await
+                .map_err(|err| LoadPointError::Http(err.to_string()))?;
+            let decoded: Option<(NumassEvents, StaticPointParams)> =
+                rmp_serde::from_slice(&amplitudes_raw)
+                    .map_err(|err| LoadPointError::Http(format!("messagepack body: {err}")))?;
+            Ok(Some((meta.unwrap(), decoded)))
         }
     } else {
         Ok(None)
@@ -126,19 +137,25 @@ fn point_from_data(data: &[u8]) -> Result<rsb_event::Point, protobuf::Error> {
 
 /// Read `len` bytes at `start`. Native code seeks in the local file.
 /// Wasm requests the same byte range over HTTP.
-async fn read_range(filepath: &Path, start: u64, len: usize) -> Vec<u8> {
+async fn read_range(filepath: &Path, start: u64, len: usize) -> Result<Vec<u8>, LoadPointError> {
     if len == 0 {
-        return Vec::new();
+        return Ok(Vec::new());
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     {
         use tokio::io::{AsyncReadExt, AsyncSeekExt};
-        let mut file = tokio::fs::File::open(filepath).await.unwrap();
-        file.seek(std::io::SeekFrom::Start(start)).await.unwrap();
+        let mut file = tokio::fs::File::open(filepath)
+            .await
+            .map_err(LoadPointError::Io)?;
+        file.seek(std::io::SeekFrom::Start(start))
+            .await
+            .map_err(LoadPointError::Io)?;
         let mut buf = vec![0u8; len];
-        file.read_exact(&mut buf).await.unwrap();
-        buf
+        file.read_exact(&mut buf)
+            .await
+            .map_err(LoadPointError::Io)?;
+        Ok(buf)
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -148,30 +165,36 @@ async fn read_range(filepath: &Path, start: u64, len: usize) -> Vec<u8> {
             .header("Range", &format!("bytes={start}-{end}"))
             .send()
             .await
-            .unwrap();
+            .map_err(|err| LoadPointError::Http(err.to_string()))?;
         let status = response.status();
-        let bytes = response.binary().await.unwrap();
+        let bytes = response
+            .binary()
+            .await
+            .map_err(|err| LoadPointError::Http(err.to_string()))?;
         if status != 206 || bytes.len() != len {
-            panic!(
+            // Диапазон не отдан (файл исчез, диапазон не поддержан и т.п.) —
+            // ошибка вместо паники: веб должен вести себя как native.
+            return Err(LoadPointError::Http(format!(
                 "range bytes={start}-{end} for {filepath:?}: status {status}, {} bytes",
                 bytes.len()
-            );
+            )));
         }
-        bytes
+        Ok(bytes)
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn read_range_sync(filepath: &Path, start: u64, len: usize) -> Vec<u8> {
+fn read_range_sync(filepath: &Path, start: u64, len: usize) -> Result<Vec<u8>, LoadPointError> {
     use std::io::{Read, Seek, SeekFrom};
     if len == 0 {
-        return Vec::new();
+        return Ok(Vec::new());
     }
-    let mut file = std::fs::File::open(filepath).unwrap();
-    file.seek(SeekFrom::Start(start)).unwrap();
+    let mut file = std::fs::File::open(filepath).map_err(LoadPointError::Io)?;
+    file.seek(SeekFrom::Start(start))
+        .map_err(LoadPointError::Io)?;
     let mut buf = vec![0u8; len];
-    file.read_exact(&mut buf).unwrap();
-    buf
+    file.read_exact(&mut buf).map_err(LoadPointError::Io)?;
+    Ok(buf)
 }
 
 /// Полный JSON метаданных DF01, без сужения до [`NumassMeta`].
@@ -184,21 +207,25 @@ pub fn load_meta_json_sync(filepath: &Path) -> Result<serde_json::Value, datafor
 /// Load point metadata only from the storage.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn load_meta_sync(filepath: &Path) -> Option<NumassMeta> {
-    let header_bytes = read_range_sync(filepath, 0, DF_HEADER_LEN);
-    // Мета остается Option-функцией: ошибка заголовка не различается здесь.
+    // Мета остаётся Option- функцией: недоступный файл (Io/Http) трактуется как «меты нет» —
+    // точка позже сама вернёт ошибку через load_point.
+    let header_bytes = read_range_sync(filepath, 0, DF_HEADER_LEN).ok()?;
     let header = read_df_header(&header_bytes).ok()?;
     let (meta_len, _) = region_lengths(&header);
-    let meta_bytes = read_range_sync(filepath, DF_HEADER_LEN as u64, meta_len);
+    let meta_bytes = read_range_sync(filepath, DF_HEADER_LEN as u64, meta_len).ok()?;
     meta_from_parts(&header_bytes, meta_bytes)
 }
 
 /// Load point metadata only from the storage.
 pub async fn load_meta(filepath: &Path) -> Option<NumassMeta> {
-    let header_bytes = read_range(filepath, 0, DF_HEADER_LEN).await;
-    // Мета остается Option-функцией: ошибка заголовка не различается здесь.
+    // Мета остаётся Option- функцией: недоступный файл (Io/Http) трактуется как «меты нет» —
+    // точка позже сама вернёт ошибку через load_point.
+    let header_bytes = read_range(filepath, 0, DF_HEADER_LEN).await.ok()?;
     let header = read_df_header(&header_bytes).ok()?;
     let (meta_len, _) = region_lengths(&header);
-    let meta_bytes = read_range(filepath, DF_HEADER_LEN as u64, meta_len).await;
+    let meta_bytes = read_range(filepath, DF_HEADER_LEN as u64, meta_len)
+        .await
+        .ok()?;
     meta_from_parts(&header_bytes, meta_bytes)
 }
 
@@ -221,28 +248,28 @@ pub async fn load_modified_time(filepath: PathBuf) -> Option<SystemTime> {
 /// Load and parse point binary data from the storage.
 /// Do not use this function directly without reason.
 ///
-/// Ошибки разбора (заголовок DataForge, protobuf) возвращаются в [`LoadPointError`]:
-/// Python-биндинги превращают её в исключение, вьювер — в сообщение пользователю.
-/// Сеть/файловая система (`read_range*`) в тип не входит: там паника.
+/// Ошибки разбора (заголовок DataForge, protobuf) и доступа (Io/Http)
+/// возвращаются в [`LoadPointError`]: Python-биндинги превращают её в
+/// исключение, вьювер — в сообщение пользователю.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn load_point_sync(filepath: &Path) -> Result<rsb_event::Point, LoadPointError> {
-    let header_bytes = read_range_sync(filepath, 0, DF_HEADER_LEN);
+    let header_bytes = read_range_sync(filepath, 0, DF_HEADER_LEN)?;
     let header = read_df_header(&header_bytes).map_err(LoadPointError::DataForge)?;
     let (meta_len, data_len) = region_lengths(&header);
     let data = read_range_sync(
         filepath,
         DF_HEADER_LEN as u64 + u64::try_from(meta_len).unwrap(),
         data_len,
-    );
+    )?;
     point_from_data(&data).map_err(LoadPointError::Proto)
 }
 
 /// Load and parse point binary data from the storage.
 /// Do not use this function directly without reason.
 ///
-/// Ошибки разбора — в [`LoadPointError`] (см. [`load_point_sync`]).
+/// Ошибки разбора и доступа — в [`LoadPointError`] (см. [`load_point_sync`]).
 pub async fn load_point(filepath: &Path) -> Result<rsb_event::Point, LoadPointError> {
-    let header_bytes = read_range(filepath, 0, DF_HEADER_LEN).await;
+    let header_bytes = read_range(filepath, 0, DF_HEADER_LEN).await?;
     let header = read_df_header(&header_bytes).map_err(LoadPointError::DataForge)?;
     let (meta_len, data_len) = region_lengths(&header);
     let data = read_range(
@@ -250,7 +277,7 @@ pub async fn load_point(filepath: &Path) -> Result<rsb_event::Point, LoadPointEr
         DF_HEADER_LEN as u64 + u64::try_from(meta_len).unwrap(),
         data_len,
     )
-    .await;
+    .await?;
     point_from_data(&data).map_err(LoadPointError::Proto)
 }
 

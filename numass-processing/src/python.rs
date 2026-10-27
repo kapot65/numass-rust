@@ -8,13 +8,14 @@ use std::path::PathBuf;
 
 use numass::protos::rsb_event;
 use pyo3::exceptions::{
-    PyFileNotFoundError, PyKeyError, PyRuntimeError, PySyntaxError, PyValueError,
+    PyConnectionError, PyFileNotFoundError, PyKeyError, PyOSError, PyRuntimeError, PySyntaxError,
+    PyValueError,
 };
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyType};
 use pyo3_polars::PyDataFrame;
 
-use crate::error::PipelineError;
+use crate::error::{LoadPointError, PipelineError};
 use crate::postprocess::{ChannelIgnore, PostProcessParams};
 use crate::preprocess::PreprocessParams;
 use crate::process::{Algorithm, HWResetParams, HistParams, ProcessParams};
@@ -30,9 +31,19 @@ fn pipeline_error(err: PipelineError) -> PyErr {
         }
         PipelineError::Script(err) => PyRuntimeError::new_err(err.to_string()),
         PipelineError::Data(message) => PyValueError::new_err(message),
-        // Разбор точки не удался: битый файл → ValueError с текстом (OSError
-        // здесь не нужен: файлы проверяются до чтения).
-        PipelineError::Load(err) => PyValueError::new_err(err.to_string()),
+        PipelineError::Load(err) => load_point_error(err),
+    }
+}
+
+/// Ошибка загрузки/разбора точки → исключение Python:
+/// файл/сеть — `OSError`/`ConnectionError`, битые данные — `ValueError`.
+#[cfg(not(target_arch = "wasm32"))]
+fn load_point_error(err: LoadPointError) -> PyErr {
+    match err {
+        LoadPointError::Io(err) => PyOSError::new_err(err.to_string()),
+        LoadPointError::Http(message) => PyConnectionError::new_err(message),
+        LoadPointError::DataForge(err) => PyValueError::new_err(err.to_string()),
+        LoadPointError::Proto(err) => PyValueError::new_err(err.to_string()),
     }
 }
 
@@ -444,8 +455,7 @@ fn load_point(path: PathBuf) -> PyResult<Point> {
     if !path.is_file() {
         return Err(PyFileNotFoundError::new_err(path.display().to_string()));
     }
-    let inner = crate::storage::load_point_sync(&path)
-        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let inner = crate::storage::load_point_sync(&path).map_err(load_point_error)?;
     Ok(Point { inner })
 }
 
