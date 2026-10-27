@@ -12,6 +12,7 @@ use protobuf::Message;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    error::PipelineError,
     numass::protos::rsb_event,
     postprocess::PostProcessParams,
     preprocess::{PreprocessParams, StaticPointParams},
@@ -21,12 +22,15 @@ use crate::{
 
 /// Process point from the storage.
 /// This function will load point from storage (both local and remote) and executes [extract_events](crate::process::extract_events).
+///
+/// Ошибка пайплайна (скриптовый шаг и т.п.) возвращается: вьювер показывает её
+/// пользователю, batch-код делает `unwrap` — как раньше паникали сами шаги.
 pub async fn process_point(
     filepath: &Path,
     preprocess: &PreprocessParams,
     process: &ProcessParams,
     postprocess: Option<&PostProcessParams>,
-) -> Option<(NumassMeta, Option<(NumassEvents, StaticPointParams)>)> {
+) -> Result<Option<(NumassMeta, Option<(NumassEvents, StaticPointParams)>)>, PipelineError> {
     let meta = load_meta(filepath).await;
 
     if let Some(NumassMeta::Reply(numass::Reply::AcquirePoint { .. })) = &meta {
@@ -35,16 +39,15 @@ pub async fn process_point(
             // TODO: remove duplication with wasm32 branch. Maybe use async closures? https://rust-lang.github.io/async-book/07_workarounds/05_async_closures.html
             let point = load_point(filepath).await;
 
-            let events = if let Some(postprocess) = postprocess {
-                crate::postprocess::post_process(
-                    crate::process::extract_events(meta.clone(), point, preprocess, process),
+            let events = match postprocess {
+                Some(postprocess) => crate::postprocess::post_process(
+                    crate::process::extract_events(meta.clone(), point, preprocess, process)?,
                     postprocess,
-                )
-            } else {
-                crate::process::extract_events(meta.clone(), point, preprocess, process)
+                )?,
+                None => crate::process::extract_events(meta.clone(), point, preprocess, process)?,
             };
 
-            Some((meta.clone().unwrap(), Some(events)))
+            Ok(Some((meta.clone().unwrap(), Some(events))))
         }
 
         #[cfg(target_arch = "wasm32")]
@@ -65,14 +68,14 @@ pub async fn process_point(
             .binary()
             .await
             .unwrap();
-            Some((
+            Ok(Some((
                 meta.unwrap(),
                 rmp_serde::from_slice::<Option<(NumassEvents, StaticPointParams)>>(&amplitudes_raw)
                     .unwrap(),
-            ))
+            )))
         }
     } else {
-        None
+        Ok(None)
     }
 }
 

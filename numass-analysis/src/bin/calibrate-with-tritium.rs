@@ -69,6 +69,7 @@ async fn main() {
                         None,
                     )
                     .await
+                    .expect("process")
                     .unwrap();
                     let events = events.unwrap().0;
                     {

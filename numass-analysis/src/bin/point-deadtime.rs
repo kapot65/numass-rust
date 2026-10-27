@@ -22,7 +22,8 @@ async fn main() {
         None,
     )
     .await
-    .unwrap()
+    .expect("process")
+    .expect("point")
     .1
     .unwrap();
 

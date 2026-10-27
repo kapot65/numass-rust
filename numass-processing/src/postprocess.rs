@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     constants::DETECTOR_BORDERS,
+    error::PipelineError,
     preprocess::{CUTOFF_BIN_SIZE, StaticPointParams},
     types::{FrameEvent, NumassEvent, NumassEvents, time_ns},
 };
@@ -87,7 +88,14 @@ fn ignore_channels(ignore_channels: &[bool; 7], amplitudes: &mut NumassEvents) {
     if *ignore_channels != [false; 7] {
         amplitudes.iter_mut().for_each(|(_, events)| {
             events.retain(|(_, event)| match event {
-                FrameEvent::Event { channel, .. } => !ignore_channels[*channel as usize],
+                FrameEvent::Event { channel, .. } => {
+                    // Канал вне детекторной сетки (0..=6) не известен списку:
+                    // не игнорируем, а сохраняем событие.
+                    !ignore_channels
+                        .get(*channel as usize)
+                        .copied()
+                        .unwrap_or(false)
+                }
                 _ => true,
             });
         });
@@ -99,7 +107,13 @@ fn merge_close_frames(
     mut amplitudes: NumassEvents,
     merge_len: u16,
     static_params: &StaticPointParams,
-) -> NumassEvents {
+) -> Result<NumassEvents, PipelineError> {
+    // Нечего сливать: без раннего выхода вычитание `len - 1` вылетает в underflow.
+    if amplitudes.len() < 2 {
+        return Ok(amplitudes);
+    }
+
+    let frame_len = time_ns(static_params.frame_len) as i64;
     let mut amplitudes = amplitudes.iter_mut().collect::<Vec<_>>();
 
     let mut idx = amplitudes.len() - 1;
@@ -107,14 +121,17 @@ fn merge_close_frames(
 
     while idx > 0 {
         let frames_delta = amplitudes[idx].0 - amplitudes[idx - 1].0;
-        if frames_delta < merge_len as u64 {
-            let frame_offset = frames_delta - time_ns(static_params.frame_len);
+        if frames_delta < u64::from(merge_len) {
+            // Смещение может уйти в минус (дельта меньше длины кадра — обычный
+            // случай для слипания): считаем в i64 и приводим к u16, как раньше
+            // делала Release-сборка (Debug паниковал на underflow).
+            let frame_offset = (frames_delta as i64 - frame_len) as u16;
 
             let amplitudes_2 = amplitudes[idx].1.clone(); // clone to avoid borrowing issues
             amplitudes[idx - 1].1.extend(
                 amplitudes_2
                     .into_iter()
-                    .map(|(offset, event)| (offset + frame_offset as u16, event)),
+                    .map(|(offset, event)| (offset.wrapping_add(frame_offset), event)),
             );
 
             to_remove.push(idx);
@@ -122,7 +139,7 @@ fn merge_close_frames(
         idx -= 1;
     }
 
-    amplitudes
+    let merged = amplitudes
         .iter()
         .enumerate()
         .filter_map(|(idx, (offset, frame))| {
@@ -132,18 +149,19 @@ fn merge_close_frames(
                 Some((**offset, frame.to_vec()))
             }
         })
-        .collect::<NumassEvents>()
+        .collect::<NumassEvents>();
+    Ok(merged)
 }
 
 /// Built-in postprocessing algorithm.
 pub fn post_process(
     process_result: (NumassEvents, StaticPointParams),
     params: &PostProcessParams,
-) -> (NumassEvents, StaticPointParams) {
+) -> Result<(NumassEvents, StaticPointParams), PipelineError> {
     let (mut amplitudes, preprocess_params) = process_result;
 
     if let Some(frame_len) = params.merge_frames {
-        amplitudes = merge_close_frames(amplitudes, frame_len, &preprocess_params);
+        amplitudes = merge_close_frames(amplitudes, frame_len, &preprocess_params)?;
     }
 
     if params.cut_bad_blocks {
@@ -154,25 +172,26 @@ pub fn post_process(
     }
 
     if params.merge_close_events {
+        // Первый `Err` останавливает сборку: кадры дальше не обрабатываются.
         amplitudes = amplitudes
             .into_iter()
             .map(|(time, events)| {
-                (
+                Ok((
                     time,
                     post_process_frame(
                         events,
                         params,
                         #[cfg(feature = "egui")]
                         None,
-                    ),
-                )
+                    )?,
+                ))
             })
-            .collect();
+            .collect::<Result<NumassEvents, PipelineError>>()?;
     }
 
     ignore_channels(&params.ignore_channels.into(), &mut amplitudes);
 
-    (amplitudes, preprocess_params)
+    Ok((amplitudes, preprocess_params))
 }
 
 fn is_neighbour(ch_1: u8, ch_2: u8) -> bool {
@@ -312,11 +331,16 @@ pub fn post_process_frame(
     mut events: Vec<NumassEvent>,
     params: &PostProcessParams,
     #[cfg(feature = "egui")] mut ui: Option<&mut PlotUi>,
-) -> Vec<NumassEvent> {
+) -> Result<Vec<NumassEvent>, PipelineError> {
     if !params.merge_close_events {
         #[cfg(feature = "egui")]
         draw_postprocess_events(&events, &mut ui);
-        return events;
+        return Ok(events);
+    }
+
+    // Пустой кадр: без раннего выхода вычитание `len - 1` уходит в underflow.
+    if events.is_empty() {
+        return Ok(events);
     }
 
     if params.merge_splits_first {
@@ -417,7 +441,7 @@ pub fn post_process_frame(
     #[cfg(feature = "egui")]
     draw_postprocess_events(&events, &mut ui);
 
-    events
+    Ok(events)
 }
 
 #[cfg(feature = "egui")]

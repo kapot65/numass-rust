@@ -49,7 +49,8 @@ async fn main() {
 
                     let waveforms = extract_waveforms(&point);
                     let filtered =
-                        apply_waveforms(&waveforms, &PreprocessParams::trapezoid_fir().steps);
+                        apply_waveforms(&waveforms, &PreprocessParams::trapezoid_fir().steps)
+                            .expect("preprocess");
                     let baseline = histogram_peaks(&samples_histogram(
                         &filtered,
                         numass_processing::preprocess::POINT_BASELINE_MIN,

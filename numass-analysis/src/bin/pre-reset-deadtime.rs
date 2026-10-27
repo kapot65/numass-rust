@@ -38,6 +38,7 @@ async fn main() {
         None,
     )
     .await
+    .expect("process")
     .expect("Failed to process point");
 
     let (events, _) = events.expect("Failed to get events");

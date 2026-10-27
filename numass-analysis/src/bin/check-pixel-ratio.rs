@@ -92,9 +92,11 @@ async fn main() {
                         point,
                         &PreprocessParams::default(),
                         &process_local,
-                    ),
+                    )
+                    .expect("process"),
                     &postprocess_local,
-                );
+                )
+                .expect("postprocess");
 
                 let mut counts = BTreeMap::new();
 

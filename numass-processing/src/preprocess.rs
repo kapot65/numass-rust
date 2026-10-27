@@ -11,6 +11,7 @@ use numass::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::error::PipelineError;
 use crate::{
     histogram::PointHistogram,
     script::{PreprocessHost, ScriptRuntime},
@@ -300,10 +301,12 @@ pub type ProcessedPoint = BTreeMap<u64, ProcessedFrame>;
 ///
 /// Скриптовый шаг видит `point == nil`. Для прогона с метаданными —
 /// [`apply_waveforms_with`].
+///
+/// Ошибку (скриптовый шаг) возвращает, не тратя ресурсов на последующие шаги.
 pub fn apply_waveforms(
     waveforms: &NumassWaveformsFast<'_>,
     steps: &[PreprocessStep],
-) -> ProcessedPoint {
+) -> Result<ProcessedPoint, PipelineError> {
     apply_waveforms_with(waveforms, steps, None)
 }
 
@@ -314,21 +317,24 @@ pub fn apply_waveforms_with(
     waveforms: &NumassWaveformsFast<'_>,
     steps: &[PreprocessStep],
     point: Option<&StaticPointParams>,
-) -> ProcessedPoint {
+) -> Result<ProcessedPoint, PipelineError> {
     let mut buffers = waveforms
         .iter()
         .map(|(time, frame)| (*time, materialize(frame)))
         .collect::<ProcessedPoint>();
-    apply_steps(&mut buffers, steps, point);
-    buffers
+    apply_steps(&mut buffers, steps, point)?;
+    Ok(buffers)
 }
 
 /// Та же цепочка на одном кадре. `Baseline::Point` видит только этот кадр.
 /// Скрипт видит `point == nil`.
-pub fn apply_frame(frame: &NumassFrameFast<'_>, steps: &[PreprocessStep]) -> ProcessedFrame {
+pub fn apply_frame(
+    frame: &NumassFrameFast<'_>,
+    steps: &[PreprocessStep],
+) -> Result<ProcessedFrame, PipelineError> {
     let mut buffers = BTreeMap::from([(0, materialize(frame))]);
-    apply_steps(&mut buffers, steps, None);
-    buffers.remove(&0).unwrap()
+    apply_steps(&mut buffers, steps, None)?;
+    Ok(buffers.remove(&0).unwrap())
 }
 
 fn materialize(frame: &NumassFrameFast<'_>) -> ProcessedFrame {
@@ -350,17 +356,20 @@ fn apply_steps(
     buffers: &mut ProcessedPoint,
     steps: &[PreprocessStep],
     point: Option<&StaticPointParams>,
-) {
+) -> Result<(), PipelineError> {
+    // Первый проваленный шаг останавливает цепочку: дальнейшие шаги
+    // и кадры не тратятся.
     for step in steps {
-        apply_step(buffers, step, point);
+        apply_step(buffers, step, point)?;
     }
+    Ok(())
 }
 
 fn apply_step(
     buffers: &mut ProcessedPoint,
     step: &PreprocessStep,
     point: Option<&StaticPointParams>,
-) {
+) -> Result<(), PipelineError> {
     match step {
         PreprocessStep::Fir {
             left,
@@ -372,6 +381,7 @@ fn apply_step(
                     apply_fir(channel, *left as usize, *center as usize, *right as usize);
                 }
             }
+            Ok(())
         }
         PreprocessStep::Baseline(Baseline::Constant(values)) => {
             for frame in buffers.values_mut() {
@@ -382,6 +392,7 @@ fn apply_step(
                     }
                 }
             }
+            Ok(())
         }
         PreprocessStep::Baseline(Baseline::Head { bins }) => {
             let bins = *bins as usize;
@@ -397,6 +408,7 @@ fn apply_step(
                     }
                 }
             }
+            Ok(())
         }
         PreprocessStep::Baseline(Baseline::Point { min, max, step }) => {
             let peaks = histogram_peaks(&samples_histogram(buffers, *min, *max, *step));
@@ -408,6 +420,7 @@ fn apply_step(
                     }
                 }
             }
+            Ok(())
         }
         PreprocessStep::Invert {} => {
             for frame in buffers.values_mut() {
@@ -417,21 +430,22 @@ fn apply_step(
                     }
                 }
             }
+            Ok(())
         }
         PreprocessStep::Merge {} => {
             for frame in buffers.values_mut() {
                 merge_frame(frame);
             }
+            Ok(())
         }
         // VM создаётся на один вызов шага и остаётся в текущем потоке.
         // Хост не хранит состояния, поэтому синхронизация между точками
-        // не требуется.
+        // не требуется. Ошибку шага (парсинг/исполнение скрипта) не глотаем:
+        // её разбирает клиент пайплайна (вьювер — UI, Python — исключение).
         PreprocessStep::Script { source } => {
-            let runtime = ScriptRuntime::compile(source, &PreprocessHost)
-                .unwrap_or_else(|err| panic!("preprocess script: {err}"));
-            runtime
-                .apply(buffers, point)
-                .unwrap_or_else(|err| panic!("preprocess script: {err}"));
+            let runtime = ScriptRuntime::compile(source, &PreprocessHost)?;
+            runtime.apply(buffers, point)?;
+            Ok(())
         }
     }
 }
@@ -626,6 +640,7 @@ pub fn draw_processed_frame(frame: &ProcessedFrame, ui: &mut PlotUi) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{error::PipelineError, script::ScriptError};
 
     #[test]
     fn preprocess_serde_uses_base_unit_seconds() {
@@ -658,7 +673,7 @@ mod tests {
     fn one_frame(waveform: &[i16]) -> (NumassWaveformsFast<'_>, ProcessedFrame) {
         let frame = BTreeMap::from([(0u8, waveform)]);
         let waveforms = BTreeMap::from([(0u64, frame.clone())]);
-        let processed = apply_waveforms(&waveforms, &PreprocessParams::average().steps);
+        let processed = apply_waveforms(&waveforms, &PreprocessParams::average().steps).unwrap();
         (waveforms, processed.into_iter().next().unwrap().1)
     }
 
@@ -696,7 +711,7 @@ mod tests {
             max: POINT_BASELINE_MAX,
             step: POINT_BASELINE_STEP,
         })];
-        let processed = apply_waveforms(&waveforms, &steps);
+        let processed = apply_waveforms(&waveforms, &steps).unwrap();
         // бин (10 - 2) / 0.5 = 16, центр бина 10.25
         let expected = 10.0 - 10.25;
         assert!(
@@ -725,7 +740,7 @@ mod tests {
             }),
         ];
 
-        let processed = apply_waveforms(&waveforms, &steps);
+        let processed = apply_waveforms(&waveforms, &steps).unwrap();
         let channel = &processed[&1][&0];
         let once = emulate_fir(
             &waveform
@@ -786,7 +801,7 @@ mod tests {
         let second = [10i16, 20, 30];
         let frame = BTreeMap::from([(0u8, first.as_slice()), (1u8, second.as_slice())]);
         let waveforms = BTreeMap::from([(0u64, frame)]);
-        let processed = apply_waveforms(&waveforms, &[PreprocessStep::Merge {}]);
+        let processed = apply_waveforms(&waveforms, &[PreprocessStep::Merge {}]).unwrap();
 
         let frame = &processed[&0];
         assert_eq!(frame.len(), 1);
@@ -807,7 +822,7 @@ mod tests {
             PreprocessStep::Merge {},
         ];
 
-        let processed = apply_waveforms(&waveforms, &steps);
+        let processed = apply_waveforms(&waveforms, &steps).unwrap();
 
         let frame = &processed[&1];
         assert_eq!(frame.len(), 1);
@@ -835,8 +850,9 @@ mod tests {
             &[PreprocessStep::Script {
                 source: AVERAGE_SCRIPT.to_owned(),
             }],
-        );
-        let builtin = apply_waveforms(&waveforms, &PreprocessParams::average().steps);
+        )
+        .unwrap();
+        let builtin = apply_waveforms(&waveforms, &PreprocessParams::average().steps).unwrap();
 
         assert_eq!(scripted[&0][&0].samples, builtin[&0][&0].samples);
         assert_eq!(scripted[&0][&0].delay, builtin[&0][&0].delay);
@@ -876,10 +892,47 @@ mod tests {
                 source: source.to_owned(),
             }],
             Some(&point),
-        );
+        )
+        .unwrap();
 
         let samples = &processed[&7][&1].samples;
         assert_eq!(samples[0], 14_000.0);
         assert_eq!(&samples[1..], &[2.0, 3.0, 4.0]);
+    }
+
+    /// Сломанный скрипт — ошибка [`PipelineError`], а не паника: во вьювере её
+    /// показывает пользователь, в batch-коде паникает уже вызывающий шаг.
+    #[test]
+    fn broken_script_is_data_error_not_panic() {
+        let frame = BTreeMap::from([(0u8, [1i16, 2, 3].as_slice())]);
+        let waveforms = BTreeMap::from([(0u64, frame)]);
+
+        // Ошибка парсинга.
+        let parsed = apply_waveforms(
+            &waveforms,
+            &[PreprocessStep::Script {
+                source: "return function(frame".to_owned(),
+            }],
+        );
+        let PipelineError::Script(ScriptError::SyntaxError { message, .. }) =
+            parsed.expect_err("syntax must fail")
+        else {
+            panic!("pars failure must be Script(ScriptError::SyntaxError)")
+        };
+        assert!(message.contains("Expected"), "{message}");
+
+        // Ошибка исполнения на первом же кадре.
+        let run = apply_waveforms(
+            &waveforms,
+            &[PreprocessStep::Script {
+                source: "return function(frame) error('boom in script') end".to_owned(),
+            }],
+        );
+        let PipelineError::Script(ScriptError::RuntimeError(message)) =
+            run.expect_err("runtime must fail")
+        else {
+            panic!("runtime failure must be Script(ScriptError::RuntimeError)")
+        };
+        assert!(message.contains("boom in script"), "{message}");
     }
 }

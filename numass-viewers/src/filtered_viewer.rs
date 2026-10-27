@@ -50,7 +50,9 @@ impl FilteredViewer {
     ) -> Self {
         let point = load_point(&filepath).await;
         let waveforms = extract_waveforms(&point);
-        let processed = apply_waveforms(&waveforms, &preprocess_params.steps);
+        // TODO(К3): ошибку скрипта показать пользователю вместо паники.
+        let processed = apply_waveforms(&waveforms, &preprocess_params.steps)
+            .unwrap_or_else(|err| panic!("{err}"));
         let indexes = Self::matching_frames(&processed, &process, &postprocess, &range, &waveforms);
 
         Self {
@@ -68,7 +70,9 @@ impl FilteredViewer {
 
     fn reprocess(&mut self) {
         let waveforms = extract_waveforms(&self.point);
-        let processed = apply_waveforms(&waveforms, &self.preprocess_params.steps);
+        // TODO(К3): ошибку скрипта показать пользователю вместо паники.
+        let processed = apply_waveforms(&waveforms, &self.preprocess_params.steps)
+            .unwrap_or_else(|err| panic!("{err}"));
         let indexes = Self::matching_frames(
             &processed,
             &self.process,
@@ -94,10 +98,12 @@ impl FilteredViewer {
 
         for (time, frame) in waveforms {
             let events = post_process_frame(
-                extract_frame(&processed[time], frame, &process.algorithm, &mut None),
+                extract_frame(&processed[time], frame, &process.algorithm, &mut None)
+                    .unwrap_or_else(|err| panic!("{err}")),
                 postprocess,
                 None,
-            );
+            )
+            .unwrap_or_else(|err| panic!("{err}"));
 
             for (_, event) in events {
                 if let FrameEvent::Event {
@@ -106,6 +112,7 @@ impl FilteredViewer {
                 {
                     let amplitude = if process.convert_to_kev {
                         convert_to_kev(&amplitude, channel, &process.algorithm)
+                            .unwrap_or_else(|err| panic!("{err}"))
                     } else {
                         amplitude
                     };
@@ -149,8 +156,10 @@ impl FilteredViewer {
             &frame,
             &self.process.algorithm,
             &mut Some(plot_ui),
-        );
-        events = post_process_frame(events, &self.postprocess, Some(plot_ui));
+        )
+        .unwrap_or_else(|err| panic!("{err}"));
+        events = post_process_frame(events, &self.postprocess, Some(plot_ui))
+            .unwrap_or_else(|err| panic!("{err}"));
 
         if self.process.convert_to_kev {
             events.iter_mut().for_each(|(_, event)| {
@@ -160,7 +169,9 @@ impl FilteredViewer {
                     ..
                 } = event
                 {
+                    // TODO(К3): ошибку показать пользователю вместо паники.
                     *amplitude = convert_to_kev(amplitude, *ch_id, &self.process.algorithm)
+                        .unwrap_or_else(|err| panic!("{err}"))
                 }
             });
         }

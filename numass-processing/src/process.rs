@@ -16,12 +16,14 @@ use {
 
 use numass::{NumassMeta, protos::rsb_event};
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 
 use crate::{
     constants::{
         KEV_COEFF_AVERAGE, KEV_COEFF_FIRST_PEAK, KEV_COEFF_LIKHOVID, KEV_COEFF_LONGDIFF,
         KEV_COEFF_MAX, KEV_COEFF_TRAPEZIOD,
     },
+    error::PipelineError,
     postprocess::PostProcessParams,
     preprocess::{
         PreprocessParams, ProcessedFrame, ProcessedPoint, StaticPointParams, apply_waveforms_with,
@@ -224,9 +226,9 @@ pub trait Extract {
         &self,
         input: &FrameIn<'_>,
         #[cfg(feature = "egui")] ui: &mut Option<&mut PlotUi>,
-    ) -> Vec<NumassEvent>;
+    ) -> Result<Vec<NumassEvent>, PipelineError>;
 
-    fn to_kev(&self, amplitude: f32, channel: u8) -> f32;
+    fn to_kev(&self, amplitude: f32, channel: u8) -> Result<f32, PipelineError>;
 }
 
 impl Extract for Algorithm {
@@ -234,7 +236,7 @@ impl Extract for Algorithm {
         &self,
         input: &FrameIn<'_>,
         #[cfg(feature = "egui")] ui: &mut Option<&mut PlotUi>,
-    ) -> Vec<NumassEvent> {
+    ) -> Result<Vec<NumassEvent>, PipelineError> {
         match self {
             Algorithm::Max {} => extract_max(input),
             Algorithm::Likhovid { left, right } => extract_likhovid(input, *left, *right),
@@ -265,7 +267,7 @@ impl Extract for Algorithm {
         }
     }
 
-    fn to_kev(&self, amplitude: f32, channel: u8) -> f32 {
+    fn to_kev(&self, amplitude: f32, channel: u8) -> Result<f32, PipelineError> {
         convert_to_kev(&amplitude, channel, self)
     }
 }
@@ -277,11 +279,12 @@ pub fn extract_events(
     point: rsb_event::Point,
     preprocess: &PreprocessParams,
     process: &ProcessParams,
-) -> (NumassEvents, StaticPointParams) {
+) -> Result<(NumassEvents, StaticPointParams), PipelineError> {
     let meta_params = StaticPointParams::from_point(meta, &point);
     let raw = extract_waveforms(&point);
-    let processed = apply_waveforms_with(&raw, &preprocess.steps, Some(&meta_params));
-    (extract_processed(&processed, &raw, process), meta_params)
+    let processed = apply_waveforms_with(&raw, &preprocess.steps, Some(&meta_params))?;
+    let events = extract_processed(&processed, &raw, process)?;
+    Ok((events, meta_params))
 }
 
 /// События всех кадров уже предобработанной точки.
@@ -289,11 +292,13 @@ pub fn extract_events(
 /// Тот же проход, что [`extract_events`] делает после `apply_waveforms`:
 /// [`extract_frame`] и, если `process.convert_to_kev`, перевод амплитуды в кэВ.
 /// `processed` и `raw` должны быть одной точкой.
+///
+/// Первый `Err` останавливает проход по кадрам.
 pub fn extract_processed(
     processed: &ProcessedPoint,
     raw: &NumassWaveformsFast<'_>,
     process: &ProcessParams,
-) -> NumassEvents {
+) -> Result<NumassEvents, PipelineError> {
     raw.iter()
         .map(|(time, frame)| {
             let mut events = extract_frame(
@@ -302,18 +307,18 @@ pub fn extract_processed(
                 &process.algorithm,
                 #[cfg(feature = "egui")]
                 &mut None,
-            );
+            )?;
             if process.convert_to_kev {
-                events.iter_mut().for_each(|(_, event)| {
+                for (_, event) in events.iter_mut() {
                     if let FrameEvent::Event {
                         amplitude, channel, ..
                     } = event
                     {
-                        *amplitude = process.algorithm.to_kev(*amplitude, *channel);
+                        *amplitude = process.algorithm.to_kev(*amplitude, *channel)?;
                     }
-                });
+                }
             }
-            (*time, events)
+            Ok((*time, events))
         })
         .collect()
 }
@@ -324,13 +329,13 @@ pub fn extract_frame(
     raw: &NumassFrameFast<'_>,
     algorithm: &impl Extract,
     #[cfg(feature = "egui")] ui: &mut Option<&mut PlotUi>,
-) -> Vec<NumassEvent> {
+) -> Result<Vec<NumassEvent>, PipelineError> {
     let input = FrameIn { processed, raw };
     let mut events = algorithm.extract(
         &input,
         #[cfg(feature = "egui")]
         ui,
-    );
+    )?;
     events.sort_by_key(|(pos, _)| *pos);
 
     #[cfg(feature = "egui")]
@@ -338,21 +343,30 @@ pub fn extract_frame(
         draw_process_events(&events, ui);
     }
 
-    events
+    Ok(events)
 }
 
 /// Built-in keV convertion (according to crate::constants).
 /// TODO: make configurable
-pub fn convert_to_kev(amplitude: &f32, ch_id: u8, algorithm: &Algorithm) -> f32 {
-    let [a, b] = match algorithm {
-        Algorithm::Max {} => KEV_COEFF_MAX[ch_id as usize],
-        Algorithm::Likhovid { .. } => KEV_COEFF_LIKHOVID[ch_id as usize],
-        Algorithm::FirstPeak { .. } => KEV_COEFF_FIRST_PEAK[ch_id as usize],
-        Algorithm::Trapezoid { .. } => KEV_COEFF_TRAPEZIOD[ch_id as usize],
-        Algorithm::LongDiff { .. } => KEV_COEFF_LONGDIFF[ch_id as usize],
-        Algorithm::Average {} => KEV_COEFF_AVERAGE[ch_id as usize],
+pub fn convert_to_kev(
+    amplitude: &f32,
+    ch_id: u8,
+    algorithm: &Algorithm,
+) -> Result<f32, PipelineError> {
+    let calibrated = match algorithm {
+        Algorithm::Max {} => KEV_COEFF_MAX.get(ch_id as usize).copied(),
+        Algorithm::Likhovid { .. } => KEV_COEFF_LIKHOVID.get(ch_id as usize).copied(),
+        Algorithm::FirstPeak { .. } => KEV_COEFF_FIRST_PEAK.get(ch_id as usize).copied(),
+        Algorithm::Trapezoid { .. } => KEV_COEFF_TRAPEZIOD.get(ch_id as usize).copied(),
+        Algorithm::LongDiff { .. } => KEV_COEFF_LONGDIFF.get(ch_id as usize).copied(),
+        Algorithm::Average {} => KEV_COEFF_AVERAGE.get(ch_id as usize).copied(),
     };
-    a * *amplitude + b
+    let Some([a, b]) = calibrated else {
+        return Err(PipelineError::data(format!(
+            "channel {ch_id} is out of the kev calibration (0..=6)"
+        )));
+    };
+    Ok(a * *amplitude + b)
 }
 
 /// Каналы, которые есть и в обработанном кадре, и в сырых кодах.
@@ -372,57 +386,70 @@ fn channels<'a>(input: &FrameIn<'a>) -> Vec<(u8, &'a [f32], usize, &'a [i16])> {
         .collect()
 }
 
-fn extract_max(input: &FrameIn<'_>) -> Vec<NumassEvent> {
-    channels(input)
-        .into_iter()
-        .map(|(channel, samples, delay, _)| {
-            let (index, amplitude) = samples
-                .iter()
-                .enumerate()
-                .max_by(|first, second| first.1.partial_cmp(second.1).unwrap())
-                .unwrap();
-            (
-                (index + delay) as u16 * TICK_NS,
-                FrameEvent::Event {
-                    channel,
-                    amplitude: *amplitude,
-                    size: 1,
-                },
-            )
-        })
-        .collect()
+fn extract_max(input: &FrameIn<'_>) -> Result<Vec<NumassEvent>, PipelineError> {
+    let mut events = vec![];
+    for (channel, samples, delay, _) in channels(input) {
+        // Канал без отсчётов (например, скрипт вернул пустой канал) — события нет.
+        // Сравнение с NaN — Equal: канал с NaN-отсчётами не должен паниковать.
+        let Some((index, amplitude)) = samples
+            .iter()
+            .enumerate()
+            .max_by(|first, second| first.1.partial_cmp(second.1).unwrap_or(Ordering::Equal))
+        else {
+            continue;
+        };
+        events.push((
+            (index + delay) as u16 * TICK_NS,
+            FrameEvent::Event {
+                channel,
+                amplitude: *amplitude,
+                size: 1,
+            },
+        ));
+    }
+    Ok(events)
 }
 
-fn extract_likhovid(input: &FrameIn<'_>, left: u16, right: u16) -> Vec<NumassEvent> {
+fn extract_likhovid(
+    input: &FrameIn<'_>,
+    left: u16,
+    right: u16,
+) -> Result<Vec<NumassEvent>, PipelineError> {
     let left = left as usize;
     let right = right as usize;
-    channels(input)
-        .into_iter()
-        .map(|(channel, samples, delay, _)| {
-            let (index, _) = samples
-                .iter()
-                .enumerate()
-                .max_by(|first, second| first.1.partial_cmp(second.1).unwrap())
-                .unwrap();
-            let start = index.saturating_sub(left);
-            let end = std::cmp::min(samples.len(), index + right);
-            let crop = &samples[start..end];
-            let amplitude = crop.iter().sum::<f32>() / crop.len() as f32;
-            (
-                (index + delay) as u16 * TICK_NS,
-                FrameEvent::Event {
-                    channel,
-                    amplitude,
-                    size: 1,
-                },
-            )
-        })
-        .collect()
+    let mut events = vec![];
+    for (channel, samples, delay, _) in channels(input) {
+        // Пустой канал — события нет, сравнение с NaN — Equal (см. extract_max).
+        let Some((index, _)) = samples
+            .iter()
+            .enumerate()
+            .max_by(|first, second| first.1.partial_cmp(second.1).unwrap_or(Ordering::Equal))
+        else {
+            continue;
+        };
+        let start = index.saturating_sub(left);
+        let end = std::cmp::min(samples.len(), index + right);
+        let crop = &samples[start..end];
+        let amplitude = crop.iter().sum::<f32>() / crop.len() as f32;
+        events.push((
+            (index + delay) as u16 * TICK_NS,
+            FrameEvent::Event {
+                channel,
+                amplitude,
+                size: 1,
+            },
+        ));
+    }
+    Ok(events)
 }
 
-fn extract_first_peak(input: &FrameIn<'_>, threshold: i16, left: u16) -> Vec<NumassEvent> {
+fn extract_first_peak(
+    input: &FrameIn<'_>,
+    threshold: i16,
+    left: u16,
+) -> Result<Vec<NumassEvent>, PipelineError> {
     let left = left as usize;
-    channels(input)
+    Ok(channels(input)
         .into_iter()
         .filter_map(|(channel, samples, delay, _)| {
             find_first_peak(samples, threshold as f32).map(|pos| {
@@ -438,7 +465,7 @@ fn extract_first_peak(input: &FrameIn<'_>, threshold: i16, left: u16) -> Vec<Num
                 )
             })
         })
-        .collect()
+        .collect())
 }
 
 fn extract_trapezoid(
@@ -448,7 +475,7 @@ fn extract_trapezoid(
     skip: &Option<SkipOption>,
     reset_detection: &HWResetParams,
     #[cfg(feature = "egui")] ui: &mut Option<&mut PlotUi>,
-) -> Vec<NumassEvent> {
+) -> Result<Vec<NumassEvent>, PipelineError> {
     let min_length = min_length as usize;
     let threshold = treshold as f32;
     let reset = detect_reset(input.raw, reset_detection);
@@ -523,21 +550,9 @@ fn extract_trapezoid(
     }
 
     match skip {
-        None => events,
-        Some(SkipOption::Bad) => {
-            if bad_frame {
-                Vec::new()
-            } else {
-                events
-            }
-        }
-        Some(SkipOption::Good) => {
-            if bad_frame {
-                events
-            } else {
-                Vec::new()
-            }
-        }
+        None => Ok(events),
+        Some(SkipOption::Bad) => Ok(if bad_frame { Vec::new() } else { events }),
+        Some(SkipOption::Good) => Ok(if bad_frame { events } else { Vec::new() }),
     }
 }
 
@@ -561,14 +576,23 @@ fn extract_long_diff(
     input: &FrameIn<'_>,
     reset_detection: &HWResetParams,
     #[cfg(feature = "egui")] ui: &mut Option<&mut PlotUi>,
-) -> Vec<NumassEvent> {
+) -> Result<Vec<NumassEvent>, PipelineError> {
+    const WINDOW: usize = 12;
     let reset = detect_reset(input.raw, reset_detection);
     let mut events = Vec::new();
     if reset.is_none() {
         for (channel, samples, _, _) in channels(input) {
+            // Голова и хвост срезом по WINDOW отсчётов: короче некуда — ошибка
+            // данных (сломанная точка или скрипт, укоротивший кадр).
+            if samples.len() < WINDOW {
+                return Err(PipelineError::data(format!(
+                    "channel {channel}: frame has {} samples, LongDiff needs at least {WINDOW}",
+                    samples.len()
+                )));
+            }
             let last_idx = samples.len();
-            let head = samples[..12].iter().sum::<f32>() / 12.0;
-            let tail = samples[last_idx - 12..last_idx].iter().sum::<f32>() / 12.0;
+            let head = samples[..WINDOW].iter().sum::<f32>() / WINDOW as f32;
+            let tail = samples[last_idx - WINDOW..last_idx].iter().sum::<f32>() / WINDOW as f32;
 
             #[cfg(feature = "egui")]
             if let Some(ui) = ui {
@@ -605,12 +629,15 @@ fn extract_long_diff(
             },
         ));
     }
-    events
+    Ok(events)
 }
 
-fn extract_average(input: &FrameIn<'_>) -> Vec<NumassEvent> {
-    channels(input)
+fn extract_average(input: &FrameIn<'_>) -> Result<Vec<NumassEvent>, PipelineError> {
+    Ok(channels(input)
         .into_iter()
+        // Пустой канал (скрипт вернул пустой кадр) — события нет: среднее
+        // вырождается в NaN и было бы отброшено гистограммой всё равно.
+        .filter(|(_, samples, ..)| !samples.is_empty())
         .map(|(channel, samples, _, _)| {
             let amplitude = samples.iter().sum::<f32>() / samples.len() as f32;
             (
@@ -622,7 +649,7 @@ fn extract_average(input: &FrameIn<'_>) -> Vec<NumassEvent> {
                 },
             )
         })
-        .collect()
+        .collect())
 }
 
 fn detect_reset(frame: &NumassFrameFast, params: &HWResetParams) -> Option<(usize, usize)> {
@@ -637,6 +664,11 @@ fn detect_reset(frame: &NumassFrameFast, params: &HWResetParams) -> Option<(usiz
 
     let mut reset: Option<(usize, usize)> = None;
     frame.iter().for_each(|(_, waveform)| {
+        // Скрипт может укоротить кадр: если окно поиска не влезает в
+        // осциллограмму, не ищем в ней сбой (иначе underflow в `len - window`).
+        if waveform.len() <= window {
+            return;
+        }
         for i in 0..(waveform.len() - window) {
             if waveform[i] - waveform[i + window] > *treshold {
                 if let Some(reset_last) = reset {
@@ -722,6 +754,7 @@ fn draw_process_events(events: &[NumassEvent], ui: &mut PlotUi) {
 mod tests {
     use std::collections::BTreeMap;
 
+    use crate::error::PipelineError;
     use crate::preprocess::{ChannelSamples, PreprocessStep, apply_frame};
     use crate::process::{
         Algorithm, HWResetParams, ProcessParams, convert_to_kev, extract_frame, extract_processed,
@@ -742,7 +775,8 @@ mod tests {
             &Algorithm::Average {},
             #[cfg(feature = "egui")]
             &mut None,
-        );
+        )
+        .unwrap();
 
         let (pos, event) = &events[0];
         assert_eq!(*pos, 0);
@@ -783,7 +817,8 @@ mod tests {
                 algorithm: algorithm.clone(),
                 convert_to_kev: false,
             },
-        );
+        )
+        .unwrap();
         let frame = &events[&10];
         assert_eq!(frame.len(), 1);
         match &frame[0] {
@@ -809,13 +844,95 @@ mod tests {
                 algorithm: algorithm.clone(),
                 convert_to_kev: true,
             },
-        );
+        )
+        .unwrap();
         match &events[&10][0] {
             (_, FrameEvent::Event { amplitude, .. }) => {
-                assert_eq!(*amplitude, convert_to_kev(&4.0, 0, &algorithm));
+                assert_eq!(*amplitude, convert_to_kev(&4.0, 0, &algorithm).unwrap());
             }
             other => panic!("expected max event, got {other:?}"),
         }
+    }
+
+    /// События канала вне калибровки (0..=6) не паникуют, а дают ошибку данных.
+    #[test]
+    fn kev_of_unknown_channel_is_data_error() {
+        let processed = BTreeMap::from([(
+            0u64,
+            BTreeMap::from([(
+                9u8,
+                ChannelSamples {
+                    samples: vec![1.0],
+                    delay: 0,
+                },
+            )]),
+        )]);
+        let raw = BTreeMap::from([(0u64, BTreeMap::from([(9u8, [0i16].as_slice())]))]);
+
+        let events = extract_processed(
+            &processed,
+            &raw,
+            &ProcessParams {
+                algorithm: Algorithm::Max {},
+                convert_to_kev: true,
+            },
+        );
+        let err = events.expect_err("unknown channel must fail");
+        assert!(matches!(err, PipelineError::Data(_)), "{err}");
+    }
+
+    /// Кадр короче окна LongDiff (12 отсчётов) — ошибка данных, не паника.
+    #[test]
+    fn long_diff_on_short_frame_is_data_error() {
+        let samples = vec![0.0f32; 8];
+        let processed = BTreeMap::from([(0u8, ChannelSamples { samples, delay: 0 })]);
+        let raw = BTreeMap::from([(0u8, [0i16; 8].as_slice())]);
+
+        let events = extract_frame(
+            &processed,
+            &raw,
+            &Algorithm::LongDiff {
+                reset_detection: HWResetParams::default(),
+            },
+            #[cfg(feature = "egui")]
+            &mut None,
+        );
+        let err = events.expect_err("short frame must fail");
+        assert!(matches!(err, PipelineError::Data(_)), "{err}");
+    }
+
+    /// Канал без отсчётов (скрипт вернул пустой канал) — событие нет, не паника.
+    #[test]
+    fn empty_channel_yields_no_event() {
+        let processed = BTreeMap::from([
+            (
+                0u8,
+                ChannelSamples {
+                    samples: Vec::new(),
+                    delay: 0,
+                },
+            ),
+            (
+                1u8,
+                ChannelSamples {
+                    samples: vec![4.0],
+                    delay: 0,
+                },
+            ),
+        ]);
+        let raw = BTreeMap::from([(0u8, [0i16; 2].as_slice()), (1u8, [0i16; 2].as_slice())]);
+
+        let events = extract_frame(
+            &processed,
+            &raw,
+            &Algorithm::Max {},
+            #[cfg(feature = "egui")]
+            &mut None,
+        )
+        .unwrap();
+
+        assert_eq!(events.len(), 1);
+        assert!(matches!(events[0].1, FrameEvent::Event { channel: 1, .. }));
     }
 
     #[test]
@@ -829,7 +946,8 @@ mod tests {
                 center: 1,
                 right: 1,
             }],
-        );
+        )
+        .unwrap();
 
         let events = extract_frame(
             &processed,
@@ -846,7 +964,8 @@ mod tests {
             },
             #[cfg(feature = "egui")]
             &mut None,
-        );
+        )
+        .unwrap();
 
         let (pos, event) = events
             .iter()

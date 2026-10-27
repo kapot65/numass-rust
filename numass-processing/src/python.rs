@@ -459,7 +459,8 @@ fn apply_waveforms(
     let point = waveforms.point.borrow(py);
     let fast = crate::preprocess::extract_waveforms(&point.inner);
     ProcessedPoint {
-        inner: crate::preprocess::apply_waveforms(&fast, &steps),
+        inner: crate::preprocess::apply_waveforms(&fast, &steps)
+            .unwrap_or_else(|err| panic!("{err}")),
     }
 }
 
@@ -476,7 +477,7 @@ fn apply_frame(
         return Err(PyKeyError::new_err(frame.time));
     };
     Ok(ProcessedFrame {
-        inner: crate::preprocess::apply_frame(&fast, &steps),
+        inner: crate::preprocess::apply_frame(&fast, &steps).unwrap_or_else(|err| panic!("{err}")),
     })
 }
 
@@ -507,7 +508,8 @@ fn extract_processed(
     let point = waveforms.point.borrow(py);
     let raw = crate::preprocess::extract_waveforms(&point.inner);
     Ok(NumassEvents {
-        inner: crate::process::extract_processed(&processed.inner, &raw, &process),
+        inner: crate::process::extract_processed(&processed.inner, &raw, &process)
+            .unwrap_or_else(|err| panic!("{err}")),
     })
 }
 
@@ -531,7 +533,8 @@ fn extract_frame(
             &algorithm,
             #[cfg(feature = "egui")]
             &mut None,
-        ),
+        )
+        .unwrap_or_else(|err| panic!("{err}")),
     })
 }
 
@@ -540,6 +543,7 @@ fn extract_frame(
 #[pyfunction]
 fn convert_to_kev(amplitude: f32, ch_id: u8, algorithm: Algorithm) -> f32 {
     crate::process::convert_to_kev(&amplitude, ch_id, &algorithm)
+        .unwrap_or_else(|err| panic!("{err}"))
 }
 
 /// `StaticPointParams::from_point` словарём. В биндингах `StaticPointParams` — только dict.
@@ -590,7 +594,8 @@ fn post_process(
     let static_params =
         parse_json_dict::<crate::preprocess::StaticPointParams>(py, preprocess.bind(py))?;
     let (amplitudes, _) =
-        crate::postprocess::post_process((events.inner.clone(), static_params), &params);
+        crate::postprocess::post_process((events.inner.clone(), static_params), &params)
+            .unwrap_or_else(|err| panic!("{err}"));
     Ok(NumassEvents { inner: amplitudes })
 }
 
@@ -604,6 +609,7 @@ fn post_process_frame(events: &FrameEvents, params: PostProcessParams) -> FrameE
             &params,
             #[cfg(feature = "egui")]
             None,
-        ),
+        )
+        .unwrap_or_else(|err| panic!("{err}")),
     }
 }

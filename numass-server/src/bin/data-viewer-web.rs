@@ -141,13 +141,21 @@ async fn main() {
                 if let numass::NumassMeta::Reply(numass::Reply::AcquirePoint { .. }) = &meta {
                     let point = rsb_event::Point::parse_from_bytes(&data.unwrap()).unwrap(); // TODO: return None for bad parsing
 
+                    // No-GUI обработка: ошибка пайплайна (скриптовый шаг и т.п.) —
+                    // паника, как раньше. TODO: возвращать HTTP 500 с текстом ошибки
+                    // и «None» для не-Reply-меты — отдельная итерация.
                     let out = if let Some(postprocessing) = postprocessing {
                         Some(post_process(
-                            extract_events(Some(meta), point, &preprocess, &process),
+                            extract_events(Some(meta), point, &preprocess, &process)
+                                .unwrap_or_else(|err| panic!("{err}")),
                             &postprocessing,
-                        ))
+                        )
+                        .unwrap_or_else(|err| panic!("{err}")))
                     } else {
-                        Some(extract_events(Some(meta), point, &preprocess, &process))
+                        Some(
+                            extract_events(Some(meta), point, &preprocess, &process)
+                                .unwrap_or_else(|err| panic!("{err}")),
+                        )
                     };
                     rmp_serde::to_vec(&out).unwrap()
                 } else {

@@ -57,9 +57,11 @@ fn point_to_chunks(
     let limit_ns = time_ns(limit);
     let bound_ns = acquisition_time(meta.clone()).map(timestamps_bound);
     let (events, _) = post_process(
-        extract_events(meta, point, &preprocess, &process),
+        extract_events(meta, point, &preprocess, &process).unwrap_or_else(|err| panic!("{err}")),
         &postprocess,
-    );
+    )
+    // TODO(К3): ошибку скрипта показать пользователю вместо паники.
+    .unwrap_or_else(|err| panic!("{err}"));
 
     let frame_times: Vec<u64> = events.keys().copied().collect();
     let (frame_times, mut stats) = match bound_ns {

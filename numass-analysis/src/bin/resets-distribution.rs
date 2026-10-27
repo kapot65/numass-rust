@@ -34,7 +34,8 @@ async fn main() {
             algorithm: TRAPEZOID_DEFAULT,
             convert_to_kev: true,
         },
-    );
+    )
+    .expect("process");
     let mut hist = PointHistogram::new(0.0..627.0, 627);
 
     frames.into_iter().for_each(|(_, events)| {

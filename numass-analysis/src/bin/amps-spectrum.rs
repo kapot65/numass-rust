@@ -18,7 +18,8 @@ async fn main() {
     let path = "/data-fast/numass-server/2024_11/Tritium_3/set_1/p196(20s)(HV1=10000)";
     let point = load_point(&PathBuf::from(path)).await;
     let waveforms = extract_waveforms(&point);
-    let filtered = apply_waveforms(&waveforms, &PreprocessParams::trapezoid_fir().steps);
+    let filtered =
+        apply_waveforms(&waveforms, &PreprocessParams::trapezoid_fir().steps).expect("preprocess");
     let amps = samples_histogram(
         &filtered,
         POINT_BASELINE_MIN,

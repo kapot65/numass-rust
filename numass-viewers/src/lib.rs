@@ -164,7 +164,10 @@ pub async fn process_point(
         &process,
         Some(&post_process),
     )
-    .await;
+    .await
+    // TODO(К3): ошибку скрипта/данных показать пользователю через PointState.error
+    // вместо паники.
+    .unwrap_or_else(|err| panic!("{err}"));
 
     events.map(|(_, events)| {
         if let Some((events, preprocess)) = events {

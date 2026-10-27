@@ -108,9 +108,11 @@ async fn main() {
                             algorithm: TRAPEZOID_DEFAULT,
                             convert_to_kev: true,
                         },
-                    ),
+                    )
+                    .expect("process"),
                     &PostProcessParams::default(),
-                );
+                )
+                .expect("postprocess");
 
                 let count_rate = amps
                     .values()

@@ -74,7 +74,8 @@ async fn main() {
                             algorithm,
                             convert_to_kev: false,
                         },
-                    );
+                    )
+                    .expect("process");
 
                     let histogram = events_to_histogram(
                         events,

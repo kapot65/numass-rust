@@ -38,7 +38,8 @@ async fn main() {
                     let point = load_point(&filepath).await;
 
                     let frames = extract_waveforms(&point);
-                    let processed = apply_waveforms(&frames, &PreprocessParams::default().steps);
+                    let processed = apply_waveforms(&frames, &PreprocessParams::default().steps)
+                        .expect("preprocess");
 
                     let times = frames
                         .into_iter()
@@ -49,6 +50,7 @@ async fn main() {
                                 &TRAPEZOID_DEFAULT,
                                 &mut None,
                             )
+                            .expect("process")
                             .into_iter()
                             .filter_map(|(_ev_time, event)| {
                                 if let FrameEvent::Event { .. } = event {

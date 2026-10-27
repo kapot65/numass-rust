@@ -183,10 +183,13 @@ fn main() {
                                             })
                                             .collect::<BTreeMap<_, _>>();
 
-                                        let processed = apply_frame(&frame, &steps);
+                                        // no-GUI обработка: ошибка скрипта — паника, как раньше.
+                                        let processed =
+                                            apply_frame(&frame, &steps).expect("preprocess");
                                         let events = extract_frame(
                                             &processed, &frame, &algorithm, &mut None,
-                                        );
+                                        )
+                                        .expect("process");
 
                                         events.into_iter().for_each(|(_, event)| {
                                             if let FrameEvent::Event {
@@ -391,9 +394,13 @@ impl eframe::App for MyEguiApp {
                                 .collect();
                             let algorithm = self.process_params.lock().algorithm.clone();
                             let steps = self.preprocess_params.lock().steps.clone();
-                            let processed = apply_frame(&frame_fast, &steps);
+                            // GUI, но скрипт-шаг здесь не редактируется (tqdc-вьювер);
+                            // ошибка скрипта/данных — паника, как раньше.
+                            // TODO: показать в UI, когда скрипт-шаг появится здесь.
+                            let processed = apply_frame(&frame_fast, &steps).expect("preprocess");
                             draw_processed_frame(&processed, plot_ui);
-                            extract_frame(&processed, &frame_fast, &algorithm, &mut Some(plot_ui));
+                            extract_frame(&processed, &frame_fast, &algorithm, &mut Some(plot_ui))
+                                .expect("process");
                         }
                     });
             });

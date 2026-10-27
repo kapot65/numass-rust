@@ -4,6 +4,7 @@ pub extern crate polars;
 pub mod histogram;
 pub mod viewer; // TODO: move to numass-processing with viewer feature
 
+pub mod error;
 pub mod postprocess;
 pub mod preprocess;
 pub mod process;
