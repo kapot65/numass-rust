@@ -305,11 +305,22 @@ fn main() {
                 hist_bound: bound_min..=bound_max,
                 draw_algorithm: false,
                 params_open: true,
+                params_width: PARAMS_MIN_WIDTH,
+                signals_frac: 0.5,
             }))
         }),
     )
     .unwrap();
 }
+
+/// Starting params column. Sliders stay readable, the rest wraps.
+const PARAMS_MIN_WIDTH: f32 = 220.0;
+/// Collapsed params column: just the expand button.
+const PARAMS_COLLAPSED: f32 = 28.0;
+/// Gap that holds a drag handle between columns.
+const SPLIT_GAP: f32 = 6.0;
+/// Do not let a drag squash a plot below this.
+const MIN_PLOT: f32 = 80.0;
 
 /// Program version from the crate manifest. Hover shows `git describe`.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -318,8 +329,8 @@ fn is_dirty() -> bool {
     matches!(option_env!("GIT_DIRTY"), Some("1"))
 }
 
-/// Same label as the other viewers: small version under the plots, plus a
-/// marker when the build came from a dirty working tree.
+/// Same label as the other viewers: small version, plus a marker when the
+/// build came from a dirty working tree. Sits at the bottom of the params column.
 fn version_label(ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(format!("v{VERSION}")).small().weak())
@@ -354,89 +365,117 @@ struct MyEguiApp {
     hist_bound: std::ops::RangeInclusive<f32>,
     draw_algorithm: bool,
     params_open: bool,
+    /// Params column width. Starts at [`PARAMS_MIN_WIDTH`], then follows the drag.
+    params_width: f32,
+    /// Share of the leftover width taken by the waveform plot. Starts at half.
+    signals_frac: f32,
+}
+
+/// Child that fills `rect` and does not advance the parent cursor.
+fn show_column(
+    ui: &mut egui::Ui,
+    id: impl egui::AsIdSalt,
+    rect: egui::Rect,
+    add: impl FnOnce(&mut egui::Ui),
+) {
+    let mut column = ui.new_child(
+        egui::UiBuilder::new()
+            .id_salt(id)
+            .max_rect(rect)
+            .layout(egui::Layout::top_down(egui::Align::Min)),
+    );
+    column.shrink_clip_rect(rect);
+    add(&mut column);
+}
+
+/// `egui_plot` paints the Y title left of the plot frame. Shift the frame in by one
+/// line so the title stays inside the column instead of covering the column to its left.
+fn show_plot(ui: &mut egui::Ui, id: impl egui::AsIdSalt, plot: impl FnOnce(&mut egui::Ui)) {
+    let gutter = ui.text_style_height(&egui::TextStyle::Body) * 1.5;
+    let rect = egui::Rect::from_min_max(
+        egui::pos2(ui.max_rect().left() + gutter, ui.cursor().min.y),
+        ui.max_rect().max,
+    );
+    let mut plot_ui = ui.new_child(
+        egui::UiBuilder::new()
+            .id_salt(id)
+            .max_rect(rect)
+            .layout(egui::Layout::top_down(egui::Align::Min)),
+    );
+    plot(&mut plot_ui);
+}
+
+/// Vertical drag handle centered on `x`. Returns how far it moved this frame.
+fn splitter(ui: &mut egui::Ui, id: impl egui::AsIdSalt, x: f32, y0: f32, y1: f32) -> f32 {
+    let grab = ui.style().interaction.resize_grab_radius_side;
+    let rect = egui::Rect::from_min_max(egui::pos2(x - grab, y0), egui::pos2(x + grab, y1));
+    let response = ui.interact(rect, ui.id().with(id), egui::Sense::drag());
+    if response.hovered() || response.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+    }
+    let stroke = if response.dragged() {
+        ui.style().visuals.widgets.active.fg_stroke
+    } else if response.hovered() {
+        ui.style().visuals.widgets.hovered.fg_stroke
+    } else {
+        ui.style().visuals.widgets.noninteractive.bg_stroke
+    };
+    ui.painter().vline(x, y0..=y1, stroke);
+    response.drag_delta().x
 }
 
 impl eframe::App for MyEguiApp {
+    /// Widths live on the app, not in egui panel state, so a previous run cannot bring them back.
+    fn persist_egui_memory(&self) -> bool {
+        false
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         ctx.request_repaint_after(std::time::Duration::from_millis(1000 / 60));
 
         let channels = self.channels.lock().clone();
 
-        if self.params_open {
-            egui::Panel::left("processing_params")
-                .default_size(350.0)
-                .show(ui, |ui| {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                        if ui
-                            .add(egui::Button::new("<").frame(false))
-                            .on_hover_text("Collapse")
-                            .clicked()
-                        {
-                            self.params_open = false;
-                        }
-                    });
-                    ui.separator();
-
-                    self.preprocess_edit = self.preprocess_edit.input(ui, &ctx);
-
-                    ui.separator();
-
-                    self.process_params_edit = self.process_params_edit.input(ui, &ctx);
-
-                    ui.separator();
-
-                    self.histogram_edit = self
-                        .histogram_edit
-                        .input_bounded(ui, self.hist_bound.clone());
-
-                    ui.separator();
-
-                    if ui.button("apply").clicked() {
-                        *self.process_params.lock() = self.process_params_edit.clone();
-                        *self.preprocess_params.lock() = self.preprocess_edit.clone();
-                        // New binning starts empty. Old frames are not replayed.
-                        *self.histogram.lock() = PointHistogram::from(self.histogram_edit.clone());
-                    }
-
-                    ui.separator();
-
-                    ui.checkbox(&mut self.draw_algorithm, "draw algorithm work");
-
-                    ui.separator();
-
-                    {
-                        let count_rate_lock = self.count_rate.lock();
-                        ui.label("Count rates");
-                        for (ch_num, count_rate) in count_rate_lock.iter() {
-                            ui.label(format!("ch {}: {count_rate:>8.2} Hz", ch_num + 1));
-                        }
-                    }
-                    let packet_rate = *self.packet_rate.lock();
-                    ui.label(format!("packets: {packet_rate:>8.2} Hz"));
-                });
+        let area = ui.available_rect_before_wrap();
+        let params_width = if self.params_open {
+            let room = (area.width() - 2.0 * SPLIT_GAP - 2.0 * MIN_PLOT).max(PARAMS_MIN_WIDTH);
+            self.params_width.min(room)
         } else {
-            egui::Panel::left("processing_params_collapsed")
-                .exact_size(28.0)
-                .resizable(false)
-                .show(ui, |ui| {
-                    if ui
-                        .add(egui::Button::new(">").frame(false))
-                        .on_hover_text("Show processing params")
-                        .clicked()
-                    {
-                        self.params_open = true;
-                    }
-                });
+            PARAMS_COLLAPSED
+        };
+        let plots_width = (area.width() - params_width - 2.0 * SPLIT_GAP).max(1.0);
+        let signals_width = if plots_width <= 2.0 * MIN_PLOT {
+            plots_width * self.signals_frac
+        } else {
+            (plots_width * self.signals_frac).clamp(MIN_PLOT, plots_width - MIN_PLOT)
+        };
+
+        let params_rect =
+            egui::Rect::from_min_size(area.min, egui::vec2(params_width, area.height()));
+        let signals_x = params_rect.right() + SPLIT_GAP;
+        let signals_rect = egui::Rect::from_min_size(
+            egui::pos2(signals_x, area.top()),
+            egui::vec2(signals_width, area.height()),
+        );
+        let hist_x = (signals_rect.right() + SPLIT_GAP).min(area.right());
+        let hist_rect = egui::Rect::from_min_max(egui::pos2(hist_x, area.top()), area.max);
+
+        if self.params_open {
+            show_column(ui, "params", params_rect, |ui| self.params_body(ui));
+        } else {
+            show_column(ui, "params-collapsed", params_rect, |ui| {
+                if ui
+                    .add(egui::Button::new(">").frame(false))
+                    .on_hover_text("Show processing params")
+                    .clicked()
+                {
+                    self.params_open = true;
+                }
+            });
         }
 
-        egui::Panel::bottom("version").show(ui, |ui| {
-            version_label(ui);
-        });
-
-        egui::Panel::left("waveforms")
-            .default_size(500.0)
-            .show(ui, |ui| {
+        show_column(ui, "signals", signals_rect, |ui| {
+            show_plot(ui, "waveforms-gutter", |ui| {
                 Plot::new("waveforms")
                     .legend(Legend::default())
                     .x_axis_label("Time")
@@ -472,22 +511,127 @@ impl eframe::App for MyEguiApp {
                         }
                     });
             });
+        });
 
-        egui::CentralPanel::default().show(ui, |ui| {
+        show_column(ui, "histogram", hist_rect, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("clear").clicked() {
                     self.histogram.lock().clear();
                 }
             });
 
-            Plot::new("hists")
-                .legend(Legend::default())
-                .x_axis_label("amplitude")
-                .y_axis_label("counts")
-                .show(ui, |plot_ui| {
-                    let hist = self.histogram.lock().clone();
-                    hist.draw_egui_each_channel(plot_ui, None);
-                });
+            show_plot(ui, "hists-gutter", |ui| {
+                Plot::new("hists")
+                    .legend(Legend::default())
+                    .x_axis_label("amplitude")
+                    .y_axis_label("counts")
+                    .show(ui, |plot_ui| {
+                        let hist = self.histogram.lock().clone();
+                        hist.draw_egui_each_channel(plot_ui, None);
+                    });
+            });
         });
+
+        // After the columns, so a plot cannot eat the drag.
+        if self.params_open {
+            let params_dx = splitter(
+                ui,
+                "split-params",
+                params_rect.right() + SPLIT_GAP / 2.0,
+                area.top(),
+                area.bottom(),
+            );
+            if params_dx != 0.0 {
+                let room = area.width() - 2.0 * SPLIT_GAP - 2.0 * MIN_PLOT;
+                self.params_width = (self.params_width + params_dx)
+                    .clamp(PARAMS_MIN_WIDTH, room.max(PARAMS_MIN_WIDTH));
+            }
+        }
+
+        let signals_dx = splitter(
+            ui,
+            "split-signals",
+            signals_rect.right() + SPLIT_GAP / 2.0,
+            area.top(),
+            area.bottom(),
+        );
+        if signals_dx != 0.0 && plots_width > 0.0 {
+            let next = (signals_width + signals_dx) / plots_width;
+            let lo = (MIN_PLOT / plots_width).min(0.5);
+            self.signals_frac = next.clamp(lo, 1.0 - lo);
+        }
+    }
+}
+
+impl MyEguiApp {
+    /// Params column: collapse button, forms, then the version pinned to the bottom.
+    fn params_body(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        let full = ui.max_rect();
+
+        let version_h = ui.spacing().interact_size.y;
+        let version_rect =
+            egui::Rect::from_min_max(egui::pos2(full.left(), full.bottom() - version_h), full.max);
+        let body_rect = egui::Rect::from_min_max(full.min, version_rect.right_top());
+
+        let mut body = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt("params-scroll")
+                .max_rect(body_rect)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        egui::ScrollArea::vertical()
+            .id_salt("params-scroll-area")
+            .auto_shrink([false, false])
+            .show(&mut body, |ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                    if ui
+                        .add(egui::Button::new("<").frame(false))
+                        .on_hover_text("Collapse")
+                        .clicked()
+                    {
+                        self.params_open = false;
+                    }
+                });
+                ui.separator();
+
+                self.preprocess_edit = self.preprocess_edit.input(ui, &ctx);
+                ui.separator();
+                self.process_params_edit = self.process_params_edit.input(ui, &ctx);
+                ui.separator();
+                self.histogram_edit = self
+                    .histogram_edit
+                    .input_bounded(ui, self.hist_bound.clone());
+                ui.separator();
+
+                if ui.button("apply").clicked() {
+                    *self.process_params.lock() = self.process_params_edit.clone();
+                    *self.preprocess_params.lock() = self.preprocess_edit.clone();
+                    // New binning starts empty. Old frames are not replayed.
+                    *self.histogram.lock() = PointHistogram::from(self.histogram_edit.clone());
+                }
+
+                ui.separator();
+                ui.checkbox(&mut self.draw_algorithm, "draw algorithm work");
+                ui.separator();
+
+                {
+                    let count_rate_lock = self.count_rate.lock();
+                    ui.label("Count rates");
+                    for (ch_num, count_rate) in count_rate_lock.iter() {
+                        ui.label(format!("ch {}: {count_rate:>8.2} Hz", ch_num + 1));
+                    }
+                }
+                let packet_rate = *self.packet_rate.lock();
+                ui.label(format!("packets: {packet_rate:>8.2} Hz"));
+            });
+
+        let mut version = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt("version")
+                .max_rect(version_rect)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        version_label(&mut version);
     }
 }

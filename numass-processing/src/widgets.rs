@@ -58,7 +58,15 @@ fn collapsing<R>(
     if toggle_label {
         header.toggle();
     }
-    let (_, extra, _) = header.body(body);
+    // Fit the rail to this indented ui. A rail sized from the parent is too long by exactly
+    // the indent, so the value and suffix cross the column edge at every panel width.
+    // `SUFFIX` covers the number box plus the longest suffix these forms use.
+    const SUFFIX: f32 = 96.0;
+    let (_, extra, _) = header.body(|ui| {
+        let reserved = ui.spacing().interact_size.x + ui.spacing().item_spacing.x + SUFFIX;
+        ui.spacing_mut().slider_width = (ui.available_width() - reserved).max(48.0);
+        body(ui);
+    });
     extra.inner
 }
 
