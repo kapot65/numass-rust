@@ -285,6 +285,34 @@ fn main() {
     .unwrap();
 }
 
+/// Program version from the crate manifest. Hover shows `git describe`.
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+fn is_dirty() -> bool {
+    matches!(option_env!("GIT_DIRTY"), Some("1"))
+}
+
+/// Same label as the other viewers: small version under the plots, plus a
+/// marker when the build came from a dirty working tree.
+fn version_label(ui: &mut egui::Ui) {
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(format!("v{VERSION}")).small().weak())
+            .on_hover_text(format!(
+                "git: {}",
+                option_env!("GIT_DESCRIBE").unwrap_or("unknown")
+            ));
+
+        if is_dirty() {
+            ui.label(
+                egui::RichText::new("uncommitted changes")
+                    .small()
+                    .color(egui::Color32::from_rgb(220, 160, 0)),
+            )
+            .on_hover_text("the working tree had uncommitted changes when this version was built");
+        }
+    });
+}
+
 struct MyEguiApp {
     histogram: Arc<Mutex<PointHistogram>>,
     channels: Arc<Mutex<BTreeMap<u8, ProcessedWaveform>>>,
@@ -365,6 +393,10 @@ impl eframe::App for MyEguiApp {
                     }
                 });
         }
+
+        egui::Panel::bottom("version").show(ui, |ui| {
+            version_label(ui);
+        });
 
         egui::Panel::left("waveforms")
             .default_size(500.0)
