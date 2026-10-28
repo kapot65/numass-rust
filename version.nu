@@ -2,8 +2,8 @@
 
 # Bump the workspace version from conventional commits since the last vX.Y.Z
 # tag, write it into Cargo.toml, numass-processing/pyproject.toml, and
-# numass-processing/convert-to-root.py, refresh Cargo.lock and
-# numass-processing/uv.lock, commit them, and tag.
+# numass-processing/convert-to-root.py, refresh Cargo.lock and uv.lock, commit
+# them, and tag.
 #
 #   nu version.nu            # write, commit, tag
 #   nu version.nu --dry-run  # print the plan and stop
@@ -15,6 +15,27 @@
 # tree dirty. uv.lock is refreshed the same way. A full run keeps the Python
 # versions equal to the workspace version. If uv is not on PATH, those Python
 # files are left unchanged and the Cargo release still proceeds.
+#
+# Files carrying the version are listed once in `version-specs`; paths, TOML
+# sections, and the uv-missing fallback are derived from it. uv.lock sits at
+# the repository root because the root pyproject.toml is the uv workspace
+# manifest.
+
+const CARGO_MANIFEST = "Cargo.toml"
+const WORKSPACE_SECTION = "[workspace.package]"
+const CARGO_LOCK = "Cargo.lock"
+const UV_LOCK = "uv.lock"
+const UV_PACKAGE = "numass-processing"
+
+# `kind` selects how the version is read and written; `uv` marks the Python side
+# of the release, skipped when uv is not installed.
+def version-specs [] {
+    [
+        {path: $CARGO_MANIFEST, kind: "toml-section", section: $WORKSPACE_SECTION, uv: false},
+        {path: "numass-processing/pyproject.toml", kind: "toml-section", section: "[project]", uv: true},
+        {path: "numass-processing/convert-to-root.py", kind: "python", section: "", uv: true},
+    ]
+}
 
 def main [
     --dry-run (-n) # print the plan; do not write, commit, or tag
@@ -22,28 +43,23 @@ def main [
     cd $env.FILE_PWD
 
     let tag = (release-tag)
-    let current = (read-section-version "Cargo.toml" "[workspace.package]")
+    let current = (read-section-version $CARGO_MANIFEST $WORKSPACE_SECTION)
     let tagged = ($tag | str substring 1..)
     if $current != $tagged {
-        fail $"Cargo.toml version ($current) does not match ($tag)"
+        fail $"($CARGO_MANIFEST) version ($current) does not match ($tag)"
     }
 
-    let pyproject = "numass-processing/pyproject.toml"
-    let uv_lock = "numass-processing/uv.lock"
-    let script = "numass-processing/convert-to-root.py"
     let has_uv = (uv-installed)
-    if $has_uv {
-        let py_version = (read-section-version $pyproject "[project]")
-        if $py_version != $current {
-            fail $"pyproject.toml version ($py_version) does not match Cargo.toml ($current)"
-        }
-        let lock_version = (read-lock-package-version $uv_lock "numass-processing")
-        if $lock_version != $current {
-            fail $"uv.lock version ($lock_version) does not match Cargo.toml ($current)"
-        }
-        let script_version = (read-python-version $script)
-        if $script_version != $current {
-            fail $"convert-to-root.py version ($script_version) does not match Cargo.toml ($current)"
+    let all_specs = (version-specs)
+    let specs = ($all_specs | where {|spec| $has_uv or (not $spec.uv)})
+    let skipped = ($all_specs | where {|spec| $spec.uv and (not $has_uv)} | get path)
+    let lock_files = if $has_uv { [$CARGO_LOCK, $UV_LOCK] } else { [$CARGO_LOCK] }
+    let files = (($specs | get path) | append $lock_files)
+
+    for spec in $specs {
+        let version = (spec-version $spec)
+        if $version != $current {
+            fail $"($spec.path) version ($version) does not match ($CARGO_MANIFEST) ($current)"
         }
     }
 
@@ -61,7 +77,7 @@ def main [
 
     let next = (next-version $current $level)
     let ignored = ($classified | where level == "none" | length)
-    show-plan $current $next $level $tag $bumps $ignored $dry_run $has_uv
+    show-plan $current $next $level $tag $bumps $ignored $dry_run $files $skipped
 
     if $dry_run {
         let dirty = (tracked-changes)
@@ -81,40 +97,16 @@ def main [
         fail $"tag v($next) already exists"
     }
 
-    let toml_path = "Cargo.toml"
-    let lock_path = "Cargo.lock"
-    let original_toml = (open -r $toml_path)
-    let original_lock = (open -r $lock_path)
-    let updated = (rewrite-section-version $original_toml "[workspace.package]" $next)
-    let original_pyproject = if $has_uv { open -r $pyproject } else { "" }
-    let original_uv_lock = if $has_uv { open -r $uv_lock } else { "" }
-    let original_script = if $has_uv { open -r $script } else { "" }
-    let updated_pyproject = if $has_uv {
-        rewrite-section-version $original_pyproject "[project]" $next
-    } else {
-        ""
+    let saved = ($files | each {|path| {path: $path, text: (open -r $path)}})
+    let updated = ($specs | each {|spec|
+        {
+            path: $spec.path,
+            text: (spec-rewritten $spec (saved-text $saved $spec.path) $next),
+        }
+    })
+    for file in $updated {
+        $file.text | save -f $file.path
     }
-    let updated_script = if $has_uv {
-        rewrite-python-version $original_script $next
-    } else {
-        ""
-    }
-    let saved = if $has_uv {
-        [
-            {path: $toml_path, text: $original_toml},
-            {path: $lock_path, text: $original_lock},
-            {path: $pyproject, text: $original_pyproject},
-            {path: $uv_lock, text: $original_uv_lock},
-            {path: $script, text: $original_script},
-        ]
-    } else {
-        [
-            {path: $toml_path, text: $original_toml},
-            {path: $lock_path, text: $original_lock},
-        ]
-    }
-
-    $updated | save -f $toml_path
 
     let refreshed = (^cargo metadata --offline --format-version 1 | complete)
     if $refreshed.exit_code != 0 {
@@ -123,35 +115,33 @@ def main [
     }
 
     if $has_uv {
-        $updated_pyproject | save -f $pyproject
-        $updated_script | save -f $script
-        let locked = (^uv lock --offline --directory numass-processing | complete)
+        let locked = (^uv lock --offline | complete)
         if $locked.exit_code != 0 {
             restore-release $saved
             fail $"uv lock failed: ($locked.stderr | str trim)"
         }
     }
 
-    let new_lock = (open -r $lock_path)
-    if $new_lock == $original_lock {
+    if (open -r $CARGO_LOCK) == (saved-text $saved $CARGO_LOCK) {
         restore-release $saved
-        fail "Cargo.lock did not change with the version bump"
+        fail $"($CARGO_LOCK) did not change with the version bump"
     }
     if $has_uv {
-        let new_uv_lock = (open -r $uv_lock)
-        if $new_uv_lock == $original_uv_lock {
+        if (open -r $UV_LOCK) == (saved-text $saved $UV_LOCK) {
             restore-release $saved
-            fail "uv.lock did not change with the version bump"
+            fail $"($UV_LOCK) did not change with the version bump"
         }
-        let locked_version = (read-lock-package-version $uv_lock "numass-processing")
+        let locked_version = (read-lock-package-version $UV_LOCK $UV_PACKAGE)
         if $locked_version != $next {
             restore-release $saved
-            fail $"uv.lock version ($locked_version) is not ($next)"
+            fail $"($UV_LOCK) version ($locked_version) is not ($next)"
         }
-        let script_version = (read-python-version $script)
-        if $script_version != $next {
-            restore-release $saved
-            fail $"convert-to-root.py version ($script_version) is not ($next)"
+        for spec in $specs {
+            let version = (spec-version $spec)
+            if $version != $next {
+                restore-release $saved
+                fail $"($spec.path) version ($version) is not ($next)"
+            }
         }
     }
 
@@ -197,6 +187,26 @@ def restore-release [saved: list] {
     git-result reset "-q" "--" ...$paths | ignore
     for file in $saved {
         $file.text | save -f $file.path
+    }
+}
+
+def saved-text [saved: list, path: string] {
+    $saved | where path == $path | first | get text
+}
+
+def spec-version [spec: record] {
+    match $spec.kind {
+        "toml-section" => (read-section-version $spec.path $spec.section)
+        "python" => (read-python-version $spec.path)
+        _ => (fail $"unknown version spec ($spec.kind)")
+    }
+}
+
+def spec-rewritten [spec: record, text: string, new_version: string] {
+    match $spec.kind {
+        "toml-section" => (rewrite-section-version $text $spec.section $new_version)
+        "python" => (rewrite-python-version $text $new_version)
+        _ => (fail $"unknown version spec ($spec.kind)")
     }
 }
 
@@ -436,17 +446,16 @@ def show-plan [
     bumps: list,
     ignored: int,
     dry_run: bool,
-    has_uv: bool,
+    files: list<string>,
+    skipped: list<string>,
 ] {
     print $"($current) -> ($next) \(($level)\)"
     print $"from ($tag)"
     print $"commit: chore: release v($next)"
     print $"tag: v($next)"
-    if $has_uv {
-        print "files: Cargo.toml, Cargo.lock, numass-processing/pyproject.toml, numass-processing/uv.lock, numass-processing/convert-to-root.py"
-    } else {
-        print "files: Cargo.toml, Cargo.lock"
-        print "warning: uv is not installed; cannot update numass-processing/pyproject.toml, uv.lock, and convert-to-root.py"
+    print $"files: ($files | str join ', ')"
+    if not ($skipped | is-empty) {
+        print $"warning: uv is not installed; leaving ($skipped | str join ', ') unchanged"
     }
     for bump in $bumps {
         print $"  ($bump.hash) ($bump.level) ($bump.subject)"
