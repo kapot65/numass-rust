@@ -272,7 +272,9 @@ impl UserInput for PreprocessParams {
                 steps.remove(idx);
             }
 
-            ui.horizontal(|ui| {
+            // The step list is wider than the params panel; wrap instead of
+            // growing the window.
+            ui.horizontal_wrapped(|ui| {
                 if ui.button("+ FIR").clicked() {
                     steps.push(PreprocessStep::Fir {
                         left: FIR_LEFT,
@@ -317,7 +319,8 @@ impl UserInput for ProcessParams {
         let mut convert_to_kev = self.convert_to_kev;
 
         block(ui, "Processing params", |ui| {
-            ui.horizontal(|ui| {
+            // One wrapping row: a fixed row overflows the params panel.
+            ui.horizontal_wrapped(|ui| {
                 if ui
                     .add(egui::RadioButton::new(
                         algorithm == Algorithm::Max {},
@@ -347,9 +350,7 @@ impl UserInput for ProcessParams {
                 {
                     algorithm = FIRSTPEAK_DEFAULT
                 }
-            });
 
-            ui.horizontal(|ui| {
                 if ui
                     .add(egui::RadioButton::new(
                         matches!(algorithm, Algorithm::Trapezoid { .. }),
