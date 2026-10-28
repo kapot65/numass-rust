@@ -131,21 +131,28 @@ fn hw_reset_block(ui: &mut egui::Ui, reset: &mut HWResetParams) {
     });
 }
 
-impl UserInput for HistogramParams {
-    fn input(&self, ui: &mut egui::Ui, _: &egui::Context) -> Self {
+impl HistogramParams {
+    /// Same widget as [`UserInput`], but the left/right sliders stay inside
+    /// `bound`. A zero-width bound cannot be a slider range, so it is skipped.
+    pub fn input_bounded(&self, ui: &mut egui::Ui, bound: std::ops::RangeInclusive<f32>) -> Self {
         let mut params = self.clone();
+        let (lo, hi) = (*bound.start(), *bound.end());
         block(ui, "Histogram params", |ui| {
-            ui.add(
-                egui::Slider::new(&mut params.range.start, HISTOGRAM_MIN..=HISTOGRAM_MAX)
-                    .text("left"),
-            );
-            ui.add(
-                egui::Slider::new(&mut params.range.end, HISTOGRAM_MIN..=HISTOGRAM_MAX)
-                    .text("right"),
-            );
+            if lo < hi {
+                ui.add(egui::Slider::new(&mut params.range.start, lo..=hi).text("left"));
+                ui.add(egui::Slider::new(&mut params.range.end, lo..=hi).text("right"));
+            }
             ui.add(egui::Slider::new(&mut params.bins, 10..=2000).text("bins"));
         });
+        params.range.start = params.range.start.clamp(lo, hi);
+        params.range.end = params.range.end.clamp(lo, hi);
         params
+    }
+}
+
+impl UserInput for HistogramParams {
+    fn input(&self, ui: &mut egui::Ui, _: &egui::Context) -> Self {
+        self.input_bounded(ui, HISTOGRAM_MIN..=HISTOGRAM_MAX)
     }
 }
 

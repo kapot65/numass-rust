@@ -8,14 +8,14 @@ use eframe::egui;
 use egui::mutex::Mutex;
 use egui_plot::{Legend, Plot};
 
-use numass_processing::histogram::PointHistogram;
+use numass_processing::histogram::{HistogramParams, PointHistogram};
 use numass_processing::preprocess::{PreprocessParams, apply_frame, draw_processed_frame};
 use numass_processing::process::{Algorithm, ProcessParams, extract_frame};
 use numass_processing::types::{
     FrameEvent, NumassFrame, NumassFrameFast, ProcessedWaveform, nanoseconds,
 };
 use numass_processing::utils::{EguiLine, color_for_index, format_time};
-use numass_processing::widgets::UserInput;
+use numass_processing::widgets::{HISTOGRAM_MAX, HISTOGRAM_MIN, UserInput};
 use numass_tqdc::mlink::MlinkMessage;
 use numass_tqdc::mstream::{ADCDataBlock, MStreamTriggerAndUserData};
 use numass_tqdc::{MTU_SIZE, TQDC_STREAM_PORT};
@@ -39,6 +39,14 @@ struct Args {
     #[arg(long, default_value_t = 400.0)]
     hist_max: f32,
 
+    /// Lowest value the histogram left/right sliders can take.
+    #[arg(long, default_value_t = HISTOGRAM_MIN)]
+    hist_bound_min: f32,
+
+    /// Highest value the histogram left/right sliders can take.
+    #[arg(long, default_value_t = HISTOGRAM_MAX)]
+    hist_bound_max: f32,
+
     #[arg(long, default_value_t = 400)]
     hist_bins: usize,
 
@@ -58,11 +66,30 @@ fn main() {
         tqdc_ip,
         hist_min,
         hist_max,
+        hist_bound_min,
+        hist_bound_max,
         hist_bins,
         refresh_rate,
         count_rate_threshold,
         algorithm,
     } = Args::parse();
+
+    let (bound_min, bound_max) = if hist_bound_min <= hist_bound_max {
+        (hist_bound_min, hist_bound_max)
+    } else {
+        (hist_bound_max, hist_bound_min)
+    };
+    let hist_min = hist_min.clamp(bound_min, bound_max);
+    let hist_max = hist_max.clamp(bound_min, bound_max);
+    let (hist_min, hist_max) = if hist_min < hist_max {
+        (hist_min, hist_max)
+    } else {
+        (bound_min, bound_max)
+    };
+    let histogram_initial = HistogramParams {
+        range: hist_min..hist_max,
+        bins: hist_bins.clamp(10, 2000),
+    };
 
     let algorithm = algorithm.unwrap_or_default();
     let process_params = Arc::new(Mutex::new(ProcessParams {
@@ -74,10 +101,7 @@ fn main() {
     let preprocess_params = Arc::new(Mutex::new(preprocess_initial.clone()));
     let preprocess_params_ui = Arc::clone(&preprocess_params);
 
-    let histogram_bg = Arc::new(Mutex::new(PointHistogram::new(
-        hist_min..hist_max,
-        hist_bins,
-    )));
+    let histogram_bg = Arc::new(Mutex::new(PointHistogram::from(histogram_initial.clone())));
 
     let histogram = Arc::clone(&histogram_bg);
 
@@ -277,6 +301,8 @@ fn main() {
                 },
                 preprocess_params: preprocess_params_ui,
                 preprocess_edit: preprocess_initial,
+                histogram_edit: histogram_initial,
+                hist_bound: bound_min..=bound_max,
                 draw_algorithm: false,
                 params_open: true,
             }))
@@ -323,6 +349,9 @@ struct MyEguiApp {
     process_params_edit: ProcessParams,
     preprocess_params: Arc<Mutex<PreprocessParams>>,
     preprocess_edit: PreprocessParams,
+    histogram_edit: HistogramParams,
+    /// Slider limits for the histogram edges, from `--hist-bound-min/max`.
+    hist_bound: std::ops::RangeInclusive<f32>,
     draw_algorithm: bool,
     params_open: bool,
 }
@@ -357,10 +386,17 @@ impl eframe::App for MyEguiApp {
 
                     ui.separator();
 
+                    self.histogram_edit = self
+                        .histogram_edit
+                        .input_bounded(ui, self.hist_bound.clone());
+
+                    ui.separator();
+
                     if ui.button("apply").clicked() {
                         *self.process_params.lock() = self.process_params_edit.clone();
                         *self.preprocess_params.lock() = self.preprocess_edit.clone();
-                        self.histogram.lock().clear();
+                        // New binning starts empty. Old frames are not replayed.
+                        *self.histogram.lock() = PointHistogram::from(self.histogram_edit.clone());
                     }
 
                     ui.separator();
