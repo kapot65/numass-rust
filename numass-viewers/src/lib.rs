@@ -132,6 +132,41 @@ pub fn inc_status(status: Arc<Mutex<ProcessingStatus>>) {
     }
 }
 
+/// Направление навигации стрелками по позиции листания (чанк/событие).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum ArrowNav {
+    Prev,
+    Next,
+}
+
+/// Стрелки ←/→ листают позицию, только когда курсор над графиком или над
+/// самим слайдером позиции; в остальном приложении клавиши не перехватываются.
+/// `slider.has_focus()` гасит двойной шаг: сфокусированный (через Tab) слайдер
+/// egui сам шагает теми же стрелками.
+pub(crate) fn arrow_nav_on_hover(
+    ui: &egui::Ui,
+    slider: &egui::Response,
+    plot: &egui::Response,
+) -> Option<ArrowNav> {
+    if slider.has_focus() {
+        return None;
+    }
+    if !(slider.contains_pointer() || plot.contains_pointer()) {
+        return None;
+    }
+    // consume_key: забираем нажатие из пула событий, чтобы оно не всплыло
+    // повторно у других потребителей того же кадра.
+    ui.input_mut(|i| {
+        if i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowLeft) {
+            Some(ArrowNav::Prev)
+        } else if i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight) {
+            Some(ArrowNav::Next)
+        } else {
+            None
+        }
+    })
+}
+
 #[cfg(target_arch = "wasm32")]
 use gloo::worker::oneshot::oneshot;
 

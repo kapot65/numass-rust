@@ -200,16 +200,6 @@ impl eframe::App for PointViewer {
                     });
                 } else if let Some(data) = self.data.lock().as_ref() {
                     let chunks = &data.chunks;
-                    // consume_key, чтобы сфокусированный (через Tab) слайдер
-                    // не обрабатывал стрелки повторно.
-                    ctx.input_mut(|i| {
-                        if i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight) {
-                            self.current_chunk = next_non_empty_chunk(chunks, self.current_chunk);
-                        }
-                        if i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowLeft) {
-                            self.current_chunk = prev_non_empty_chunk(chunks, self.current_chunk);
-                        }
-                    });
 
                     egui::Panel::bottom("version").show(ui, |ui| {
                         crate::version_label(ui);
@@ -228,14 +218,20 @@ impl eframe::App for PointViewer {
 
                         ui.style_mut().spacing.slider_width = width - 150.0;
 
+                        let mut slider_resp = None;
                         ui.horizontal(|ui| {
                             // чанки по 1 мс: показываем время начала чанка, а не номер
-                            ui.add(
-                                egui::Slider::new(&mut self.current_chunk, 0..=chunks.len() - 1)
+                            slider_resp = Some(
+                                ui.add(
+                                    egui::Slider::new(
+                                        &mut self.current_chunk,
+                                        0..=chunks.len() - 1,
+                                    )
                                     .custom_formatter(|value, _| {
                                         format_time(Time::new::<millisecond>(value))
                                     })
                                     .step_by(1.0),
+                                ),
                             );
                             if ui.button("<").clicked() {
                                 self.current_chunk =
@@ -251,7 +247,7 @@ impl eframe::App for PointViewer {
                             ui.weak(label);
                         }
 
-                        egui_plot::Plot::new("waveforms")
+                        let plot_response = egui_plot::Plot::new("waveforms")
                             .legend(Legend::default())
                             .x_axis_label("Time")
                             .y_axis_label("Amplitude, ADC")
@@ -271,6 +267,24 @@ impl eframe::App for PointViewer {
                                     );
                                 }
                             });
+
+                        // Стрелки листания — только при наведении на график или
+                        // слайдер позиции; прыжок — к ближайшему непустому чанку.
+                        if let Some(slider) = &slider_resp
+                            && let Some(dir) =
+                                crate::arrow_nav_on_hover(ui, slider, &plot_response.response)
+                        {
+                            match dir {
+                                crate::ArrowNav::Prev => {
+                                    self.current_chunk =
+                                        prev_non_empty_chunk(chunks, self.current_chunk);
+                                }
+                                crate::ArrowNav::Next => {
+                                    self.current_chunk =
+                                        next_non_empty_chunk(chunks, self.current_chunk);
+                                }
+                            }
+                        }
                     });
                 }
             }

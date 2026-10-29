@@ -228,20 +228,6 @@ impl eframe::App for BundleViewer {
         let ctx = ui.ctx().clone();
         ctx.set_visuals(Visuals::dark());
 
-        if let Some(data) = &*self.data.lock() {
-            let chunks = &data.chunks;
-            ctx.input(|i| {
-                if i.key_pressed(eframe::egui::Key::ArrowRight)
-                    && self.current_chunk < chunks.len() - 1
-                {
-                    self.current_chunk += 1;
-                }
-                if i.key_pressed(eframe::egui::Key::ArrowLeft) && self.current_chunk > 0 {
-                    self.current_chunk -= 1;
-                }
-            });
-        }
-
         eframe::egui::Panel::left("parameters").show(ui, |ui| {
             eframe::egui::Panel::bottom("version").show(ui, |ui| {
                 crate::version_label(ui);
@@ -315,13 +301,16 @@ impl eframe::App for BundleViewer {
 
                 ui.style_mut().spacing.slider_width = width - 450.0;
 
+                let mut slider_resp = None;
                 ui.horizontal(|ui| {
                     // Слайдер листает чанки: показываем время начала чанка, а не его номер.
                     let chunk_len = Time::new::<millisecond>(self.limit_ms as f64);
-                    ui.add(
-                        egui::Slider::new(&mut self.current_chunk, 0..=chunks.len() - 1)
-                            .custom_formatter(move |value, _| format_time(chunk_len * value))
-                            .step_by(1.0),
+                    slider_resp = Some(
+                        ui.add(
+                            egui::Slider::new(&mut self.current_chunk, 0..=chunks.len() - 1)
+                                .custom_formatter(move |value, _| format_time(chunk_len * value))
+                                .step_by(1.0),
+                        ),
                     );
                     if ui.button("<").clicked() && self.current_chunk > 0 {
                         self.current_chunk -= 1;
@@ -341,7 +330,7 @@ impl eframe::App for BundleViewer {
                     "Amplitude, ADC"
                 };
 
-                egui_plot::Plot::new("waveforms")
+                let plot_response = egui_plot::Plot::new("waveforms")
                     .legend(Legend::default())
                     .x_axis_label("Time")
                     .y_axis_label(amplitude_label)
@@ -365,6 +354,26 @@ impl eframe::App for BundleViewer {
                             )
                         }
                     });
+
+                // Стрелки листания — только при наведении на график или слайдер
+                // позиции (см. crate::arrow_nav_on_hover).
+                if let Some(slider) = &slider_resp
+                    && let Some(dir) =
+                        crate::arrow_nav_on_hover(ui, slider, &plot_response.response)
+                {
+                    match dir {
+                        crate::ArrowNav::Prev => {
+                            if self.current_chunk > 0 {
+                                self.current_chunk -= 1;
+                            }
+                        }
+                        crate::ArrowNav::Next => {
+                            if self.current_chunk + 1 < chunks.len() {
+                                self.current_chunk += 1;
+                            }
+                        }
+                    }
+                }
             } else {
                 ui.spinner();
             }

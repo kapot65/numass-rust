@@ -320,15 +320,7 @@ impl eframe::App for FilteredViewer {
 
         let indexes_len = self.indexes.lock().as_ref().map(|indexes| indexes.len());
         let reprocess_running = *self.reprocess_running.lock();
-
-        ctx.input(|i| {
-            if i.key_pressed(eframe::egui::Key::ArrowLeft) {
-                self.dec()
-            }
-            if i.key_pressed(eframe::egui::Key::ArrowRight) {
-                self.inc()
-            }
-        });
+        let mut slider_resp: Option<egui::Response> = None;
 
         eframe::egui::Panel::left("parameters").show(ui, |ui| {
             eframe::egui::Panel::bottom("version").show(ui, |ui| {
@@ -406,9 +398,9 @@ impl eframe::App for FilteredViewer {
                     ui.style_mut().spacing.slider_width = width - 450.0;
 
                     if let Some(len) = indexes_len {
-                        ui.add(
+                        slider_resp = Some(ui.add(
                             eframe::egui::Slider::new(&mut self.current, 0..=len - 1).step_by(1.0),
-                        );
+                        ));
                         if ui.button("<").clicked() {
                             self.dec();
                         }
@@ -425,7 +417,7 @@ impl eframe::App for FilteredViewer {
 
             eframe::egui::CentralPanel::default().show(ui, |ui| {
                 let mut plot_error = None;
-                if let Some(indexes) = self.indexes.lock().as_ref() {
+                let plot_response = if let Some(indexes) = self.indexes.lock().as_ref() {
                     let legend = if self.raw_hidden_seeded {
                         Legend::default()
                     } else {
@@ -434,25 +426,40 @@ impl eframe::App for FilteredViewer {
                             .hidden_items((0..7).map(|ch| egui::Id::new(format!("ch #{}", ch + 1))))
                     };
 
-                    egui_plot::Plot::new("waveforms")
-                        .legend(legend)
-                        .x_axis_label("Time")
-                        .y_axis_label("Amplitude")
-                        .x_axis_formatter(|mark, _| format_time(nanoseconds(mark.value)))
-                        .label_formatter(waveform_hover_label)
-                        .show(ui, |plot_ui| {
-                            if indexes.is_empty() {
-                                return;
-                            }
+                    Some(
+                        egui_plot::Plot::new("waveforms")
+                            .legend(legend)
+                            .x_axis_label("Time")
+                            .y_axis_label("Amplitude")
+                            .x_axis_formatter(|mark, _| format_time(nanoseconds(mark.value)))
+                            .label_formatter(waveform_hover_label)
+                            .show(ui, |plot_ui| {
+                                if indexes.is_empty() {
+                                    return;
+                                }
 
-                            let position = indexes[self.current];
-                            plot_error = self.plot_processed_frame(plot_ui, position);
-                        });
+                                let position = indexes[self.current];
+                                plot_error = self.plot_processed_frame(plot_ui, position);
+                            }),
+                    )
                 } else {
                     ui.spinner();
-                }
+                    None
+                };
                 if let Some(error) = plot_error {
                     *self.error.lock() = Some(error);
+                }
+
+                // Стрелки листания — только при наведении на слайдер позиции
+                // или график (см. crate::arrow_nav_on_hover).
+                if let (Some(slider), Some(response)) =
+                    (slider_resp.as_ref(), plot_response.as_ref())
+                    && let Some(dir) = crate::arrow_nav_on_hover(ui, slider, &response.response)
+                {
+                    match dir {
+                        crate::ArrowNav::Prev => self.dec(),
+                        crate::ArrowNav::Next => self.inc(),
+                    }
                 }
             });
         }
