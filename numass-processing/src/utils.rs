@@ -9,13 +9,14 @@ use plotly::color::Color;
 use {
     crate::types::{ProcessedWaveform, RawWaveform},
     egui::{Color32, epaint::Hsva},
-    egui_plot::{Line, PlotUi},
+    egui_plot::{HoverPosition, Line, PlotPoint, PlotUi},
 };
 
 use crate::{
     histogram::{HistogramParams, PointHistogram},
     types::{
-        FrameEvent, NumassEvents, Time, microsecond, millisecond, nanosecond, second, time_ns,
+        FrameEvent, NumassEvents, Time, microsecond, millisecond, nanosecond, nanoseconds, second,
+        time_ns,
     },
 };
 use numass::{NumassMeta, Reply};
@@ -99,6 +100,90 @@ pub fn format_time(value: Time) -> String {
     }
 
     format!("{text} {unit}")
+}
+
+#[cfg(feature = "egui")]
+fn format_plot_number(number: f64) -> String {
+    if number.is_finite() && number.fract() == 0.0 && number.abs() < 1e15 {
+        format!("{number:.0}")
+    } else {
+        format!("{number:.3}")
+    }
+}
+
+/// Подпись точки при наведении: сырые координаты графика и,
+/// если задан форматтер, то же значение в единицах оси.
+///
+/// С egui_plot 0.37 подпись сама не появляется — её надо передать в
+/// [`egui_plot::Plot::label_formatter`]. `None` в форматтере оставляет ось
+/// только сырой (амплитуда осциллограмм).
+#[cfg(feature = "egui")]
+pub fn plot_hover_label(
+    pos: &HoverPosition<'_>,
+    format_x: impl Fn(f64) -> Option<String>,
+    format_y: impl Fn(f64) -> Option<String>,
+) -> Option<String> {
+    let (name, PlotPoint { x, y }) = match *pos {
+        HoverPosition::NearDataPoint {
+            plot_name,
+            position,
+            ..
+        } => (plot_name, position),
+        HoverPosition::Elsewhere { position } => ("", position),
+    };
+
+    let mut lines = Vec::new();
+    if !name.is_empty() {
+        lines.push(name.to_owned());
+    }
+    lines.push(axis_hover_line("x", x, format_x(x)));
+    lines.push(axis_hover_line("y", y, format_y(y)));
+    Some(lines.join("\n"))
+}
+
+#[cfg(feature = "egui")]
+fn axis_hover_line(axis: &str, raw: f64, formatted: Option<String>) -> String {
+    match formatted {
+        Some(formatted) => format!("{axis} = {}  ({formatted})", format_plot_number(raw)),
+        None => format!("{axis} = {}", format_plot_number(raw)),
+    }
+}
+
+/// Подпись осциллограммы: сырое x — номер бина АЦП
+/// (обратное к [`crate::types::bin_time`]: нс / [`TICK_NS`]),
+/// рядом — то же время с подбором приставки.
+/// y — амплитуда как нарисована (ADC или keV).
+#[cfg(feature = "egui")]
+pub fn waveform_hover_label(pos: &HoverPosition<'_>) -> Option<String> {
+    let (name, point) = match *pos {
+        HoverPosition::NearDataPoint {
+            plot_name,
+            position,
+            ..
+        } => (plot_name, position),
+        HoverPosition::Elsewhere { position } => ("", position),
+    };
+
+    let mut lines = Vec::new();
+    if !name.is_empty() {
+        lines.push(name.to_owned());
+    }
+    // сырое x — бин АЦП, не наносекунды оси: время уже стоит рядом в скобках
+    lines.push(axis_hover_line(
+        "x",
+        waveform_bin(point.x) as f64,
+        Some(format_time(nanoseconds(point.x))),
+    ));
+    lines.push(axis_hover_line("y", point.y, None));
+    Some(lines.join("\n"))
+}
+
+/// Номер бина АЦП по координате оси x (наносекунды) — обратное к
+/// [`crate::types::bin_time`]. Округляем: точка лежит на сетке бина,
+/// но перевод через секунды uom мог её чуть сдвинуть.
+#[cfg(feature = "egui")]
+fn waveform_bin(x_ns: f64) -> i64 {
+    (x_ns / f64::from(crate::types::TICK_NS)).round() as i64
 }
 
 /// Корретировка времени прихода триггера
@@ -329,6 +414,39 @@ mod tests {
         assert_eq!(format_time(nanoseconds(0.0)), "0 ns");
         assert_eq!(format_time(nanoseconds(2e6)), "2 ms");
         assert_eq!(format_time(nanoseconds(1.5e6)), "1.5 ms");
+    }
+
+    #[cfg(feature = "egui")]
+    mod hover {
+        use super::super::{plot_hover_label, waveform_hover_label};
+        use crate::types::nanoseconds;
+        use crate::utils::format_time;
+        use egui_plot::{HoverPosition, PlotPoint};
+
+        #[test]
+        fn waveform_hover_shows_raw_and_formatted_time() {
+            let point = HoverPosition::NearDataPoint {
+                plot_name: "ch #1",
+                position: PlotPoint { x: 4000.0, y: 12.5 },
+                index: 500,
+            };
+            assert_eq!(
+                waveform_hover_label(&point).unwrap(),
+                format!(
+                    "ch #1\nx = 500  ({})\ny = 12.500",
+                    format_time(nanoseconds(4000.0))
+                )
+            );
+
+            // вне точки данных — те же координаты, без имени серии
+            let elsewhere = HoverPosition::Elsewhere {
+                position: PlotPoint { x: 0.0, y: -3.0 },
+            };
+            assert_eq!(
+                plot_hover_label(&elsewhere, |_| None, |_| Some("keV".to_owned())).unwrap(),
+                "x = 0\ny = -3  (keV)"
+            );
+        }
     }
 
     #[test]

@@ -13,7 +13,7 @@ use numass_processing::{
     types::{FrameEvent, Time, millisecond, nanosecond, nanoseconds, time_ns},
     utils::{
         RepairedTimes, acquisition_time, color_for_index, format_time, repair_frame_times,
-        timestamps_bound,
+        timestamps_bound, waveform_hover_label,
     },
     widgets::UserInput,
 };
@@ -346,6 +346,7 @@ impl eframe::App for BundleViewer {
                     .x_axis_label("Time")
                     .y_axis_label(amplitude_label)
                     .x_axis_formatter(|mark, _| format_time(nanoseconds(mark.value)))
+                    .label_formatter(waveform_hover_label)
                     .show(ui, |plot_ui| {
                         let mut channel_points = BTreeMap::new();
 

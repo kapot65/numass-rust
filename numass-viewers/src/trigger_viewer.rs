@@ -9,7 +9,9 @@ use numass_processing::{
     preprocess::{CUTOFF_BIN_SIZE, StaticPointParams},
     storage::{load_meta, load_point},
     types::{Time, millisecond, nanosecond, nanoseconds, second, time_ns},
-    utils::{correct_frame_time, format_time, repair_frame_times, timestamps_bound},
+    utils::{
+        correct_frame_time, format_time, plot_hover_label, repair_frame_times, timestamps_bound,
+    },
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -228,6 +230,10 @@ impl eframe::App for TriggerViewer {
                     .legend(Legend::default())
                     .x_axis_label("Time")
                     .x_axis_formatter(|GridMark { value, .. }, _| format_time(nanoseconds(value)))
+                    // ось — время точки, а не отсчёты АЦП: сырое значение в нс
+                    .label_formatter(|pos| {
+                        plot_hover_label(pos, |x| Some(format_time(nanoseconds(x))), |_| None)
+                    })
                     .show(ui, |plot_ui| {
                         if self.per_channel {
                             trigger_density.draw_egui_each_channel(plot_ui, None);

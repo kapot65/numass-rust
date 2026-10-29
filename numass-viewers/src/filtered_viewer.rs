@@ -13,7 +13,7 @@ use numass_processing::{
     process::{ProcessParams, convert_to_kev, extract_frame},
     storage::load_point,
     types::{FrameEvent, NumassFrameFast, NumassWaveformsFast, nanoseconds},
-    utils::{correct_frame_time, format_time},
+    utils::{correct_frame_time, format_time, waveform_hover_label},
     widgets::{HISTOGRAM_MAX, HISTOGRAM_MIN, UserInput},
 };
 
@@ -439,6 +439,7 @@ impl eframe::App for FilteredViewer {
                         .x_axis_label("Time")
                         .y_axis_label("Amplitude")
                         .x_axis_formatter(|mark, _| format_time(nanoseconds(mark.value)))
+                        .label_formatter(waveform_hover_label)
                         .show(ui, |plot_ui| {
                             if indexes.is_empty() {
                                 return;

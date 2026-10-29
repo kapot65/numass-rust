@@ -9,7 +9,7 @@ use numass_processing::{
     types::{ProcessedWaveform, RawWaveform, Time, millisecond, nanoseconds, time_ns},
     utils::{
         EguiLine, RepairedTimes, acquisition_time, color_for_index, correct_frame_time,
-        format_time, repair_frame_times, timestamps_bound,
+        format_time, repair_frame_times, timestamps_bound, waveform_hover_label,
     },
 };
 
@@ -258,6 +258,7 @@ impl eframe::App for PointViewer {
                             .x_axis_formatter(|GridMark { value, .. }, _| {
                                 format_time(nanoseconds(value))
                             })
+                            .label_formatter(waveform_hover_label)
                             .show(ui, |plot_ui| {
                                 for (ch_num, offset, waveform) in chunks[self.current_chunk].clone()
                                 {

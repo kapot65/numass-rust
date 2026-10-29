@@ -14,7 +14,7 @@ use numass_processing::process::{Algorithm, ProcessParams, extract_frame};
 use numass_processing::types::{
     FrameEvent, NumassFrame, NumassFrameFast, ProcessedWaveform, nanoseconds,
 };
-use numass_processing::utils::{EguiLine, color_for_index, format_time};
+use numass_processing::utils::{EguiLine, color_for_index, format_time, waveform_hover_label};
 use numass_processing::widgets::{HISTOGRAM_MAX, HISTOGRAM_MIN, UserInput};
 use numass_tqdc::mlink::MlinkMessage;
 use numass_tqdc::mstream::{ADCDataBlock, MStreamTriggerAndUserData};
@@ -481,6 +481,7 @@ impl eframe::App for MyEguiApp {
                     .x_axis_label("Time")
                     .y_axis_label("Amplitude, ADC")
                     .x_axis_formatter(|mark, _| format_time(nanoseconds(mark.value)))
+                    .label_formatter(waveform_hover_label)
                     .show(ui, |plot_ui| {
                         channels.into_iter().for_each(|(ch_num, waveform)| {
                             waveform.draw_egui(
