@@ -20,6 +20,9 @@ pub mod types;
 pub mod utils;
 #[cfg(feature = "egui")]
 pub mod widgets;
+// Мост Ctrl+C скриптового редактора на wasm (см. widgets::Script).
+#[cfg(all(feature = "egui", target_arch = "wasm32"))]
+mod web_copy;
 #[cfg(feature = "stubgen")]
 pub use python::stub_info;
 

@@ -4470,6 +4470,8 @@ dependencies = [
  "ulua",
  "uom 0.38.0",
  "urlencoding",
+ "wasm-bindgen",
+ "web-sys",
  "xmltree",
 ]
 

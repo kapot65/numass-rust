@@ -45,6 +45,24 @@ ulua = { version = "0.1.7", default-features = false, features = ["typecheck", "
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3.52"
+# Мост Ctrl+C скриптового редактора (web_copy.rs): execCommand-копия внутри
+# user-gesture, т.к. navigator.clipboard браузеры блокируют.
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = [
+    "console",
+    "CssStyleDeclaration",
+    "Document",
+    "Element",
+    "Event",
+    "EventTarget",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "HtmlDocument",
+    "HtmlTextAreaElement",
+    "KeyboardEvent",
+    "Node",
+    "Window",
+] }
 gloo = { version = "0.11.0", features = ["net", "console", "utils", "worker", "futures"] }
 dataforge = { workspace = true }
 rmp-serde = "1.1.1"

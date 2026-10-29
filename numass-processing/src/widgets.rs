@@ -248,11 +248,35 @@ impl UserInput for PreprocessParams {
                                     }
                                     completer
                                 });
-                            let _ = egui_code_editor::CodeEditor::default()
+                            #[cfg_attr(not(target_arch = "wasm32"), allow(unused_variables))]
+                            let (script_output, _) = egui_code_editor::CodeEditor::default()
                                 .id_source(format!("preprocess-script-{idx}"))
                                 .with_rows(12)
                                 .with_theme(theme)
                                 .show_with_completer(ui, source, &syntax, &mut completer);
+
+                            // Ctrl+C на wasm: eframe пишет в буфер через
+                            // navigator.clipboard, который браузеры блокируют вне
+                            // secure-контекстов и при строгих политиках (см.
+                            // crate::web_copy). Выделение редактора отдаётся мосту,
+                            // который копирует его через execCommand внутри
+                            // пользовательского жеста.
+                            #[cfg(target_arch = "wasm32")]
+                            {
+                                let selection = if script_output.response.has_focus() {
+                                    script_output
+                                        .cursor_range
+                                        .as_ref()
+                                        .filter(|range| !range.is_empty())
+                                        .map(|range| range.slice_str(script_output.galley.text()))
+                                        .unwrap_or_default()
+                                        .to_owned()
+                                } else {
+                                    String::new()
+                                };
+                                crate::web_copy::publish_script_selection(&selection);
+                                crate::web_copy::ensure_shortcut_installed();
+                            }
                             ui.ctx()
                                 .data_mut(|d| d.insert_temp(completer_id, completer));
 
