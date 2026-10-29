@@ -60,14 +60,25 @@ fn collapsing<R>(
     }
     // Fit the rail to this indented ui. A rail sized from the parent is too long by exactly
     // the indent, so the value and suffix cross the column edge at every panel width.
-    // `SUFFIX` covers the number box plus the longest suffix these forms use.
-    const SUFFIX: f32 = 96.0;
     let (_, extra, _) = header.body(|ui| {
-        let reserved = ui.spacing().interact_size.x + ui.spacing().item_spacing.x + SUFFIX;
-        ui.spacing_mut().slider_width = (ui.available_width() - reserved).max(48.0);
+        fit_slider_rail(ui);
         body(ui);
     });
     extra.inner
+}
+
+/// Room for the slider's number box plus the longest suffix these forms use ("diff treshold").
+const SLIDER_SUFFIX: f32 = 96.0;
+
+/// Size the slider rail to the width still free in `ui`.
+///
+/// A side panel grows to whatever its contents actually occupy, and it keeps that width, so a
+/// widget that overshoots by a fixed amount grows the panel by that amount every frame until the
+/// panel fills the window. A rail taken from the whole column does exactly that once anything
+/// else — a checkbox, for instance — shares its row. Measure from the space left in the row.
+fn fit_slider_rail(ui: &mut egui::Ui) {
+    let reserved = ui.spacing().interact_size.x + ui.spacing().item_spacing.x + SLIDER_SUFFIX;
+    ui.spacing_mut().slider_width = (ui.available_width() - reserved).max(48.0);
 }
 
 fn block(ui: &mut egui::Ui, title: &str, body: impl FnOnce(&mut egui::Ui)) {
@@ -484,6 +495,9 @@ impl UserInput for PostProcessParams {
                 }
 
                 if merge_frames_checked {
+                    // The checkbox already took part of this row. A rail sized for the whole
+                    // column overflows by that much and drags the panel across the window.
+                    fit_slider_rail(ui);
                     let mut merge_frames_value = merge_frames.unwrap();
                     if ui
                         .add(egui::Slider::new(&mut merge_frames_value, 1000..=65535).text("ns"))
