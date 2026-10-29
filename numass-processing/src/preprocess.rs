@@ -492,19 +492,35 @@ fn apply_fir(channel: &mut ChannelSamples, left: usize, center: usize, right: us
     channel.delay += width;
 }
 
+/// Трапецоидальное окно: сумма правого крыла минус сумма левого, делённая на
+/// `left + right`. Центр в сумму не входит. Выход короче входа на `width - 1`;
+/// `width == 0` и сигнал короче окна — пустой вектор. `delay` канала сюда не входит:
+/// его растит вызывающий на `width`.
+///
+/// Считается бегущей суммой крыльев, `O(N)`. Для целочисленных отсчётов в точном
+/// диапазоне `f32` это бит-в-бит сумма окна: частичная сумма крыла не выходит за `2^24`.
 pub fn emulate_fir(waveform: &[f32], right: usize, center: usize, left: usize) -> Vec<f32> {
     let width = left + center + right;
-    if width == 0 {
+    if width == 0 || waveform.len() < width {
         return Vec::new();
     }
-    waveform
-        .windows(width)
-        .map(|window| {
-            let right_sum: f32 = window[left + center..].iter().copied().sum();
-            let left_sum: f32 = window[..left].iter().copied().sum();
-            (right_sum - left_sum) / (left + right) as f32
-        })
-        .collect()
+    let denom = (left + right) as f32;
+    let mut left_sum = waveform[..left].iter().copied().sum::<f32>();
+    let mut right_sum = waveform[left + center..width].iter().copied().sum::<f32>();
+    let mut out = Vec::with_capacity(waveform.len() - width + 1);
+    out.push((right_sum - left_sum) / denom);
+    for i in 0..waveform.len() - width {
+        // Пустое крыло не трогаем: разность `x - x` на NaN дала бы NaN,
+        // а прежняя сумма окна пустой срез не читает.
+        if left != 0 {
+            left_sum += waveform[i + left] - waveform[i];
+        }
+        if right != 0 {
+            right_sum += waveform[i + width] - waveform[i + left + center];
+        }
+        out.push((right_sum - left_sum) / denom);
+    }
+    out
 }
 
 /// Скользящее среднее ширины `width` — фильтр низких частот.
@@ -533,13 +549,23 @@ pub fn high_pass(waveform: &[f32], width: usize) -> Result<Vec<f32>, String> {
         ));
     }
     let half = width / 2;
+    // f64, а не бегущая сумма в f32: у краёв длина окна меняется, и
+    // частичная сумма длинного кадра в f32 теряет младшие биты при вычитании.
+    let mut prefix = Vec::with_capacity(waveform.len() + 1);
+    prefix.push(0.0f64);
+    let mut acc = 0.0f64;
+    for &sample in waveform {
+        acc += f64::from(sample);
+        prefix.push(acc);
+    }
     Ok(waveform
         .iter()
         .enumerate()
         .map(|(index, &sample)| {
             let start = index.saturating_sub(half);
             let end = (start + width).min(waveform.len());
-            sample - waveform[start..end].iter().sum::<f32>() / (end - start) as f32
+            let mean = (prefix[end] - prefix[start]) / (end - start) as f64;
+            sample - mean as f32
         })
         .collect())
 }
@@ -798,6 +824,65 @@ mod tests {
         assert!(high_pass(&flat, 7).unwrap().iter().all(|v| *v == 0.0));
         // Узкое окно — ошибка, а не NaN-канал.
         assert!(high_pass(&waveform, 2).is_err());
+    }
+
+    /// Независимый пересчёт окна. Бегущая сумма обязана совпасть с ним бит-в-бит
+    /// на целочисленных отсчётах: встроенный трапецоид кормит FIR до вычитания базы.
+    fn window_fir(waveform: &[f32], right: usize, center: usize, left: usize) -> Vec<f32> {
+        let width = left + center + right;
+        if width == 0 {
+            return Vec::new();
+        }
+        waveform
+            .windows(width)
+            .map(|window| {
+                let right_sum: f32 = window[left + center..].iter().copied().sum();
+                let left_sum: f32 = window[..left].iter().copied().sum();
+                (right_sum - left_sum) / (left + right) as f32
+            })
+            .collect()
+    }
+
+    #[test]
+    fn fir_running_sum_matches_window_sum() {
+        let waveform: Vec<f32> = (0..64)
+            .map(|i| ((i * 17 % 41) as i16 - 20) as f32)
+            .collect();
+        for (left, center, right) in [(6, 15, 6), (0, 0, 8), (4, 0, 0), (1, 0, 1)] {
+            assert_eq!(
+                emulate_fir(&waveform, right, center, left),
+                window_fir(&waveform, right, center, left),
+                "left={left} center={center} right={right}"
+            );
+        }
+        // Окно без крыльев: делитель ноль, каждый отсчёт — NaN, как у суммы окна.
+        assert!(emulate_fir(&waveform, 0, 3, 0).iter().all(|v| v.is_nan()));
+        assert!(emulate_fir(&waveform[..10], 6, 15, 6).is_empty());
+        assert!(emulate_fir(&waveform, 0, 0, 0).is_empty());
+        assert_eq!(
+            emulate_fir(&waveform, 6, 15, 6).len(),
+            waveform.len() - (6 + 15 + 6) + 1
+        );
+    }
+
+    #[test]
+    fn high_pass_edges_match_centered_window() {
+        // Ширина 4: половина 2, чётное окно сдвинуто на пол-отсчёта влево.
+        // index 0..1: окно [0, 4), среднее 2.5
+        // index 2: [0, 4) ещё, index 3: [1, 5), index 5: хвост [3, 6).
+        let waveform = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let filtered = high_pass(&waveform, 4).unwrap();
+        assert_eq!(
+            filtered,
+            vec![
+                1.0 - 2.5,
+                2.0 - 2.5,
+                3.0 - 2.5,
+                4.0 - 3.5,
+                5.0 - 4.5,
+                6.0 - 5.0,
+            ]
+        );
     }
 
     #[test]

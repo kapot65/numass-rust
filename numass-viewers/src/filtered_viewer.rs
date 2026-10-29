@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, ops::Range, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, mem, ops::Range, path::PathBuf, sync::Arc};
 
 use egui::{Visuals, mutex::Mutex};
 use egui_plot::{Legend, PlotUi};
@@ -155,6 +155,13 @@ impl FilteredViewer {
         running_slot: Arc<Mutex<bool>>,
         repaint: Option<eframe::egui::Context>,
     ) {
+        // Старая копия уходит до нового просчёта. Иначе на wasm пик
+        // (старый ProcessedPoint + новый) навсегда растит кучу: memory.grow
+        // страницы не отдаёт. Индекс сбрасывается вместе с ней, чтобы ui
+        // не рисовал кадр по ключу, которого уже нет.
+        drop(mem::take(&mut *processed_slot.lock()));
+        *indexes_slot.lock() = None;
+
         let waveforms = extract_waveforms(&point);
 
         let (processed, indexes, error) =
@@ -243,7 +250,11 @@ impl FilteredViewer {
     fn plot_processed_frame(&self, plot_ui: &mut PlotUi<'_>, time: u64) -> Option<String> {
         let frame = self.frame_at(time);
         let processed = self.processed.lock();
-        let processed = &processed[&time];
+        // Репроцесс забирает слот до нового расчёта: индекс мог ещё указывать
+        // на кадр, которого в карте уже нет.
+        let Some(processed) = processed.get(&time) else {
+            return None;
+        };
 
         draw_raw_frame(&frame, plot_ui);
         draw_processed_frame(processed, plot_ui);

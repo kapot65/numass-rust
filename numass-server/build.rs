@@ -141,6 +141,11 @@ fn declare_reruns(paths: &Paths) {
         paths
             .workspace_root
             .join("dataforge-parser-numass/Cargo.toml"),
+        // rustflags wasm (SIMD128) живут здесь. Cargo сам не считает
+        // этот файл входом build.rs, и правка не перезапускает trunk:
+        // вшитый wasm остаётся старым, `nu update-web-viewer.nu` выглядит
+        // как «не пересобрал».
+        paths.workspace_root.join(".cargo/config.toml"),
     ];
     for path in &watch {
         println!("cargo:rerun-if-changed={}", path.display());
@@ -257,6 +262,8 @@ fn forward_as_warnings(pipe: impl std::io::Read) {
 
 fn isolate_nested_cargo(cmd: &mut Command, trunk_target_dir: &Path) {
     for key in [
+        // Флаги хоста сюда не пробрасываем: они ломают wasm-сборку.
+        // SIMD128 живёт в `.cargo/config.toml` таргета wasm32-unknown-unknown.
         "RUSTFLAGS",
         "CARGO_ENCODED_RUSTFLAGS",
         "MAKEFLAGS",

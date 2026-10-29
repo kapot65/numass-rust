@@ -1,0 +1,6 @@
+# SIMD только у wasm. Нативные rustflags здесь не задаём: numass-analysis
+# задаёт свои в своём .cargo/config.toml, а эта секция применяется лишь
+# к wasm32-unknown-unknown (в том числе к trunk из numass-server/build.rs,
+# который намеренно стирает RUSTFLAGS хоста).
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "target-feature=+simd128"]
