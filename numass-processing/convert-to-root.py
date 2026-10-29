@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from typing import NoReturn
 
-__version__ = "3.2.0"
+__version__ = "3.2.1"
 
 
 def main() -> None:
